@@ -1,0 +1,14 @@
+# Normalize to LF in the repository regardless of the committer's platform.
+* text=auto eol=lf
+
+# Must stay LF: a CRLF shebang breaks the wrapper on Linux/CI.
+gradlew text eol=lf
+
+# Must stay CRLF: cmd.exe is unreliable with LF-only batch files.
+*.bat text eol=crlf
+
+# Never touch these.
+*.jar binary
+*.png binary
+*.webp binary
+*.keystore binary
