@@ -64,21 +64,39 @@ internal class TranslationTextView(context: Context) : TextView(context) {
     }
 
     /**
-     * A translation is often longer than its source — Chinese into English
-     * especially — so the text shrinks to fit rather than spilling outside the
-     * original bounds and colliding with neighbouring content.
+     * A translation is often longer than its source, so the text shrinks to fit
+     * rather than spilling outside the original bounds.
+     *
+     * The height of the source bounds is **not** a line height: a paragraph
+     * four lines tall reports the height of all four. Deriving a text size
+     * straight from it produced 160px type for an ordinary paragraph, and a
+     * container node reporting the height of an entire WebView produced 600px
+     * type covering half the screen.
+     *
+     * So the height only bounds how many lines fit; the type size is capped
+     * absolutely, and autosizing picks the largest size that actually fits the
+     * box.
      */
     private fun configureAutoSize(translation: RenderedTranslation) {
         val heightPx = translation.bounds.height
         val requested = translation.style.preferredTextSizeSp
-        val maxSizePx = when {
-            requested != null -> spToPx(requested)
-            // Glyphs occupy roughly 70% of a line box once leading is excluded.
-            heightPx > 0 -> (heightPx * GLYPH_HEIGHT_RATIO).toInt()
-            else -> spToPx(DEFAULT_TEXT_SIZE_SP)
-        }.coerceAtLeast(minAutoSizePx() + 1)
 
-        maxLines = translation.style.maxLines ?: estimateMaxLines(heightPx, maxSizePx)
+        val maxSizePx = if (requested != null) {
+            spToPx(requested).coerceAtLeast(minAutoSizePx() + 1)
+        } else {
+            TextFitting.maxTextSizePx(
+                boundsHeightPx = heightPx,
+                glyphHeightRatio = GLYPH_HEIGHT_RATIO,
+                ceilingPx = spToPx(MAX_TEXT_SIZE_SP),
+                floorPx = minAutoSizePx(),
+            )
+        }
+
+        maxLines = translation.style.maxLines ?: TextFitting.maxLines(
+            boundsHeightPx = heightPx,
+            minTextSizePx = minAutoSizePx(),
+            lineSpacingRatio = LINE_SPACING_RATIO,
+        )
 
         setAutoSizeTextTypeUniformWithConfiguration(
             minAutoSizePx(),
@@ -86,11 +104,6 @@ internal class TranslationTextView(context: Context) : TextView(context) {
             AUTO_SIZE_STEP_PX,
             TypedValue.COMPLEX_UNIT_PX,
         )
-    }
-
-    private fun estimateMaxLines(heightPx: Int, textSizePx: Int): Int {
-        if (heightPx <= 0 || textSizePx <= 0) return 1
-        return (heightPx / (textSizePx * LINE_SPACING_RATIO)).toInt().coerceAtLeast(1)
     }
 
     private fun minAutoSizePx(): Int = spToPx(MIN_TEXT_SIZE_SP)
@@ -112,6 +125,12 @@ internal class TranslationTextView(context: Context) : TextView(context) {
         const val LINE_SPACING_RATIO = 1.2f
         const val MIN_TEXT_SIZE_SP = 8f
         const val DEFAULT_TEXT_SIZE_SP = 14f
+
+        /**
+         * Nothing on a page is legitimately larger than this, and without the
+         * cap a container node's height turns into display-sized type.
+         */
+        const val MAX_TEXT_SIZE_SP = 24f
         const val AUTO_SIZE_STEP_PX = 1
         const val HORIZONTAL_PADDING_PX = 2
     }
