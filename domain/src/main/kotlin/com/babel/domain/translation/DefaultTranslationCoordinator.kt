@@ -175,6 +175,10 @@ class DefaultTranslationCoordinator(
 
         for (element in elements) {
             if (!sensitivePolicy.isTranslatable(element)) {
+                // Logged by id only — the whole point is that this text never
+                // reaches diagnostics. Without the line there is no way to tell
+                // "excluded on purpose" from "silently dropped".
+                logger.debug(TAG, "excluded by privacy policy: ${element.id.value}")
                 if (tracked.remove(element.id)?.also { it.job?.cancel() } != null) {
                     toHide += element.id
                 }
