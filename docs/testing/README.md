@@ -31,3 +31,27 @@ adb logcat -s Babel.AccessibilityService:* Babel.OverlayRenderer:* Babel.Transla
 Expect roughly 7 text nodes for the first screen. A node count in the hundreds,
 or a single node spanning the viewport, means container filtering in
 `NodeTextExtractor` has regressed.
+
+
+## `touch-link.html` / `touch-target.html`
+
+A pair of pages for checking that the overlay does not swallow taps.
+
+The link on the first page is deliberately wordy, so the translation covering it
+is unmistakable in a screenshot. Tapping it should open the second page.
+
+**Run the counter-test too.** A tap that succeeds proves nothing on its own — the
+overlay might simply not have been over that point, which is how an earlier
+attempt at this check produced a false pass. Temporarily drop
+`FLAG_NOT_TOUCHABLE` from `OverlayWindow`, reinstall, re-enable the service
+through the system UI, and tap the identical coordinate: it must *not* navigate.
+Restore the flag afterwards.
+
+```bash
+adb push docs/testing/touch-link.html /sdcard/Download/touch-link.html
+adb push docs/testing/touch-target.html /sdcard/Download/touch-target.html
+adb shell am start -n com.android.chromium/com.google.android.apps.chrome.IntentDispatcher   -a android.intent.action.VIEW -d "file:///sdcard/Download/touch-link.html"
+```
+
+Confirm the link is covered before tapping — screenshot it, and read the link's
+bounds from `uiautomator dump` to get the coordinate.
