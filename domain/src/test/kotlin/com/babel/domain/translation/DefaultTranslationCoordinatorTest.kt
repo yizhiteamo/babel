@@ -140,6 +140,53 @@ class DefaultTranslationCoordinatorTest {
         coordinator.stop()
     }
 
+    /**
+     * The user scrolls while a translation is still running. The text has not
+     * changed, so the request stays valid and its result must still be shown —
+     * at the element's new position.
+     *
+     * Regression: staleness used to be judged partly by revision, which a
+     * scroll bumps, so the arriving translation was discarded and text never
+     * appeared for as long as the user kept scrolling.
+     */
+    @Test
+    fun `a translation in flight survives a scroll`() = runTest {
+        translator.delayMillis = 1_000
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        text = "Hello",
+                        revision = 0,
+                        bounds = TestElements.bounds(top = 0, bottom = 48),
+                    ),
+                ),
+            ),
+        )
+        advanceTimeBy(500) // translation still running
+
+        // Same text, new position, higher revision — a scroll.
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        text = "Hello",
+                        revision = 1,
+                        bounds = TestElements.bounds(top = 400, bottom = 448),
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("<Hello>"), renderer.visibleText)
+        assertEquals(400, renderer.visible.getValue(TextElementId("e1")).bounds.top)
+        assertEquals(1, translator.callCount, "the scroll must not trigger a second request")
+        coordinator.stop()
+    }
+
     @Test
     fun `repeated identical events do not cause repeated requests`() = runTest {
         val coordinator = start()

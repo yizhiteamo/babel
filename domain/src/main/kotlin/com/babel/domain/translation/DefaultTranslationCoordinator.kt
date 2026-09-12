@@ -6,7 +6,6 @@ import com.babel.core.common.Redact
 import com.babel.core.model.LanguagePair
 import com.babel.core.model.RenderedTranslation
 import com.babel.core.model.RequestId
-import com.babel.core.model.Revision
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TranslationError
@@ -222,8 +221,15 @@ class DefaultTranslationCoordinator(
     private suspend fun onTranslated(message: Message.Translated) {
         val entry = tracked[message.elementId] ?: return
 
-        // Stale-result rejection: the element moved on while this was in flight.
-        if (entry.element.revision != message.revision || entry.key != message.key) {
+        // Staleness is decided by the key alone. The key covers source text and
+        // language pair, so changed content always invalidates an older result.
+        //
+        // Revision must NOT participate: scrolling bumps an element's revision
+        // while its text is unchanged, and the in-flight translation is
+        // deliberately left running. Comparing revisions here would discard
+        // that result, so text would never appear while the user keeps
+        // scrolling — exactly when they are waiting for it.
+        if (entry.key != message.key) {
             logger.debug(TAG, "dropped stale result for ${message.elementId.value}")
             return
         }
@@ -235,7 +241,7 @@ class DefaultTranslationCoordinator(
 
     private fun onFailed(message: Message.Failed) {
         val entry = tracked[message.elementId] ?: return
-        if (entry.element.revision != message.revision) return
+        if (entry.key != message.key) return
         entry.job = null
         // One element failing must not take down the pipeline, so runtime state
         // is left alone — that text simply stays untranslated.
@@ -282,7 +288,7 @@ class DefaultTranslationCoordinator(
             try {
                 val cached = cache.get(key)
                 if (cached != null) {
-                    mailbox.send(Message.Translated(element.id, element.revision, cached, key))
+                    mailbox.send(Message.Translated(element.id, cached, key))
                     return@launch
                 }
 
@@ -292,12 +298,7 @@ class DefaultTranslationCoordinator(
                         TranslationStatus.Translated -> {
                             cache.put(key, result.translatedText)
                             mailbox.send(
-                                Message.Translated(
-                                    element.id,
-                                    element.revision,
-                                    result.translatedText,
-                                    key,
-                                ),
+                                Message.Translated(element.id, result.translatedText, key),
                             )
                         }
 
@@ -306,7 +307,7 @@ class DefaultTranslationCoordinator(
                         TranslationStatus.Unchanged -> Unit
 
                         is TranslationStatus.Failed -> mailbox.send(
-                            Message.Failed(element.id, element.revision, status.error),
+                            Message.Failed(element.id, key, status.error),
                         )
                     }
                 }
@@ -317,7 +318,7 @@ class DefaultTranslationCoordinator(
                 mailbox.send(
                     Message.Failed(
                         element.id,
-                        element.revision,
+                        key,
                         TranslationError.Unexpected(unexpected::class.simpleName),
                     ),
                 )
@@ -387,16 +388,16 @@ class DefaultTranslationCoordinator(
     private sealed interface Message {
         data class Source(val event: TextSourceEvent) : Message
 
+        /** [key] identifies what was translated; see [onTranslated]. */
         data class Translated(
             val elementId: TextElementId,
-            val revision: Revision,
             val translatedText: String,
             val key: TranslationCacheKey,
         ) : Message
 
         data class Failed(
             val elementId: TextElementId,
-            val revision: Revision,
+            val key: TranslationCacheKey,
             val error: TranslationError,
         ) : Message
 

@@ -1,0 +1,213 @@
+# AGENTS.md
+
+## Project Purpose
+
+This project is an Android immersive translation application.
+
+Its goal is to translate content displayed by other Android apps and render the translation in-place with minimal disruption to the original reading, comic, or game experience.
+
+The project evolves through multiple product phases, but this file intentionally does not track the active version or milestone.
+
+See `docs/roadmap.md` and `docs/milestones/` for current development status.
+
+---
+
+## Technology Direction
+
+Primary stack:
+
+- Kotlin
+- Android native APIs
+- Jetpack Compose for the application's own UI
+- Kotlin Coroutines / Flow for asynchronous state and pipelines
+- DataStore for lightweight persistent settings
+- Room only when structured persistent data requires it
+
+Platform-specific capabilities should be introduced only when required by the active feature scope.
+
+---
+
+## Core Architectural Principles
+
+The translation pipeline must not depend directly on how text was acquired.
+
+All text sources must be normalized into project-owned models before entering the common translation pipeline.
+
+Conceptual flow:
+
+`Text Source -> TextElement -> TranslationRequest -> TranslationResult -> RenderedTranslation -> Renderer`
+
+Known source examples:
+
+- Accessibility text
+- OCR text
+- Tracked OCR/game text
+
+Downstream systems must not depend on source-specific platform types.
+
+Future compatibility should be achieved through stable boundaries and project-owned models, not by pre-implementing future runtime systems.
+
+---
+
+## Module Boundaries
+
+Keep acquisition, translation, persistence, rendering, and UI separated.
+
+Rules:
+
+- Compose UI must not contain AccessibilityService or screen-capture logic.
+- Acquisition layers must not directly call translation provider APIs.
+- Renderers must not directly call translation providers.
+- Translation providers must not know about Android overlay windows or Compose UI.
+- Translation cache must be accessed through the translation layer, not directly from UI.
+- Platform-specific objects must be converted into project-owned models at module boundaries.
+- Avoid global mutable state.
+- Prefer immutable state and explicit state transitions.
+- Prefer coroutines and Flow for asynchronous pipelines.
+- Long-running work must be cancellable.
+- Old asynchronous results must not overwrite newer visible content.
+
+See `docs/architecture.md`.
+
+---
+
+## Language Rules
+
+Do not assume Chinese is always the target language.
+
+Default behavior:
+
+- Source language: automatic detection
+- Target language: follow system language
+
+Users may manually override both source and target languages.
+
+App UI language and translation target language are separate concepts.
+
+See `docs/systems/language.md`.
+
+---
+
+## Scope Discipline
+
+Implement only the scope required by the active milestone.
+
+Before implementing functionality, consult:
+
+- `docs/roadmap.md`
+- the relevant file under `docs/features/`
+- the active milestone under `docs/milestones/`
+- relevant system documentation under `docs/systems/`
+
+Do not implement functionality assigned to a future phase unless explicitly requested.
+
+Future phases may influence:
+
+- interface boundaries
+- project-owned data models
+- extension points
+- module separation
+
+Future phases must not justify prematurely implementing:
+
+- unused runtime systems
+- unused dependencies
+- unused services
+- speculative abstractions
+- placeholder subsystems with no current consumer
+
+Prefer the smallest architecture that supports the active phase without blocking known future phases.
+
+---
+
+## Documentation Routing
+
+Read only documentation relevant to the task.
+
+Use:
+
+- Product version definitions: `docs/features/`
+- Overall current state: `docs/roadmap.md`
+- Detailed active progress: `docs/milestones/`
+- Architecture: `docs/architecture.md`
+- Technical systems: `docs/systems/`
+- Architectural rationale: `docs/decisions/`
+
+Common system documents:
+
+- Language: `docs/systems/language.md`
+- Text model: `docs/systems/text-model.md`
+- Translation: `docs/systems/translation.md`
+- Accessibility: `docs/systems/accessibility.md`
+- Overlay rendering: `docs/systems/overlay.md`
+- Cache: `docs/systems/cache.md`
+- Settings: `docs/systems/settings.md`
+- Runtime state: `docs/systems/runtime-state.md`
+- Capabilities: `docs/systems/capabilities.md`
+- Privacy: `docs/systems/privacy.md`
+- Testing: `docs/systems/testing.md`
+
+Do not load all documentation unless the task genuinely spans all systems.
+
+---
+
+## Documentation Policy
+
+`AGENTS.md` is a stable project constitution and navigation file.
+
+Do not store in this file:
+
+- active version
+- milestone progress
+- daily progress
+- bug history
+- implementation diary
+- commit history
+- temporary task notes
+- percentage complete
+
+Use:
+
+- `docs/roadmap.md` for version-level current state
+- `docs/milestones/` for detailed current progress
+- `docs/features/` for stable version scope and acceptance criteria
+- Git history for what changed at code level
+- ADR files for durable architectural decisions
+
+When documentation becomes large:
+
+- split by system or feature
+- keep this file concise
+- link instead of duplicating
+- update existing truth instead of appending chronological notes
+
+---
+
+## Data and Privacy Rules
+
+Never translate or log sensitive fields that should be excluded, including password-like or explicitly protected input.
+
+Avoid persisting raw screen text unless required by a documented feature.
+
+Diagnostic logs must not contain full user-visible screen text by default.
+
+Translation providers may receive text only through the translation layer, where privacy policy and provider configuration can be applied consistently.
+
+See `docs/systems/privacy.md`.
+
+---
+
+## Implementation Quality
+
+When adding or changing functionality:
+
+1. Identify the responsible feature and system documents.
+2. Read only the relevant documentation.
+3. Preserve module boundaries.
+4. Prefer extending project-owned models over leaking platform models downstream.
+5. Add or update tests around behavior and state transitions.
+6. Update documentation only when intended behavior or architecture changes.
+7. Update milestone state only when acceptance conditions are actually satisfied.
+8. Do not mark a roadmap phase complete unless its feature acceptance criteria are satisfied.
+
+When a requested change conflicts with an accepted ADR, do not silently bypass it. Update or supersede the ADR explicitly.
