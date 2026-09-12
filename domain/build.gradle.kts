@@ -12,6 +12,8 @@ dependencies {
     api(project(":core:common"))
     implementation(libs.javax.inject)
 
+    testImplementation(project(":core:testing"))
+    testImplementation(kotlin("test"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }
