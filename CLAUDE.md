@@ -224,7 +224,8 @@ The system `java` on PATH is JDK 8, and `JAVA_HOME` points at it. Gradle is pinn
 ./gradlew assembleDebug                # build the APK
 ./gradlew build                        # everything, including lint + unit tests
 ./gradlew test                         # all JVM unit tests
-./gradlew :domain:test                 # one module's tests
+./gradlew :domain:test                 # one pure-Kotlin module's tests
+./gradlew :data:translation:testDebugUnitTest   # an Android module (plain `test` runs both variants)
 ./gradlew :domain:test --tests "com.babel.domain.translation.CoordinatorTest"        # one class
 ./gradlew :domain:test --tests "com.babel.domain.translation.CoordinatorTest.rejects*" # one method
 ./gradlew connectedAndroidTest         # instrumentation tests (needs a device/emulator)
@@ -245,12 +246,13 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 |---|---|---|
 | `:core:model` | domain | `TextElement`, `TextBounds`, language modes, `TranslationRequest`/`Result`, `RenderedTranslation`, runtime state, capability state |
 | `:core:common` | domain | `DispatcherProvider`, `BabelLogger`, `Redact` |
-| `:domain` | domain | `TextSource`, `LanguageResolver`, `Translator`, `TranslationCache`, `TranslationCoordinator`, `TranslationRenderer`, `SensitiveContentPolicy`, `CapabilityChecker`, `SettingsRepository` |
-| `:data:settings` | data | DataStore-backed `SettingsRepository` |
-| `:data:translation` | data | `Translator` implementations, `TranslationCache` implementations |
+| `:domain` | domain | Pipeline contracts plus `DefaultLanguageResolver`, `DefaultSensitiveContentPolicy`, `DefaultTranslationCoordinator` |
+| `:core:testing` | test | Shared fakes (`FakeTranslator`, `RecordingRenderer`, …). Consumed via `testImplementation` only |
+| `:data:settings` | data | `DataStoreSettingsRepository`, `AndroidSystemLocaleProvider` |
+| `:data:translation` | data | `MlKitTranslator` (on-device), `InMemoryTranslationCache` |
 | `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization |
 | `:platform:overlay` | platform | overlay windows, `TranslationRenderer`, coordinate mapping |
-| `:app` | UI | Compose screens, Hilt wiring |
+| `:app` | UI | Compose screens, `AndroidLogger`, Hilt wiring for the pure-Kotlin domain |
 
 Dependency rules that the build enforces:
 
@@ -264,15 +266,20 @@ Adding a new acquisition method (OCR in V2, tracked OCR in V3) means a new `:pla
 
 ## Contracts already established
 
-Interfaces and models exist for every stable contract listed in `docs/architecture.md`. Implementations mostly do not — `:data:*` and `:platform:*` source trees are intentionally empty, and each corresponds to an unchecked item in `docs/milestones/v1.md`. Implement against the existing contracts; change a contract only when the system doc that defines it changes too.
+Every stable contract in `docs/architecture.md` exists, and the domain side is implemented: language resolution, privacy exclusion, the coordinator, the cache, and an on-device provider. `:platform:*` is still empty — acquisition and rendering are the remaining V1 work, and each corresponds to an unchecked item in `docs/milestones/v1.md`. Implement against the existing contracts; change a contract only when the system doc that defines it changes too.
 
-Behavioral invariants that live in these contracts and must survive any implementation:
+`DefaultTranslationCoordinator` mutates tracked state **only from its mailbox coroutine**. Translations run concurrently and report back as messages. Keep it that way: touching the tracked map from a translation coroutine reintroduces a race between the revision check and the events that bump revisions.
+
+Behavioral invariants that must survive any change:
 
 - `Revision` on `TextElement`, `TranslationRequest`, `TranslationResult`, and `RenderedTranslation` exists so a late result can be dropped. Compare it before rendering.
 - `Translator.translate` returns a `TranslationResult` with a `Failed` status; it does not throw. A provider failure degrades one element, not the pipeline.
 - `TranslationCacheKey` includes target language and provider. Never key on source text alone.
 - `TextSourceEvent.Removed`/`Cleared` are how stale overlays get cleaned up during scrolling and app switches.
 - Pass `Redact.text(...)` to loggers, never raw screen text.
+- `LanguageResolver` owns locale policy, including narrowing a device tag to what a provider accepts. ML Kit rejects `zh-Hans-CN` outright, so nothing downstream may assume a regional tag survives.
+
+Testing the pipeline: a collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.
 
 ---
 

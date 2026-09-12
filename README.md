@@ -6,8 +6,11 @@ copy-paste chore.
 
 ## Status
 
-Pre-implementation. The Gradle skeleton and the architectural contracts exist; the acquisition,
-translation, and rendering implementations do not yet.
+V1 in progress. The translation pipeline works end to end in tests: language resolution, privacy
+exclusion, coordination with stale-result rejection, caching, and on-device translation via ML Kit.
+
+Not yet built: accessibility text acquisition and overlay rendering — the two pieces that need a
+real device.
 
 See `docs/roadmap.md` for version-level state and `docs/milestones/` for detail.
 
@@ -44,9 +47,10 @@ read its own properties from `local.properties`; that file is the Android Gradle
 app/                      Compose UI, DI wiring
 core/model/               project-owned models (pure Kotlin)
 core/common/              dispatchers, logging, redaction (pure Kotlin)
-domain/                   pipeline contracts (pure Kotlin)
+core/testing/             shared test doubles
+domain/                   pipeline contracts and coordinator (pure Kotlin)
 data/settings/            DataStore-backed settings
-data/translation/         translation providers and cache
+data/translation/         ML Kit on-device translator, in-memory cache
 platform/accessibility/   accessibility text acquisition
 platform/overlay/         overlay rendering
 docs/                     architecture, features, systems, decisions
