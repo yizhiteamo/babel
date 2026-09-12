@@ -40,12 +40,25 @@ internal class TranslationTextView(context: Context) : TextView(context) {
         configureAutoSize(translation)
     }
 
+    /**
+     * Android caps the opacity of a touch-passthrough overlay at 0.8
+     * (`maximum_obscuring_opacity_for_touch`), so a fifth of whatever is
+     * underneath always bleeds through. The final pixel is
+     * `0.8 × ours + 0.2 × theirs`.
+     *
+     * That makes the background choice matter more than it looks: where the
+     * translation is shorter than the source, the leftover strip shows
+     * `0.8 × ours + 0.2 × their background`. Picking a colour close to a
+     * typical app surface makes that strip blend in, while pure black or white
+     * — the furthest extremes from most surfaces — makes it stand out as a
+     * visible block. These are the Material surface colours for that reason.
+     */
     private fun applyTheme() {
         if (isDarkTheme) {
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(DARK_SURFACE)
             setTextColor(Color.WHITE)
         } else {
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(LIGHT_SURFACE)
             setTextColor(Color.BLACK)
         }
     }
@@ -89,6 +102,12 @@ internal class TranslationTextView(context: Context) : TextView(context) {
     ).toInt()
 
     private companion object {
+        /** Material dark surface, close to what most dark-themed apps use. */
+        const val DARK_SURFACE = 0xFF121212.toInt()
+
+        /** Most light-themed apps sit on plain white. */
+        const val LIGHT_SURFACE = 0xFFFFFFFF.toInt()
+
         const val GLYPH_HEIGHT_RATIO = 0.7f
         const val LINE_SPACING_RATIO = 1.2f
         const val MIN_TEXT_SIZE_SP = 8f
