@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 首页 -->
+    <string name="home_status_ready">已就绪。打开任意应用，其中的文字会就地译出。</string>
+    <string name="home_status_setup_needed">Babel 需要两项权限才能开始翻译。</string>
+
+    <!-- 权限卡片 -->
+    <string name="permission_accessibility_title">无障碍服务</string>
+    <string name="permission_accessibility_explanation">用于读取屏幕上的文字。服务开启期间翻译持续生效。</string>
+    <string name="permission_overlay_title">显示在其他应用上层</string>
+    <string name="permission_overlay_explanation">用于把译文绘制在原文位置上。</string>
+    <string name="permission_state_granted">已开启</string>
+    <string name="permission_state_missing">未开启</string>
+    <string name="permission_action_open_settings">前往设置</string>
+
+    <!-- 目标语言 -->
+    <string name="language_section_title">译入语言</string>
+    <string name="language_none_selected">—</string>
+    <string name="language_explanation">默认跟随系统语言。这是文字被译成的语言，不是本应用的界面语言。</string>
+    <string name="language_action_change">更改</string>
+    <string name="language_follow_system">跟随系统语言</string>
+    <string name="language_action_cancel">取消</string>
+
+</resources>

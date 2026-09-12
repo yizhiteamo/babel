@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- 显示在系统无障碍设置中，是用户最先读到的说明，其中的隐私声明必须保留 -->
+    <string name="accessibility_service_description">读取当前屏幕上的文字，以便就地译出。文字在本机翻译，不会上传。</string>
+
+</resources>

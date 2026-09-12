@@ -1,4 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Babel</string>
+
+    <!-- Product name. Not translated: it is the brand. -->
+    <string name="app_name" translatable="false">Babel</string>
+
+    <!-- Home screen -->
+    <string name="home_status_ready">Ready. Open any app and its text is translated in place.</string>
+    <string name="home_status_setup_needed">Babel needs two permissions before it can translate.</string>
+
+    <!-- Permission cards. Both follow the same shape: what it allows, then why. -->
+    <string name="permission_accessibility_title">Accessibility service</string>
+    <string name="permission_accessibility_explanation">Lets Babel read the text on screen. Translation runs for as long as this service is on.</string>
+    <string name="permission_overlay_title">Display over other apps</string>
+    <string name="permission_overlay_explanation">Lets Babel draw the translation over the original text.</string>
+    <string name="permission_state_granted">On</string>
+    <string name="permission_state_missing">Off</string>
+    <string name="permission_action_open_settings">Open settings</string>
+
+    <!-- Target language -->
+    <string name="language_section_title">Translate into</string>
+    <string name="language_none_selected">—</string>
+    <string name="language_explanation">Follows the system language. This is what text is translated into, not the language of this app.</string>
+    <string name="language_action_change">Change</string>
+    <string name="language_follow_system">Follow system language</string>
+    <string name="language_action_cancel">Cancel</string>
+
 </resources>

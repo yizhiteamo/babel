@@ -30,11 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.babel.app.R
 import com.babel.core.model.LanguageTag
 
 /**
@@ -65,28 +67,32 @@ fun BabelApp(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Babel", style = MaterialTheme.typography.headlineMedium)
             Text(
-                text = if (state.readyToTranslate) {
-                    "Ready. Open any app and its text will be translated in place."
-                } else {
-                    "Two permissions are needed before translation can run."
-                },
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineMedium,
+            )
+            Text(
+                text = stringResource(
+                    if (state.readyToTranslate) {
+                        R.string.home_status_ready
+                    } else {
+                        R.string.home_status_setup_needed
+                    },
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             PermissionCard(
-                title = "Accessibility service",
-                explanation = "Lets Babel read the text currently on screen. Translation runs " +
-                    "for as long as this service is enabled.",
+                title = stringResource(R.string.permission_accessibility_title),
+                explanation = stringResource(R.string.permission_accessibility_explanation),
                 granted = state.accessibilityGranted,
                 onOpenSettings = { context.openAccessibilitySettings() },
             )
 
             PermissionCard(
-                title = "Display over other apps",
-                explanation = "Lets Babel draw the translation over the original text.",
+                title = stringResource(R.string.permission_overlay_title),
+                explanation = stringResource(R.string.permission_overlay_explanation),
                 granted = state.overlayGranted,
                 onOpenSettings = { context.openOverlaySettings() },
             )
@@ -96,19 +102,22 @@ fun BabelApp(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text("Translate into", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = state.targetLanguage?.value ?: "—",
+                        text = stringResource(R.string.language_section_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = state.targetLanguage?.value
+                            ?: stringResource(R.string.language_none_selected),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
-                        text = "Following the system language by default. This is the " +
-                            "translation target, not the language of this app.",
+                        text = stringResource(R.string.language_explanation),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedButton(onClick = { showLanguagePicker = true }) {
-                        Text("Change")
+                        Text(stringResource(R.string.language_action_change))
                     }
                 }
             }
@@ -155,7 +164,13 @@ private fun PermissionCard(
             ) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = if (granted) "Granted" else "Not granted",
+                    text = stringResource(
+                        if (granted) {
+                            R.string.permission_state_granted
+                        } else {
+                            R.string.permission_state_missing
+                        },
+                    ),
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
@@ -166,7 +181,7 @@ private fun PermissionCard(
             )
             if (!granted) {
                 OutlinedButton(onClick = onOpenSettings) {
-                    Text("Open settings")
+                    Text(stringResource(R.string.permission_action_open_settings))
                 }
             }
         }
@@ -181,12 +196,12 @@ private fun LanguagePickerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Translate into") },
+        title = { Text(stringResource(R.string.language_section_title)) },
         text = {
             LazyColumn {
                 item {
                     TextButton(onClick = { onSelect(null) }) {
-                        Text("Follow system language")
+                        Text(stringResource(R.string.language_follow_system))
                     }
                 }
                 items(languages) { tag ->
@@ -197,7 +212,9 @@ private fun LanguagePickerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.language_action_cancel))
+            }
         },
     )
 }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Languages Babel's own UI ships in. Declaring them lets Android 13+ show
+  Babel in the system's per-app language setting.
+
+  This is not an in-app language switcher: the UI follows the system language.
+  The declaration exists so a user who wants Babel in a different language than
+  the device can set it through the platform, and so that choice provably does
+  not change the translation target — see docs/systems/language.md.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="zh" />
+</locale-config>
