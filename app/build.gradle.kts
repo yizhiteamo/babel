@@ -42,6 +42,8 @@ android {
 
     buildFeatures {
         compose = true
+        // AndroidLogger drops debug logging in release builds.
+        buildConfig = true
     }
 }
 
