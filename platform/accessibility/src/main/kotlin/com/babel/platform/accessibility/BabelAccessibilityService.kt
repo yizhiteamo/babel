@@ -5,11 +5,13 @@ import android.view.accessibility.AccessibilityEvent
 import com.babel.core.common.BabelLogger
 import com.babel.core.common.DispatcherProvider
 import com.babel.core.model.Revision
+import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.translation.TranslationCoordinator
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -50,6 +52,17 @@ class BabelAccessibilityService : AccessibilityService() {
     lateinit var logger: BabelLogger
 
     private var scope: CoroutineScope? = null
+
+    /**
+     * Teardown has to outlive [scope]. Cancelling the pipeline also kills the
+     * coroutine collecting render updates, so the coordinator's final ClearAll
+     * would never reach the renderer and the overlay would stay on screen after
+     * the user switched the service off.
+     *
+     * `Main.immediate` so it completes synchronously when teardown is already
+     * running on the main thread, which is where the service is destroyed.
+     */
+    private val teardownScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /**
      * Conflated: content-change events arrive far faster than a tree scan can
@@ -107,6 +120,7 @@ class BabelAccessibilityService : AccessibilityService() {
         coordinator.stop()
         scope?.cancel()
         scope = null
+        teardownScope.launch { renderer.apply(RenderUpdate.ClearAll) }
         logger.info(TAG, "accessibility service torn down")
     }
 
