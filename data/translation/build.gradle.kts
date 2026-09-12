@@ -37,6 +37,8 @@ dependencies {
 
     debugImplementation(libs.okhttp.logging)
 
+    testImplementation(project(":core:testing"))
+    testImplementation(kotlin("test"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
 }

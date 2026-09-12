@@ -1,5 +1,6 @@
 package com.babel.domain.translation
 
+import com.babel.core.model.LanguagePair
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.ProviderId
 
@@ -19,6 +20,30 @@ data class TranslationCacheKey(
 ) {
     companion object {
         const val CURRENT_SCHEMA_VERSION: Int = 1
+
+        private val WHITESPACE = Regex("\\s+")
+
+        /**
+         * The only way a key should be built, so text normalization cannot
+         * drift between the coordinator and the cache implementation.
+         */
+        fun of(
+            sourceText: String,
+            languages: LanguagePair,
+            provider: ProviderId,
+        ): TranslationCacheKey = TranslationCacheKey(
+            normalizedText = normalizeText(sourceText),
+            sourceLanguage = languages.source,
+            targetLanguage = languages.target,
+            provider = provider,
+        )
+
+        /**
+         * Re-wrapped text differs only in whitespace but means the same thing;
+         * collapsing it keeps a scrolling reader from re-translating the same
+         * paragraph at every layout pass.
+         */
+        fun normalizeText(text: String): String = text.trim().replace(WHITESPACE, " ")
     }
 }
 
