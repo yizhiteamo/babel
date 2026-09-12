@@ -52,6 +52,10 @@ internal class OverlayWindow(private val context: Context) {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
+            // Must be fully opaque, or the original text shows through the
+            // translation and the two render on top of each other. Some
+            // systems default overlay windows to a reduced alpha.
+            alpha = 1f
         }
 
         windowManager.addView(layout, params)

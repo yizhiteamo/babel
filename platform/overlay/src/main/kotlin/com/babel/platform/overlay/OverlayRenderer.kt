@@ -30,14 +30,21 @@ class OverlayRenderer @Inject constructor(
         when (update) {
             is RenderUpdate.Show -> {
                 if (!ensureAttached()) return@withContext
+                logger.debug(TAG, "showing ${update.translations.size} translations")
                 window.show(update.translations)
             }
 
-            is RenderUpdate.Hide -> window.hide(update.ids)
+            is RenderUpdate.Hide -> {
+                logger.debug(TAG, "hiding ${update.ids.size} translations")
+                window.hide(update.ids)
+            }
 
             // Detach rather than just emptying the container: with nothing to
             // show, keeping a window over every other app earns nothing.
-            RenderUpdate.ClearAll -> window.detach()
+            RenderUpdate.ClearAll -> {
+                logger.debug(TAG, "clearing all translations")
+                window.detach()
+            }
         }
     }
 

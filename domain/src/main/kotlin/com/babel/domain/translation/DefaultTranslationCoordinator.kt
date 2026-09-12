@@ -236,6 +236,7 @@ class DefaultTranslationCoordinator(
 
         entry.translatedText = message.translatedText
         entry.job = null
+        logger.debug(TAG, "translated ${message.elementId.value}")
         _renderUpdates.emit(RenderUpdate.Show(listOf(entry.render(message.translatedText))))
     }
 

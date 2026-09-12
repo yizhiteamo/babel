@@ -60,6 +60,9 @@ class BabelAccessibilityService : AccessibilityService() {
 
     private var generation = 0L
 
+    /** Identity of the window the last scan read, to detect a real app change. */
+    private var lastWindowKey: String? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         logger.info(TAG, "accessibility service connected")
@@ -76,14 +79,7 @@ class BabelAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                // A different window or app: everything previously on screen is
-                // gone, so drop it before the next scan rather than letting
-                // overlays linger over unrelated content.
-                scope?.launch { textSource.clear() }
-                scanRequests.trySend(Unit)
-            }
-
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
             -> scanRequests.trySend(Unit)
@@ -107,6 +103,7 @@ class BabelAccessibilityService : AccessibilityService() {
     }
 
     private fun teardown() {
+        lastWindowKey = null
         coordinator.stop()
         scope?.cancel()
         scope = null
@@ -126,9 +123,24 @@ class BabelAccessibilityService : AccessibilityService() {
         } catch (failure: Exception) {
             logger.warn(TAG, "could not read the active window", failure)
             null
-        } ?: return
+        } ?: run {
+            logger.debug(TAG, "no active window to scan")
+            return
+        }
+
+        // Clear only when the window actually changed. TYPE_WINDOW_STATE_CHANGED
+        // fires within a single app too — panel updates, dialogs, lazily loaded
+        // content — and clearing on every one of those tears the overlay down
+        // and re-translates the same screen in a loop. Keying off what was
+        // actually scanned makes "different window" mean what it says.
+        val windowKey = "${root.packageName}:${root.windowId}"
+        if (windowKey != lastWindowKey) {
+            lastWindowKey = windowKey
+            textSource.clear()
+        }
 
         val rawTexts = extractor.extract(root)
+        logger.debug(TAG, "scanned $windowKey: ${rawTexts.size} text nodes")
         if (rawTexts.isEmpty()) return
 
         generation += 1

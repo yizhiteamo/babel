@@ -1,5 +1,6 @@
 package com.babel.app.di
 
+import com.babel.app.capability.AndroidCapabilityChecker
 import com.babel.app.logging.AndroidLogger
 import com.babel.core.common.BabelLogger
 import com.babel.core.common.DefaultDispatcherProvider
@@ -7,6 +8,7 @@ import com.babel.core.common.DispatcherProvider
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.privacy.DefaultSensitiveContentPolicy
 import com.babel.domain.privacy.SensitiveContentPolicy
+import com.babel.domain.runtime.CapabilityChecker
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.DefaultTranslationCoordinator
 import com.babel.domain.translation.TranslationCache
@@ -65,4 +67,7 @@ abstract class LoggingModule {
 
     @Binds
     abstract fun bindLogger(impl: AndroidLogger): BabelLogger
+
+    @Binds
+    abstract fun bindCapabilityChecker(impl: AndroidCapabilityChecker): CapabilityChecker
 }
