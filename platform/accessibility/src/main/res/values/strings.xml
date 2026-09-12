@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">Babel</string>
+    <string name="accessibility_service_description">Reads the text currently on screen so it can be translated in place. Text is translated on this device and is not uploaded.</string>
+</resources>
