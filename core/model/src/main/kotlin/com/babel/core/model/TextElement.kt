@@ -39,5 +39,11 @@ data class TextElement(
     val sourceType: TextSourceType,
     val source: SourceIdentity = SourceIdentity(),
     val revision: Revision = Revision(0),
+    /**
+     * Set by the acquisition layer for password-like or otherwise protected
+     * input (e.g. `AccessibilityNodeInfo.isPassword`). Such text must never
+     * reach a provider, a cache, or a log — see `docs/systems/privacy.md`.
+     */
+    val isProtected: Boolean = false,
     val metadata: Map<String, String> = emptyMap(),
 )

@@ -25,6 +25,9 @@ include(":core:model")
 include(":core:common")
 include(":domain")
 
+// Shared test doubles. Consumed only via testImplementation.
+include(":core:testing")
+
 // Data / provider layer
 include(":data:settings")
 include(":data:translation")
