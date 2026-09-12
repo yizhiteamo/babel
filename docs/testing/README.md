@@ -1,5 +1,13 @@
 # Test material
 
+## What cannot be used as a test subject
+
+Babel's own UI and the launcher are **out of scope** by default
+(`docs/systems/scope.md`), so neither shows translations. Earlier end-to-end
+checks used Babel's own settings screen; that no longer works and its absence of
+overlays is correct behaviour, not a regression. Use the pages below with
+chromium instead.
+
 ## `reading-sample.html`
 
 A text-heavy English page used to verify acquisition and rendering against a

@@ -147,6 +147,7 @@ Common system documents:
 - Runtime state: `docs/systems/runtime-state.md`
 - Capabilities: `docs/systems/capabilities.md`
 - Privacy: `docs/systems/privacy.md`
+- Translation scope: `docs/systems/scope.md`
 - Testing: `docs/systems/testing.md`
 
 Do not load all documentation unless the task genuinely spans all systems.
@@ -246,7 +247,7 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 |---|---|---|
 | `:core:model` | domain | `TextElement`, `TextBounds`, language modes, `TranslationRequest`/`Result`, `RenderedTranslation`, runtime state, capability state |
 | `:core:common` | domain | `DispatcherProvider`, `BabelLogger`, `Redact` |
-| `:domain` | domain | Pipeline contracts plus `DefaultLanguageResolver`, `DefaultSensitiveContentPolicy`, `DefaultTranslationCoordinator` |
+| `:domain` | domain | Pipeline contracts plus `DefaultLanguageResolver`, `DefaultSensitiveContentPolicy`, `DefaultTranslationScopePolicy`, `DefaultTranslationCoordinator` |
 | `:core:testing` | test | Shared fakes (`FakeTranslator`, `RecordingRenderer`, …). Consumed via `testImplementation` only |
 | `:data:settings` | data | `DataStoreSettingsRepository`, `AndroidSystemLocaleProvider` |
 | `:data:translation` | data | `MlKitTranslator` (on-device), `InMemoryTranslationCache` |
@@ -278,6 +279,7 @@ Behavioral invariants that must survive any change:
 - `TextSourceEvent.Removed`/`Cleared` are how stale overlays get cleaned up during scrolling and app switches.
 - Pass `Redact.text(...)` to loggers, never raw screen text.
 - `LanguageResolver` owns locale policy, including narrowing a device tag to what a provider accepts. ML Kit rejects `zh-Hans-CN` outright, so nothing downstream may assume a regional tag survives.
+- Scope and privacy are separate policies and must stay that way: scope asks whether an app is worth translating, privacy whether text may leave the screen. Adding an app to one does not belong in the other.
 
 Testing the pipeline: a collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.
 

@@ -7,6 +7,7 @@ import com.babel.core.common.DispatcherProvider
 import com.babel.core.model.Revision
 import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
+import com.babel.domain.scope.TranslationScopePolicy
 import com.babel.domain.translation.TranslationCoordinator
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -38,6 +39,9 @@ class BabelAccessibilityService : AccessibilityService() {
 
     @Inject
     lateinit var extractor: NodeTextExtractor
+
+    @Inject
+    lateinit var scopePolicy: TranslationScopePolicy
 
     @Inject
     lateinit var coordinator: TranslationCoordinator
@@ -142,12 +146,27 @@ class BabelAccessibilityService : AccessibilityService() {
             return
         }
 
+        val packageName = root.packageName?.toString()
+
+        // Checked before walking the tree, so an out-of-scope app costs nothing
+        // rather than being filtered element by element afterwards
+        // (`docs/systems/scope.md`).
+        if (!scopePolicy.isInScope(packageName)) {
+            // Leaving a translated app has to take its overlays with it,
+            // otherwise the previous app's translations sit over the launcher.
+            if (lastWindowKey != null) {
+                lastWindowKey = null
+                textSource.clear()
+            }
+            return
+        }
+
         // Clear only when the window actually changed. TYPE_WINDOW_STATE_CHANGED
         // fires within a single app too — panel updates, dialogs, lazily loaded
         // content — and clearing on every one of those tears the overlay down
         // and re-translates the same screen in a loop. Keying off what was
         // actually scanned makes "different window" mean what it says.
-        val windowKey = "${root.packageName}:${root.windowId}"
+        val windowKey = "$packageName:${root.windowId}"
         if (windowKey != lastWindowKey) {
             lastWindowKey = windowKey
             textSource.clear()
@@ -161,7 +180,7 @@ class BabelAccessibilityService : AccessibilityService() {
         val elements = TextElementFactory.create(
             rawTexts = rawTexts,
             windowId = root.windowId,
-            packageName = root.packageName?.toString(),
+            packageName = packageName,
             revision = Revision(generation),
         )
         textSource.publish(elements)
