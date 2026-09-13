@@ -49,6 +49,16 @@ class MediaProjectionScreenCapture @Inject constructor(
 
     private val handler = Handler(Looper.getMainLooper())
 
+    private val frameLock = Any()
+
+    /**
+     * The most recent frame, kept because a virtual display only produces one
+     * when the screen changes. A comic page is static by nature, so
+     * `acquireLatestImage` returns null almost always — reading on demand would
+     * work on video and fail on exactly the content V2 targets.
+     */
+    private var latest: Bitmap? = null
+
     /**
      * Ends the session when the system or the user revokes it, so state does
      * not claim a session that has already gone.
@@ -104,16 +114,29 @@ class MediaProjectionScreenCapture @Inject constructor(
     }
 
     /**
-     * The most recent frame, or null when no session is running or no frame has
-     * arrived yet.
+     * A copy of the most recent frame, or null before the first one arrives.
      *
-     * The caller owns the returned bitmap and should recycle it once the pixels
-     * have been consumed.
+     * A copy rather than the cached bitmap itself: recognition runs
+     * asynchronously and may take hundreds of milliseconds, during which a new
+     * frame could recycle the one being read. The caller owns the copy and
+     * should recycle it.
      */
-    fun latestFrame(): Bitmap? {
-        val reader = imageReader ?: return null
-        val image = reader.acquireLatestImage() ?: return null
-        return image.use(::toBitmap)
+    fun latestFrame(): Bitmap? = synchronized(frameLock) {
+        val current = latest ?: return null
+        current.copy(current.config ?: Bitmap.Config.ARGB_8888, false)
+    }
+
+    /** Keeps only the newest frame; holding more would just retain screen content. */
+    private fun onFrameAvailable(reader: ImageReader) {
+        val image = reader.acquireLatestImage() ?: return
+        val bitmap = image.use(::toBitmap) ?: return
+
+        val previous = synchronized(frameLock) {
+            val old = latest
+            latest = bitmap
+            old
+        }
+        previous?.recycle()
     }
 
     /**
@@ -163,6 +186,8 @@ class MediaProjectionScreenCapture @Inject constructor(
         )
         imageReader = reader
 
+        reader.setOnImageAvailableListener(::onFrameAvailable, handler)
+
         virtualDisplay = projection.createVirtualDisplay(
             VIRTUAL_DISPLAY_NAME,
             metrics.widthPixels,
@@ -193,8 +218,14 @@ class MediaProjectionScreenCapture @Inject constructor(
         virtualDisplay?.release()
         virtualDisplay = null
 
+        imageReader?.setOnImageAvailableListener(null, null)
         imageReader?.close()
         imageReader = null
+
+        synchronized(frameLock) {
+            latest?.recycle()
+            latest = null
+        }
 
         projection?.let {
             runCatching { it.unregisterCallback(projectionCallback) }

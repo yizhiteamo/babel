@@ -9,6 +9,8 @@ import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.scope.TranslationScopePolicy
 import com.babel.domain.translation.TranslationCoordinator
+import com.babel.domain.vision.CaptureState
+import com.babel.domain.vision.ScreenCaptureController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -42,6 +44,9 @@ class BabelAccessibilityService : AccessibilityService() {
 
     @Inject
     lateinit var scopePolicy: TranslationScopePolicy
+
+    @Inject
+    lateinit var screenCapture: ScreenCaptureController
 
     @Inject
     lateinit var coordinator: TranslationCoordinator
@@ -143,6 +148,17 @@ class BabelAccessibilityService : AccessibilityService() {
             null
         } ?: run {
             logger.debug(TAG, "no active window to scan")
+            return
+        }
+
+        // Manga mode owns the screen while it runs. Both paths feed the same
+        // coordinator, so leaving this one active would translate the same
+        // screen twice and stack two layers of overlays on top of each other.
+        if (screenCapture.state.value == CaptureState.ACTIVE) {
+            if (lastWindowKey != null) {
+                lastWindowKey = null
+                textSource.clear()
+            }
             return
         }
 

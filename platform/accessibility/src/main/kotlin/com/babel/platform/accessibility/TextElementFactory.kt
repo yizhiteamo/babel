@@ -3,8 +3,8 @@ package com.babel.platform.accessibility
 import com.babel.core.model.Revision
 import com.babel.core.model.SourceIdentity
 import com.babel.core.model.TextElement
-import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
+import com.babel.domain.acquisition.TextElementIds
 import com.babel.domain.translation.TranslationCacheKey
 
 /**
@@ -38,7 +38,11 @@ object TextElementFactory {
             occurrences[normalized] = index + 1
 
             TextElement(
-                id = idFor(windowId, normalized, index),
+                id = TextElementIds.forContent(
+                    scope = windowId.toString(),
+                    text = raw.text,
+                    occurrence = index,
+                ),
                 text = raw.text,
                 bounds = raw.bounds,
                 sourceType = TextSourceType.ACCESSIBILITY,
@@ -47,10 +51,5 @@ object TextElementFactory {
                 isProtected = raw.isPassword,
             )
         }
-    }
-
-    private fun idFor(windowId: Int, normalizedText: String, occurrence: Int): TextElementId {
-        val hash = normalizedText.hashCode().toUInt().toString(16).padStart(8, '0')
-        return TextElementId("$windowId:$hash:$occurrence")
     }
 }
