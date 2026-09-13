@@ -13,7 +13,7 @@ Git records implementation history.
 | Version | Status | Definition | Progress |
 |---|---|---|---|
 | V1 — Immersive Text Translation | Complete | `features/v1-text-translation.md` | `milestones/v1.md` |
-| V2 — Immersive Manga Translation | Active | `features/v2-manga-translation.md` | `milestones/v2.md` |
+| V2 — Immersive Manga Translation | Complete | `features/v2-manga-translation.md` | `milestones/v2.md` |
 | V3 — Immersive Game Translation | Planned | `features/v3-game-translation.md` | `milestones/v3.md` |
 
 ---

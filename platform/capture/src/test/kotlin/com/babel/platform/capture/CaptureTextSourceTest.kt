@@ -52,7 +52,7 @@ class CaptureTextSourceTest {
         val seen = mutableListOf<TextSourceEvent>()
         val collector = backgroundScope.launch { source.events().collect(seen::add) }
 
-        source.scanOnce()
+        source.scanOnce(packageName = "com.example.reader")
 
         assertTrue(seen.isEmpty(), "expected no events, got $seen")
         assertTrue(!recognizer.called, "recognition should not run without a frame")

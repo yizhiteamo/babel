@@ -95,6 +95,9 @@ class BabelAccessibilityService : AccessibilityService() {
     /** Identity of the window the last scan read, to detect a real app change. */
     private var lastWindowKey: String? = null
 
+    /** Whether the last image scan was allowed, so leaving scope clears once. */
+    private var imageScanInScope = false
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         logger.info(TAG, "accessibility service connected")
@@ -130,8 +133,36 @@ class BabelAccessibilityService : AccessibilityService() {
         val current = scope ?: return
         while (current.isActive) {
             delay(IMAGE_SCAN_INTERVAL_MS)
-            if (mangaMode.state.value == CaptureState.ACTIVE) imageScanner.scanOnce()
+            if (mangaMode.state.value != CaptureState.ACTIVE) continue
+
+            // Scope is checked here too, and it has to be.
+            //
+            // The node path checks it in [scanVisibleText], but manga mode
+            // suspends that path — so without this, turning manga mode on and
+            // walking into a banking app would read the whole screen with no
+            // policy applied anywhere. A capture reads everything on display,
+            // which makes scope matter more here than it does for nodes, not
+            // less (`docs/systems/scope.md`).
+            val front = activePackage()
+            if (!scopePolicy.isInScope(front)) {
+                if (imageScanInScope) {
+                    imageScanInScope = false
+                    imageScanner.clear()
+                }
+                continue
+            }
+            imageScanInScope = true
+
+            imageScanner.scanOnce(front)
         }
+    }
+
+    /** Package of whatever is in front, or null when it cannot be read. */
+    private fun activePackage(): String? = try {
+        rootInActiveWindow?.packageName?.toString()
+    } catch (failure: Exception) {
+        logger.warn(TAG, "could not read the active window", failure)
+        null
     }
 
     /**
@@ -184,6 +215,7 @@ class BabelAccessibilityService : AccessibilityService() {
 
     private fun teardown() {
         lastWindowKey = null
+        imageScanInScope = false
         screenshots.detach()
         mangaMode.onServiceAvailabilityChanged()
         indicator.hide()

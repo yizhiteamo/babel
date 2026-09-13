@@ -6,7 +6,7 @@ Translate mostly static visual content such as manga and comics while preserving
 
 ## In Scope
 
-- MediaProjection-based capture
+- screen frame acquisition (accessibility screenshots — ADR 009 replaced MediaProjection)
 - OCR
 - OCR output normalized to `TextElement`
 - vertical Japanese text support

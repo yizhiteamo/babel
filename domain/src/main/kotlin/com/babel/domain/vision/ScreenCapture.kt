@@ -57,7 +57,13 @@ interface ScreenCaptureController {
  */
 interface ImageTextScanner : TextSource {
 
-    suspend fun scanOnce()
+    /**
+     * @param packageName what is in front, stamped onto every element produced.
+     *   Without it the privacy policy's per-app exclusions cannot match, since
+     *   they key on the package — a capture has no window to learn it from, so
+     *   whoever drives the scan has to say.
+     */
+    suspend fun scanOnce(packageName: String?)
 
     /** Drops everything currently tracked, e.g. when the mode is turned off. */
     suspend fun clear()

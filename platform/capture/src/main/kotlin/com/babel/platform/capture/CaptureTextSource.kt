@@ -62,7 +62,7 @@ class CaptureTextSource @Inject internal constructor(
      * object this code touches, and holding one per scan would be the easiest
      * way to run the process out of memory.
      */
-    override suspend fun scanOnce() {
+    override suspend fun scanOnce(packageName: String?) {
         val frame = frames.latestFrame() ?: return
 
         val signature = FrameSignature.of(frame)
@@ -88,7 +88,7 @@ class CaptureTextSource @Inject internal constructor(
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                toElements(regions) { bounds -> placeIn(frame, bounds) }
+                toElements(regions, packageName) { bounds -> placeIn(frame, bounds) }
             }
         } finally {
             frame.recycle()
@@ -134,6 +134,7 @@ class CaptureTextSource @Inject internal constructor(
 
     private fun toElements(
         regions: List<TextRegion>,
+        packageName: String?,
         place: (TextBounds) -> Placement,
     ): List<TextElement> {
         val occurrences = mutableMapOf<String, Int>()
@@ -156,7 +157,10 @@ class CaptureTextSource @Inject internal constructor(
                 text = region.text,
                 bounds = placement.bounds,
                 sourceType = TextSourceType.OCR,
-                source = SourceIdentity(),
+                // Carried so the privacy policy's per-app exclusions apply
+                // here as they do on the node path. There is no window id: a
+                // capture is of the screen, not of a window.
+                source = SourceIdentity(packageName = packageName),
                 revision = Revision(generation),
                 style = placement.style,
             )
