@@ -90,6 +90,12 @@ class MlKitJapaneseOcrProbeTest {
         println("OCR_PROBE blocks=${blocks.size}")
         blocks.forEachIndexed { index, block ->
             println("OCR_PROBE [$index] box=${block.boundingBox} text=${block.text.replace("\n", "")}")
+            // Line granularity decides whether reading order is recoverable at
+            // all: if a block's columns are not separable here, a reversed
+            // block like "いい天気今日は" can never be put right downstream.
+            block.lines.forEachIndexed { lineIndex, line ->
+                println("OCR_PROBE     line[$index.$lineIndex] box=${line.boundingBox} text=${line.text}")
+            }
         }
 
         assertTrue(blocks.isNotEmpty(), "no text blocks found at all")

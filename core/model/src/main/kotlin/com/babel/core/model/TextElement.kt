@@ -20,6 +20,9 @@ value class Revision(val value: Long) : Comparable<Revision> {
 /** Where a piece of text came from. New acquisition methods add values here. */
 enum class TextSourceType {
     ACCESSIBILITY,
+
+    /** Recognised from captured pixels (V2). */
+    OCR,
 }
 
 /** Identity of the app/window the text belongs to, when it is known. */
