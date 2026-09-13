@@ -39,8 +39,27 @@ internal class TranslationTextView(context: Context) : TextView(context) {
 
     fun bind(translation: RenderedTranslation) {
         applyColors(translation)
+        applyGravity(translation)
         text = translation.text
         configureAutoSize(translation)
+    }
+
+    /**
+     * Lettering sits in the middle of a speech bubble, so a translation given a
+     * bubble to fill is centred in it.
+     *
+     * Only where the bounds really are a bubble. The V1 path is handed the
+     * source node's own box, which sits inside a laid-out screen — centring
+     * there would shift text away from the words it replaces. A sampled
+     * background is what distinguishes the two: only the OCR path has one, and
+     * only the OCR path grows its box out to the bubble.
+     */
+    private fun applyGravity(translation: RenderedTranslation) {
+        gravity = if (translation.style.sourceStyle.backgroundColor != null) {
+            Gravity.CENTER
+        } else {
+            Gravity.CENTER_VERTICAL or Gravity.START
+        }
     }
 
     /**

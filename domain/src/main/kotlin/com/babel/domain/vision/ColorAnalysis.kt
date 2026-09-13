@@ -95,7 +95,13 @@ object ColorAnalysis {
         return (0xFF shl 24) or (r shl 16) or (g shl 8) or b
     }
 
-    private fun distance(a: Int, b: Int): Int {
+    /**
+     * Mean per-channel difference, 0..255. Public because deciding "is this
+     * pixel still the bubble's background" is the same question as deciding
+     * what the background is, and both belong to this object rather than to
+     * whoever happens to hold the pixels.
+     */
+    fun distance(a: Int, b: Int): Int {
         var total = 0
         for (shift in intArrayOf(16, 8, 0)) {
             total += kotlin.math.abs(((a ushr shift) and 0xFF) - ((b ushr shift) and 0xFF))

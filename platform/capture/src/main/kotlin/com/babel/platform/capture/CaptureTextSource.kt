@@ -1,5 +1,6 @@
 package com.babel.platform.capture
 
+import android.graphics.Bitmap
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.Revision
 import com.babel.core.model.SourceIdentity
@@ -10,6 +11,7 @@ import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextElementIds
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.domain.vision.BubbleBounds
 import com.babel.domain.vision.FrameChangeDetector
 import com.babel.domain.vision.ImageTextScanner
 import com.babel.domain.vision.TextRegion
@@ -83,10 +85,10 @@ class CaptureTextSource @Inject internal constructor(
                 // of diagnostics (`docs/systems/privacy.md`).
                 logger.debug(TAG, "recognised ${lines.size} lines in ${regions.size} regions")
 
-                // Sampled before the frame goes: this is the only moment the
+                // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                toElements(regions) { FrameSampler.sample(frame, it) }
+                toElements(regions) { bounds -> placeIn(frame, bounds) }
             }
         } finally {
             frame.recycle()
@@ -104,9 +106,35 @@ class CaptureTextSource @Inject internal constructor(
         events.emit(TextSourceEvent.Cleared)
     }
 
+    /**
+     * Works out where a translation should go and what colour it should be.
+     *
+     * The recognised box hugs the lettering, and for vertical Japanese that is
+     * a narrow column — laying a horizontal translation into it gives two or
+     * three characters a line. The bubble around the text is the space actually
+     * available, so the box is grown into it first.
+     *
+     * The colour is sampled from the text's own box rather than the grown one:
+     * it is the tighter, more certain sample, and it is what defines the
+     * background that the growing then follows.
+     */
+    private fun placeIn(frame: Bitmap, text: TextBounds): Placement {
+        val style = FrameSampler.sample(frame, text)
+        val background = style.backgroundColor ?: return Placement(text, style)
+
+        val bubble = BubbleBounds.expand(
+            start = text,
+            limit = FrameSampler.frameBounds(frame),
+            isBackground = FrameSampler.backgroundTest(frame, background),
+        )
+        return Placement(bubble, style)
+    }
+
+    private data class Placement(val bounds: TextBounds, val style: SourceStyle)
+
     private fun toElements(
         regions: List<TextRegion>,
-        sample: (TextBounds) -> SourceStyle,
+        place: (TextBounds) -> Placement,
     ): List<TextElement> {
         val occurrences = mutableMapOf<String, Int>()
         generation += 1
@@ -114,6 +142,7 @@ class CaptureTextSource @Inject internal constructor(
         return regions.map { region ->
             val index = occurrences.getOrDefault(region.text, 0)
             occurrences[region.text] = index + 1
+            val placement = place(region.bounds)
 
             TextElement(
                 id = TextElementIds.forContent(
@@ -125,11 +154,11 @@ class CaptureTextSource @Inject internal constructor(
                     occurrence = index,
                 ),
                 text = region.text,
-                bounds = region.bounds,
+                bounds = placement.bounds,
                 sourceType = TextSourceType.OCR,
                 source = SourceIdentity(),
                 revision = Revision(generation),
-                style = sample(region.bounds),
+                style = placement.style,
             )
         }
     }
