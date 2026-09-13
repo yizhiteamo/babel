@@ -63,3 +63,39 @@ adb shell am start -n com.android.chromium/com.google.android.apps.chrome.Intent
 
 Confirm the link is covered before tapping — screenshot it, and read the link's
 bounds from `uiautomator dump` to get the coordinate.
+
+
+## `manga-source.html` / `manga-sample.png` / `manga-page.html` (V2)
+
+Material for the manga OCR path.
+
+`manga-source.html` is **not** the test material — it is the recipe. Render it in
+chromium on device, screenshot it, and crop to content to produce
+`manga-sample.png`. Going through a real screenshot means the sample carries
+genuine glyph rasterisation and antialiasing rather than synthetic shapes, and
+it avoids using copyrighted manga.
+
+`manga-page.html` is what gets opened during a test run, and it contains nothing
+but an `<img>`. **This is the important part**: if the sample were live HTML
+text, the accessibility service would read it directly and the run would say
+nothing about OCR. With only an image, the pixels are the only way in.
+
+Check this before trusting a result, but check the right thing: the browser's
+own tab title and address bar are text and *will* be picked up (2 nodes, as
+measured). What must be absent is any Japanese — no node in the page content
+area, nothing with kana or kanji. Zero total nodes is the wrong bar and will
+look like a failure when nothing is wrong.
+
+```bash
+adb push docs/testing/manga-sample.png /sdcard/Download/manga-sample.png
+adb push docs/testing/manga-page.html  /sdcard/Download/manga-page.html
+adb shell am start -n com.android.chromium/com.google.android.apps.chrome.IntentDispatcher   -a android.intent.action.VIEW -d "file:///sdcard/Download/manga-page.html"
+```
+
+The OCR feasibility probe reads the PNG directly from
+`data/translation/src/androidTest/assets/`:
+
+```bash
+./gradlew :data:translation:connectedDebugAndroidTest   -Pandroid.testInstrumentationRunnerArguments.class=com.babel.data.translation.mlkit.MlKitJapaneseOcrProbeTest
+adb logcat -d | grep OCR_PROBE
+```

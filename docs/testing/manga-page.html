@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manga OCR Page</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  img { display: block; width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<!--
+  Deliberately nothing but an image: no text node anywhere on this page.
+
+  That is the whole point. If the sample were live HTML text, the accessibility
+  service would read it directly and the run would prove nothing about OCR.
+  With only an <img>, the acquisition layer finds zero text and the pixels are
+  the only way in. See docs/testing/README.md.
+-->
+<img src="manga-sample.png" alt="">
+</body>
+</html>

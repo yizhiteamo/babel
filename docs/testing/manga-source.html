@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manga OCR Source</title>
+<style>
+  /*
+    Rendered once on device and screenshotted into manga-sample.png; that PNG is
+    the real test material (see docs/testing/README.md).
+
+    Fixed CSS pixel size rather than viewport units: chromium's 100vh is the
+    height with the address bar hidden, which is taller than what a screenshot
+    actually captures, and the bottom row gets cut off. 1090x480 CSS px matches
+    the visible area on the 1920x1080 / 280dpi device the material was made on.
+  */
+  html, body { margin: 0; padding: 0; }
+  body {
+    width: 1090px;
+    height: 480px;
+    background: #ffffff;
+    position: relative;
+    font-family: "Noto Sans CJK JP", "Noto Sans JP", sans-serif;
+    overflow: hidden;
+  }
+  .panel {
+    position: absolute;
+    border: 3px solid #111;
+    background: #fdfdfd;
+    box-sizing: border-box;
+  }
+  .bubble {
+    position: absolute;
+    background: #ffffff;
+    border: 3px solid #111;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+  /* Vertical right-to-left, the normal setting for Japanese comics. */
+  .vtext {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    font-size: 22px;
+    line-height: 1.45;
+    color: #000000;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="panel" style="left:2%;  top:2%;  width:46%; height:46%;"></div>
+  <div class="panel" style="left:52%; top:2%;  width:46%; height:46%;"></div>
+  <div class="panel" style="left:2%;  top:52%; width:46%; height:46%;"></div>
+  <div class="panel" style="left:52%; top:52%; width:46%; height:46%;"></div>
+
+  <div class="bubble" style="left:7%;  top:6%;  width:15%; height:38%;">
+    <div class="vtext">おはよう<br>ございます</div>
+  </div>
+
+  <div class="bubble" style="left:57%; top:6%;  width:15%; height:38%;">
+    <div class="vtext">今日は<br>いい天気</div>
+  </div>
+
+  <div class="bubble" style="left:7%;  top:56%; width:16%; height:38%;">
+    <div class="vtext">明日の会議<br>何時ですか</div>
+  </div>
+
+  <div class="bubble" style="left:57%; top:56%; width:15%; height:38%;">
+    <div class="vtext">駅前で<br>待ってます</div>
+  </div>
+
+</body>
+</html>
