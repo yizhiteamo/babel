@@ -13,6 +13,16 @@
     <string name="permission_state_granted">已开启</string>
     <string name="permission_state_missing">未开启</string>
     <string name="permission_action_open_settings">前往设置</string>
+    <string name="permission_action_manage">在系统设置中管理</string>
+
+    <!-- 暂停翻译（V1） -->
+    <string name="runtime_section_title">文字翻译</string>
+    <string name="runtime_state_running">进行中</string>
+    <string name="runtime_state_paused">已暂停</string>
+    <string name="runtime_state_off">未运行</string>
+    <string name="runtime_explanation">暂停后不再翻译新出现的文字。已经显示的译文会保留到页面内容变化为止。</string>
+    <string name="runtime_action_pause">暂停</string>
+    <string name="runtime_action_resume">继续</string>
 
     <!-- 目标语言 -->
     <string name="language_section_title">译入语言</string>

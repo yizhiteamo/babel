@@ -12,6 +12,8 @@ import com.babel.domain.runtime.CapabilityChecker
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.vision.CaptureState
+import com.babel.core.model.TranslationRuntimeState
+import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.vision.ScreenCaptureController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -26,7 +28,21 @@ data class HomeUiState(
     val settings: BabelSettings = BabelSettings(),
     val targetLanguage: LanguageTag? = null,
     val captureState: CaptureState = CaptureState.IDLE,
+    val runtimeState: TranslationRuntimeState = TranslationRuntimeState.Disabled,
 ) {
+    /**
+     * Whether pausing or resuming makes sense right now.
+     *
+     * Only between running and paused. Calling `start()` while the coordinator
+     * is stopped would bring it up with no text source attached, which is a
+     * state nothing else can produce and nothing handles.
+     */
+    val canTogglePause: Boolean
+        get() = runtimeState == TranslationRuntimeState.Running ||
+            runtimeState == TranslationRuntimeState.Paused
+
+    val translationPaused: Boolean get() = runtimeState == TranslationRuntimeState.Paused
+
     val accessibilityGranted: Boolean
         get() = capabilities[Capability.ACCESSIBILITY_SERVICE] == CapabilityStatus.AVAILABLE
 
@@ -37,11 +53,13 @@ data class HomeUiState(
 }
 
 /**
- * Observes state; it does not drive the pipeline.
+ * Observes state, and lets the user pause.
  *
- * Translation starts and stops with the accessibility service, because that is
- * the only thing whose lifetime matches — a ViewModel dies when the user leaves
- * the app, which is exactly when translation needs to keep running.
+ * Translation still *starts and stops* with the accessibility service, because
+ * that is the only thing whose lifetime matches — a ViewModel dies when the
+ * user leaves the app, which is exactly when translation needs to keep running.
+ * Pausing is different: it is a deliberate act with an obvious undo, and the
+ * coordinator has supported it all along (`TranslationCoordinator.pause`).
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -49,13 +67,15 @@ class HomeViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val languageResolver: LanguageResolver,
     private val screenCapture: ScreenCaptureController,
+    private val coordinator: TranslationCoordinator,
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = combine(
         capabilityChecker.state,
         settingsRepository.settings,
         screenCapture.state,
-    ) { capabilities, settings, captureState ->
+        coordinator.runtimeState,
+    ) { capabilities, settings, captureState, runtimeState ->
         HomeUiState(
             capabilities = capabilities,
             settings = settings,
@@ -64,6 +84,7 @@ class HomeViewModel @Inject constructor(
                 settings.targetLanguageMode,
             ).target,
             captureState = captureState,
+            runtimeState = runtimeState,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -78,6 +99,17 @@ class HomeViewModel @Inject constructor(
      * No consent dialog stands in front of this any more, so it is a direct
      * call rather than something the Activity has to launch (ADR 009).
      */
+    /**
+     * Stops translating new content while leaving what is already drawn.
+     *
+     * That is the coordinator's own definition of pause, and the label says so:
+     * calling this "off" would promise a clear screen that does not happen
+     * until the content changes.
+     */
+    fun pauseTranslation() = coordinator.pause()
+
+    fun resumeTranslation() = coordinator.start()
+
     fun startMangaMode() = screenCapture.start()
 
     fun stopMangaMode() = screenCapture.stop()

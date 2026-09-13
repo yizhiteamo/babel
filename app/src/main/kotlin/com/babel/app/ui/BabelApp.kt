@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -65,6 +67,12 @@ fun BabelApp(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                // Without this the page is simply cut off wherever the content
+                // is taller than the screen, with no way to reach the rest.
+                // Manga mode sits last, so on a landscape or short screen its
+                // button was off the bottom edge and unreachable — reported
+                // from a device, reproduced at 1920x1080.
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -123,6 +131,12 @@ fun BabelApp(
                 }
             }
 
+            RuntimeCard(
+                state = state,
+                onPause = viewModel::pauseTranslation,
+                onResume = viewModel::resumeTranslation,
+            )
+
             CaptureCard(
                 state = state.captureState,
                 onStart = viewModel::startMangaMode,
@@ -140,6 +154,72 @@ fun BabelApp(
             },
             onDismiss = { showLanguagePicker = false },
         )
+    }
+}
+
+/**
+ * Pausing translation.
+ *
+ * The coordinator has had `pause`/`start` since V1; nothing in the interface
+ * ever called them, so the only way to stop translating was to switch the
+ * accessibility service off in system settings.
+ *
+ * "Pause" rather than "off" because that is what happens: translations already
+ * drawn stay until the content changes. A label promising a clear screen would
+ * be worse than no switch.
+ */
+@Composable
+private fun RuntimeCard(
+    state: HomeUiState,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.runtime_section_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(
+                        when {
+                            state.translationPaused -> R.string.runtime_state_paused
+                            state.canTogglePause -> R.string.runtime_state_running
+                            else -> R.string.runtime_state_off
+                        },
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Text(
+                text = stringResource(R.string.runtime_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // No button unless there is a running pipeline to act on: resuming
+            // a stopped coordinator would start it with no text source.
+            if (state.canTogglePause) {
+                OutlinedButton(onClick = if (state.translationPaused) onResume else onPause) {
+                    Text(
+                        stringResource(
+                            if (state.translationPaused) {
+                                R.string.runtime_action_resume
+                            } else {
+                                R.string.runtime_action_pause
+                            },
+                        ),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -251,10 +331,19 @@ private fun PermissionCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (!granted) {
-                OutlinedButton(onClick = onOpenSettings) {
-                    Text(stringResource(R.string.permission_action_open_settings))
-                }
+            // Shown even once granted. Turning the service back off is only
+            // possible in system settings, and without this the app offered no
+            // route there at all — a switch with no off.
+            OutlinedButton(onClick = onOpenSettings) {
+                Text(
+                    stringResource(
+                        if (granted) {
+                            R.string.permission_action_manage
+                        } else {
+                            R.string.permission_action_open_settings
+                        },
+                    ),
+                )
             }
         }
     }

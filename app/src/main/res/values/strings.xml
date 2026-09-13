@@ -16,6 +16,16 @@
     <string name="permission_state_granted">On</string>
     <string name="permission_state_missing">Off</string>
     <string name="permission_action_open_settings">Open settings</string>
+    <string name="permission_action_manage">Manage in settings</string>
+
+    <!-- Pausing translation (V1) -->
+    <string name="runtime_section_title">Translation</string>
+    <string name="runtime_state_running">Running</string>
+    <string name="runtime_state_paused">Paused</string>
+    <string name="runtime_state_off">Not running</string>
+    <string name="runtime_explanation">Pausing stops new text being translated. What is already on screen stays until the content changes.</string>
+    <string name="runtime_action_pause">Pause</string>
+    <string name="runtime_action_resume">Resume</string>
 
     <!-- Target language -->
     <string name="language_section_title">Translate into</string>
