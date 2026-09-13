@@ -48,5 +48,11 @@ data class TextElement(
      * reach a provider, a cache, or a log — see `docs/systems/privacy.md`.
      */
     val isProtected: Boolean = false,
+    /**
+     * How the source looked, where the acquisition method could see it. Empty
+     * from accessibility, which reports no colours; populated by OCR, which
+     * holds the pixels.
+     */
+    val style: SourceStyle = SourceStyle.UNKNOWN,
     val metadata: Map<String, String> = emptyMap(),
 )

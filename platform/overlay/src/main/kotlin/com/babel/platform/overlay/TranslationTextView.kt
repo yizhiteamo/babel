@@ -7,6 +7,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.widget.TextView
 import com.babel.core.model.RenderedTranslation
+import com.babel.domain.vision.ColorAnalysis
 
 /**
  * One translated line, drawn over the original.
@@ -16,10 +17,12 @@ import com.babel.core.model.RenderedTranslation
  * background, bounds matching the source exactly, and text scaled to fit rather
  * than overflowing.
  *
- * `AccessibilityNodeInfo` exposes neither the original text size nor its
- * colours, so size is inferred from the height of the source bounds and colours
- * follow the system light/dark setting. V1 rules out MediaProjection, so
- * sampling the real background is not available.
+ * Colours come from the source when the acquisition method could see them.
+ * OCR can — it holds the pixels — and a bubble painted its own white reads as
+ * the original text having changed. Accessibility cannot: `AccessibilityNodeInfo`
+ * exposes neither text size nor colours, so that path still falls back to the
+ * system light/dark setting, and its overlays never quite match the app
+ * underneath.
  */
 internal class TranslationTextView(context: Context) : TextView(context) {
 
@@ -35,9 +38,33 @@ internal class TranslationTextView(context: Context) : TextView(context) {
     }
 
     fun bind(translation: RenderedTranslation) {
-        applyTheme()
+        applyColors(translation)
         text = translation.text
         configureAutoSize(translation)
+    }
+
+    /**
+     * Sampled colours beat the theme whenever they exist.
+     *
+     * The device's dark mode says nothing about the page being translated: a
+     * comic is white regardless, and V2's first end-to-end run put dark grey
+     * overlays on a white page for exactly this reason.
+     */
+    private fun applyColors(translation: RenderedTranslation) {
+        val sampled = translation.style.sourceStyle.backgroundColor
+        if (sampled == null) {
+            applyTheme()
+            return
+        }
+
+        setBackgroundColor(sampled)
+        // The sampled ink is preferred, but only as a colour — not as a
+        // guarantee of contrast. Where it is missing, brightness of the
+        // background decides, which is always readable even if less faithful.
+        setTextColor(
+            translation.style.sourceStyle.foregroundColor
+                ?: if (ColorAnalysis.luminance(sampled) < MID_LUMINANCE) Color.WHITE else Color.BLACK,
+        )
     }
 
     /**
@@ -119,6 +146,9 @@ internal class TranslationTextView(context: Context) : TextView(context) {
         const val DARK_SURFACE = 0xFF121212.toInt()
 
         /** Most light-themed apps sit on plain white. */
+        /** Midpoint of 0..255 brightness: below it, white text reads better. */
+        const val MID_LUMINANCE = 128.0
+
         const val LIGHT_SURFACE = 0xFFFFFFFF.toInt()
 
         const val GLYPH_HEIGHT_RATIO = 0.7f

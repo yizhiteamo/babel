@@ -3,12 +3,15 @@ package com.babel.platform.capture
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.Revision
 import com.babel.core.model.SourceIdentity
+import com.babel.core.model.SourceStyle
+import com.babel.core.model.TextBounds
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextElementIds
 import com.babel.domain.acquisition.TextSource
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.domain.vision.FrameChangeDetector
 import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
 import javax.inject.Inject
@@ -44,6 +47,9 @@ class CaptureTextSource @Inject internal constructor(
     private var previousIds: Set<TextElementId> = emptySet()
     private var generation = 0L
 
+    /** Signature of the last frame actually recognised; null before the first. */
+    private var lastRecognized: IntArray? = null
+
     override fun events(): Flow<TextSourceEvent> = events.asSharedFlow()
 
     /**
@@ -56,32 +62,51 @@ class CaptureTextSource @Inject internal constructor(
     suspend fun scanOnce() {
         val frame = capture.latestFrame() ?: return
 
-        val lines = try {
-            recognizer.recognize(frame)
+        val signature = FrameSignature.of(frame)
+        if (!FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
+            // Same page as last time. Returning without publishing leaves the
+            // existing translations in place — re-recognising would replace
+            // them with a slightly different reading of the same page.
+            frame.recycle()
+            return
+        }
+        lastRecognized = signature
+
+        val elements = try {
+            val lines = recognizer.recognize(frame)
+            if (lines.isEmpty()) {
+                emptyList()
+            } else {
+                val regions = grouper.group(lines)
+                // Counts only — recognised text is screen content and stays out
+                // of diagnostics (`docs/systems/privacy.md`).
+                logger.debug(TAG, "recognised ${lines.size} lines in ${regions.size} regions")
+
+                // Sampled before the frame goes: this is the only moment the
+                // pixels behind the text exist. Accessibility never had them,
+                // which is why V1 overlays could only guess at a background.
+                toElements(regions) { FrameSampler.sample(frame, it) }
+            }
         } finally {
             frame.recycle()
         }
 
-        if (lines.isEmpty()) {
-            publish(emptyList())
-            return
-        }
-
-        val regions = grouper.group(lines)
-        // Counts and sizes only — recognised text is screen content and stays
-        // out of diagnostics (`docs/systems/privacy.md`).
-        logger.debug(TAG, "recognised ${lines.size} lines in ${regions.size} regions")
-
-        publish(toElements(regions))
+        publish(elements)
     }
 
     /** Drops everything currently tracked, e.g. when the session ends. */
     suspend fun clear() {
-        lock.withLock { previousIds = emptySet() }
+        lock.withLock {
+            previousIds = emptySet()
+            lastRecognized = null
+        }
         events.emit(TextSourceEvent.Cleared)
     }
 
-    private fun toElements(regions: List<TextRegion>): List<TextElement> {
+    private fun toElements(
+        regions: List<TextRegion>,
+        sample: (TextBounds) -> SourceStyle,
+    ): List<TextElement> {
         val occurrences = mutableMapOf<String, Int>()
         generation += 1
 
@@ -103,6 +128,7 @@ class CaptureTextSource @Inject internal constructor(
                 sourceType = TextSourceType.OCR,
                 source = SourceIdentity(),
                 revision = Revision(generation),
+                style = sample(region.bounds),
             )
         }
     }

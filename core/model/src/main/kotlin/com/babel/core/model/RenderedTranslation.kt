@@ -6,6 +6,13 @@ data class StyleHints(
     val maxLines: Int? = null,
     /** Renderer may shrink text to fit the original bounds. */
     val allowShrinkToFit: Boolean = true,
+    /**
+     * Colours sampled from the source, when they are known. A renderer that
+     * gets them should prefer them over any theme guess: matching the actual
+     * background is what makes an overlay read as replacement rather than as a
+     * panel sitting on top (`docs/decisions/008`).
+     */
+    val sourceStyle: SourceStyle = SourceStyle.UNKNOWN,
 )
 
 /**

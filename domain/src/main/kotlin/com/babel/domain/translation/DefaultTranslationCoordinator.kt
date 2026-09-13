@@ -6,6 +6,7 @@ import com.babel.core.common.Redact
 import com.babel.core.model.LanguagePair
 import com.babel.core.model.RenderedTranslation
 import com.babel.core.model.RequestId
+import com.babel.core.model.StyleHints
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TranslationError
@@ -387,6 +388,9 @@ class DefaultTranslationCoordinator(
             revision = element.revision,
             text = text,
             bounds = element.bounds,
+            // Carried straight through: the domain decides *what* to show, the
+            // acquisition layer is the only one that ever saw the pixels.
+            style = StyleHints(sourceStyle = element.style),
         )
     }
 
