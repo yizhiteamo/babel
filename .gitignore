@@ -14,3 +14,7 @@ local.properties
 *.keystore
 !debug.keystore
 /app/release/
+
+# Real manga pages used to judge V2 quality. Supplied locally, never committed:
+# it is somebody else's copyrighted work (docs/milestones/v2.md).
+/comic-sample/

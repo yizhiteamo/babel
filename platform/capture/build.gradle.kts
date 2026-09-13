@@ -11,6 +11,7 @@ android {
 
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -39,6 +40,13 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
+
+    // Judging real material needs a real device: ML Kit's recogniser and
+    // Bitmap both need one. See MangaMaterialEvaluationTest.
+    androidTestImplementation(kotlin("test"))
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
 
     testImplementation(project(":core:testing"))
     testImplementation(kotlin("test"))

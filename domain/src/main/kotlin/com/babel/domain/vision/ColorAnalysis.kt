@@ -41,24 +41,7 @@ object ColorAnalysis {
     fun analyse(pixels: IntArray): SourceStyle {
         if (pixels.size < MIN_SAMPLES) return SourceStyle.UNKNOWN
 
-        val sums = HashMap<Int, LongArray>()
-        for (pixel in pixels) {
-            val r = (pixel ushr 16) and 0xFF
-            val g = (pixel ushr 8) and 0xFF
-            val b = pixel and 0xFF
-            val bucket = (r shr BUCKET_SHIFT shl (BUCKET_BITS * 2)) or
-                (g shr BUCKET_SHIFT shl BUCKET_BITS) or
-                (b shr BUCKET_SHIFT)
-
-            // Averaged within the bucket rather than using the bucket's centre:
-            // the peak of a white bubble should come back as its actual white,
-            // not as the quantised approximation of it.
-            val acc = sums.getOrPut(bucket) { LongArray(4) }
-            acc[0] += r.toLong()
-            acc[1] += g.toLong()
-            acc[2] += b.toLong()
-            acc[3] += 1L
-        }
+        val sums = histogram(pixels)
 
         val background = sums.maxByOrNull { it.value[3] } ?: return SourceStyle.UNKNOWN
         val backgroundColor = background.value.toColor()
@@ -77,6 +60,48 @@ object ColorAnalysis {
                 distance(it, backgroundColor) >= MIN_FOREGROUND_DISTANCE
             },
         )
+    }
+
+    /**
+     * Share of pixels sharing the single most common colour, 0..1.
+     *
+     * A flat bubble interior comes back near 1; a screentone or a painted
+     * background comes back low. This is the number ADR 008 defers its erasure
+     * decision to — sampling a flat colour is equivalent to inpainting when the
+     * background is flat, so how often it *isn't* decides whether inpainting is
+     * worth 30–200MB and the heat.
+     *
+     * Reported by the evaluation harness rather than used by the pipeline.
+     */
+    fun flatness(pixels: IntArray): Double {
+        if (pixels.size < MIN_SAMPLES) return 0.0
+        val dominant = histogram(pixels).maxByOrNull { it.value[3] } ?: return 0.0
+        return dominant.value[3].toDouble() / pixels.size
+    }
+
+    /**
+     * Colour counts by bucket, each entry holding summed r, g, b and a count.
+     */
+    private fun histogram(pixels: IntArray): Map<Int, LongArray> {
+        val sums = HashMap<Int, LongArray>()
+        for (pixel in pixels) {
+            val r = (pixel ushr 16) and 0xFF
+            val g = (pixel ushr 8) and 0xFF
+            val b = pixel and 0xFF
+            val bucket = (r shr BUCKET_SHIFT shl (BUCKET_BITS * 2)) or
+                (g shr BUCKET_SHIFT shl BUCKET_BITS) or
+                (b shr BUCKET_SHIFT)
+
+            // Averaged within the bucket rather than using the bucket's centre:
+            // the peak of a white bubble should come back as its actual white,
+            // not as the quantised approximation of it.
+            val acc = sums.getOrPut(bucket) { LongArray(4) }
+            acc[0] += r.toLong()
+            acc[1] += g.toLong()
+            acc[2] += b.toLong()
+            acc[3] += 1L
+        }
+        return sums
     }
 
     /** Perceived brightness, for choosing readable text over a known background. */
