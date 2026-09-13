@@ -14,8 +14,20 @@ package com.babel.core.model
 data class SourceStyle(
     val backgroundColor: Int? = null,
     val foregroundColor: Int? = null,
+    /**
+     * How the source text was set. Null where the acquisition method cannot
+     * tell, which is every V1 element — accessibility reports no geometry of
+     * this kind.
+     *
+     * A renderer that knows the original ran in vertical columns can set the
+     * translation the same way, which is both how manga lettering looks and how
+     * a translation comes to cover the text it replaces rather than sitting
+     * beside it (`docs/milestones/v2.md`).
+     */
+    val orientation: TextOrientation? = null,
 ) {
-    val isEmpty: Boolean get() = backgroundColor == null && foregroundColor == null
+    val isEmpty: Boolean
+        get() = backgroundColor == null && foregroundColor == null && orientation == null
 
     companion object {
         val UNKNOWN = SourceStyle()

@@ -8,6 +8,7 @@ import com.babel.core.model.SourceStyle
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextOrientation
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextElementIds
 import com.babel.domain.acquisition.TextSourceEvent
@@ -88,7 +89,7 @@ class CaptureTextSource @Inject internal constructor(
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                toElements(regions, packageName) { bounds -> placeIn(frame, bounds) }
+                toElements(regions, packageName) { bounds, set -> placeIn(frame, bounds, set) }
             }
         } finally {
             frame.recycle()
@@ -118,8 +119,12 @@ class CaptureTextSource @Inject internal constructor(
      * it is the tighter, more certain sample, and it is what defines the
      * background that the growing then follows.
      */
-    private fun placeIn(frame: Bitmap, text: TextBounds): Placement {
-        val style = FrameSampler.sample(frame, text)
+    private fun placeIn(frame: Bitmap, text: TextBounds, set: TextOrientation): Placement {
+        // How the source was set travels with how it looked: a renderer given
+        // vertical dialogue can set the translation vertically too, which is
+        // both how lettering looks and how a translation comes to cover the
+        // text it replaces (`docs/milestones/v2.md`).
+        val style = FrameSampler.sample(frame, text).copy(orientation = set)
         val background = style.backgroundColor ?: return Placement(text, style)
 
         val bubble = BubbleBounds.expand(
@@ -135,7 +140,7 @@ class CaptureTextSource @Inject internal constructor(
     private fun toElements(
         regions: List<TextRegion>,
         packageName: String?,
-        place: (TextBounds) -> Placement,
+        place: (TextBounds, TextOrientation) -> Placement,
     ): List<TextElement> {
         val occurrences = mutableMapOf<String, Int>()
         generation += 1
@@ -143,7 +148,7 @@ class CaptureTextSource @Inject internal constructor(
         return regions.map { region ->
             val index = occurrences.getOrDefault(region.text, 0)
             occurrences[region.text] = index + 1
-            val placement = place(region.bounds)
+            val placement = place(region.bounds, region.orientation)
 
             TextElement(
                 id = TextElementIds.forContent(
@@ -163,6 +168,9 @@ class CaptureTextSource @Inject internal constructor(
                 source = SourceIdentity(packageName = packageName),
                 revision = Revision(generation),
                 style = placement.style,
+                // The recogniser reads one language by construction, so the
+                // pipeline is told rather than left to guess.
+                sourceLanguage = recognizer.language,
             )
         }
     }

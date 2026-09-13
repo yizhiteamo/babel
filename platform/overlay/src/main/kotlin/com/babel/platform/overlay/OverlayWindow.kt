@@ -9,6 +9,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import com.babel.core.model.RenderedTranslation
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextOrientation
 
 /**
  * Owns the window translations are drawn into.
@@ -26,7 +27,7 @@ internal class OverlayWindow(private val context: Context) {
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     private var container: FrameLayout? = null
-    private val views = LinkedHashMap<TextElementId, TranslationTextView>()
+    private val views = LinkedHashMap<TextElementId, TranslationView>()
     private val coordinateMapper = CoordinateMapper()
 
     val isAttached: Boolean get() = container != null
@@ -78,29 +79,50 @@ internal class OverlayWindow(private val context: Context) {
 
         for (translation in translations) {
             val bounds = coordinateMapper.toRenderSpace(translation.bounds)
-            val view = views.getOrPut(translation.elementId) {
-                TranslationTextView(context).also(layout::addView)
+            // Vertical dialogue gets a vertical translation, which is how
+            // lettering looks and how the translation lands on the columns it
+            // replaces instead of beside them (`docs/milestones/v2.md`).
+            // Accessibility reports no orientation, so V1 always takes the
+            // horizontal path.
+            val wantsVertical = translation.style.sourceStyle.orientation == TextOrientation.VERTICAL
+
+            val existing = views[translation.elementId]
+            val view = if (existing != null && existing.isVertical == wantsVertical) {
+                existing
+            } else {
+                // A changed writing mode needs a different view, not a rebind.
+                existing?.let { layout.removeView(it.view) }
+                newView(wantsVertical).also {
+                    views[translation.elementId] = it
+                    layout.addView(it.view)
+                }
             }
 
             view.bind(translation)
-            view.layoutParams = FrameLayout.LayoutParams(
+            view.view.layoutParams = FrameLayout.LayoutParams(
                 bounds.width.coerceAtLeast(1),
                 bounds.height.coerceAtLeast(1),
             ).apply {
                 leftMargin = bounds.left
                 topMargin = bounds.top
             }
-            view.visibility = View.VISIBLE
-            view.requestLayout()
+            view.view.visibility = View.VISIBLE
+            view.view.requestLayout()
         }
     }
 
     fun hide(ids: List<TextElementId>) {
         val layout = container ?: return
         for (id in ids) {
-            views.remove(id)?.let(layout::removeView)
+            views.remove(id)?.let { layout.removeView(it.view) }
         }
     }
+
+    private fun newView(vertical: Boolean): TranslationView =
+        if (vertical) VerticalTranslationView(context) else TranslationTextView(context)
+
+    private val TranslationView.isVertical: Boolean
+        get() = this is VerticalTranslationView
 
     fun clear() {
         val layout = container ?: return

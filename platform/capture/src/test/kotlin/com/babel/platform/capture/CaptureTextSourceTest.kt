@@ -1,6 +1,7 @@
 package com.babel.platform.capture
 
 import android.graphics.Bitmap
+import com.babel.core.model.LanguageTag
 import com.babel.core.testing.RecordingLogger
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.vision.RecognizedLine
@@ -25,6 +26,7 @@ class CaptureTextSourceTest {
     }
 
     private class UnusedRecognizer : TextRecognizer {
+        override val language = LanguageTag("ja")
         var called = false
         override suspend fun recognize(frame: Bitmap): List<RecognizedLine> {
             called = true

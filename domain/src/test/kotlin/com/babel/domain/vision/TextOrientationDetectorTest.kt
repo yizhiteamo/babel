@@ -2,6 +2,7 @@ package com.babel.domain.vision
 
 import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.TextBounds
+import com.babel.core.model.TextOrientation
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull

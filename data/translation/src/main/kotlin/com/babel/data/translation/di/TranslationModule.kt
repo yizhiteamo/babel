@@ -7,6 +7,7 @@ import com.babel.domain.language.DefaultLanguageResolver
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.language.SystemLocaleProvider
 import com.babel.domain.translation.TranslationCache
+import com.babel.core.common.BabelLogger
 import com.babel.domain.translation.Translator
 import dagger.Module
 import dagger.Provides
@@ -20,7 +21,7 @@ object TranslationModule {
 
     @Provides
     @Singleton
-    fun provideTranslator(): Translator = MlKitTranslator()
+    fun provideTranslator(logger: BabelLogger): Translator = MlKitTranslator(logger = logger)
 
     @Provides
     @Singleton

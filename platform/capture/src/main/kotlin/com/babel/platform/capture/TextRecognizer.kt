@@ -1,6 +1,7 @@
 package com.babel.platform.capture
 
 import android.graphics.Bitmap
+import com.babel.core.model.LanguageTag
 import com.babel.domain.vision.RecognizedLine
 
 /**
@@ -13,6 +14,14 @@ import com.babel.domain.vision.RecognizedLine
  * foreseeable change, not a hypothetical one.
  */
 internal interface TextRecognizer {
+
+    /**
+     * The language this engine reads. Stamped onto every element it produces,
+     * because knowing beats detecting: language identification run on OCR
+     * output attributed Japanese manga to Finnish (`docs/milestones/v2.md`).
+     */
+    val language: LanguageTag
+
 
     /**
      * @return lines in whatever order the engine produced them. Ordering and

@@ -54,5 +54,19 @@ data class TextElement(
      * holds the pixels.
      */
     val style: SourceStyle = SourceStyle.UNKNOWN,
+    /**
+     * The language this text is in, where the acquisition layer knows rather
+     * than guesses.
+     *
+     * OCR does know: manga mode reads with a Japanese recogniser, so anything
+     * it returns is Japanese. Detecting the language from that text instead is
+     * measurably unreliable — on one real page, four translations were
+     * attributed to Japanese once, English twice and Finnish once
+     * (`docs/milestones/v2.md`). Accessibility leaves this null: a node carries
+     * no such claim.
+     *
+     * A manual override by the user still wins; this only replaces guessing.
+     */
+    val sourceLanguage: LanguageTag? = null,
     val metadata: Map<String, String> = emptyMap(),
 )

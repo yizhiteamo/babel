@@ -8,6 +8,7 @@ import com.babel.core.model.TranslationResult
 import com.babel.core.model.TranslationStatus
 import com.babel.domain.translation.Translator
 import com.google.mlkit.common.MlKitException
+import com.babel.core.common.BabelLogger
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.google.mlkit.nl.translate.Translation
@@ -37,6 +38,7 @@ import com.google.mlkit.nl.translate.Translator as MlKitClient
  */
 class MlKitTranslator(
     private val downloadConditions: DownloadConditions = DownloadConditions.Builder().build(),
+    private val logger: BabelLogger = BabelLogger.NoOp,
 ) : Translator, Closeable {
 
     override val id: ProviderId = PROVIDER_ID
@@ -80,6 +82,12 @@ class MlKitTranslator(
         if (sourceCode == targetCode) {
             return request.unchanged(LanguageTag(sourceCode))
         }
+
+        // Language codes only — never the text. Which pair was chosen is the
+        // one thing that cannot be worked out from the outside, and real pages
+        // produced Chinese, English and romaji from a single page with the
+        // target set to zh (`docs/milestones/v2.md`).
+        logger.debug(TAG, "translating $sourceCode>$targetCode detected=${declaredSource == null}")
 
         val client = clientFor(sourceCode, targetCode)
         client.downloadModelIfNeeded(downloadConditions).await()
@@ -178,6 +186,7 @@ class MlKitTranslator(
     }
 
     private companion object {
+        const val TAG = "Translator"
         val PROVIDER_ID = ProviderId("mlkit")
         const val UNDETERMINED = "und"
     }

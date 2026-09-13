@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
 import android.widget.TextView
 import com.babel.core.model.RenderedTranslation
 import com.babel.domain.vision.ColorAnalysis
@@ -24,7 +25,9 @@ import com.babel.domain.vision.ColorAnalysis
  * system light/dark setting, and its overlays never quite match the app
  * underneath.
  */
-internal class TranslationTextView(context: Context) : TextView(context) {
+internal class TranslationTextView(context: Context) : TextView(context), TranslationView {
+
+    override val view: View get() = this
 
     private val isDarkTheme: Boolean
         get() = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -37,7 +40,7 @@ internal class TranslationTextView(context: Context) : TextView(context) {
         applyTheme()
     }
 
-    fun bind(translation: RenderedTranslation) {
+    override fun bind(translation: RenderedTranslation) {
         applyColors(translation)
         applyGravity(translation)
         text = translation.text

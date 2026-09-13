@@ -187,7 +187,7 @@ class DefaultTranslationCoordinator(
             }
 
             val existing = tracked[element.id]
-            val key = TranslationCacheKey.of(element.text, pair, translator.id)
+            val key = TranslationCacheKey.of(element.text, pair.forElement(element), translator.id)
 
             if (existing != null && existing.key == key) {
                 // Same text, same languages — a scroll or re-layout, not new
@@ -332,6 +332,19 @@ class DefaultTranslationCoordinator(
         }
     }
 
+    /**
+     * Lets an element say what language it is in, when its source knows.
+     *
+     * Only where the pair is on auto-detect: a source language the user chose
+     * by hand outranks anything the acquisition layer believes.
+     */
+    private fun LanguagePair.forElement(element: TextElement): LanguagePair =
+        if (source == null && element.sourceLanguage != null) {
+            copy(source = element.sourceLanguage)
+        } else {
+            this
+        }
+
     private suspend fun translateWithRetry(
         element: TextElement,
         pair: LanguagePair,
@@ -343,7 +356,7 @@ class DefaultTranslationCoordinator(
                 elementId = element.id,
                 revision = element.revision,
                 sourceText = element.text,
-                languages = pair,
+                languages = pair.forElement(element),
             )
             val result = translator.translate(request)
             val status = result.status

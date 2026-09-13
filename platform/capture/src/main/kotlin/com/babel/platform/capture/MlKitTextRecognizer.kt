@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.CoordinateSpace
+import com.babel.core.model.LanguageTag
 import com.babel.core.model.TextBounds
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.TextOrientationDetector
@@ -28,6 +29,10 @@ import kotlinx.coroutines.tasks.await
 internal class MlKitTextRecognizer @Inject constructor(
     private val logger: BabelLogger,
 ) : TextRecognizer {
+
+    /** This client is built with [JapaneseTextRecognizerOptions]; it reads Japanese. */
+    override val language: LanguageTag = LanguageTag("ja")
+
 
     private val recognizer by lazy {
         TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())

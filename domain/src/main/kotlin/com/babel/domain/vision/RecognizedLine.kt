@@ -1,6 +1,7 @@
 package com.babel.domain.vision
 
 import com.babel.core.model.TextBounds
+import com.babel.core.model.TextOrientation
 
 /**
  * One line of text as an OCR engine reported it, in project-owned terms.

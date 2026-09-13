@@ -1,6 +1,7 @@
 package com.babel.domain.vision
 
 import com.babel.core.model.TextBounds
+import com.babel.core.model.TextOrientation
 
 /**
  * Lines that belong together — in practice one speech bubble — with their

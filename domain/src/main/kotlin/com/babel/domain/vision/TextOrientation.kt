@@ -1,22 +1,8 @@
 package com.babel.domain.vision
 
 import com.babel.core.model.TextBounds
+import com.babel.core.model.TextOrientation
 import kotlin.math.abs
-
-/**
- * How a line of text is set, which determines both how lines group into bubbles
- * and the order they read in.
- *
- * A page mixes both — vertical dialogue beside horizontal captions or sound
- * effects — so this belongs to each line, never to the page.
- */
-enum class TextOrientation {
-    /** Characters run top to bottom; columns are ordered right to left (CJK). */
-    VERTICAL,
-
-    /** Characters run left to right; lines are ordered top to bottom. */
-    HORIZONTAL,
-}
 
 /**
  * Works out how a line is set.
