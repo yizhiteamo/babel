@@ -5,6 +5,7 @@ import com.babel.core.model.ProviderId
 import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationError
 import com.babel.core.model.TranslationRuntimeState
 import com.babel.core.testing.FakeSettingsRepository
@@ -406,6 +407,59 @@ class DefaultTranslationCoordinatorTest {
         advanceUntilIdle()
 
         assertTrue(renderer.visible.isEmpty())
+        coordinator.stop()
+    }
+
+    /**
+     * The bug this pins: pausing text translation stopped manga mode too,
+     * because one coordinator serves both and pause dropped every incoming
+     * element. On a device the OCR path recognised 18 lines and rendered none.
+     *
+     * Manga mode is its own switch. Turning it on is an explicit request that a
+     * paused text path must not swallow.
+     */
+    @Test
+    fun `pausing text translation does not stop image translation`() = runTest {
+        val coordinator = start()
+        coordinator.pause()
+        advanceUntilIdle()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "ocr1",
+                        text = "Hello",
+                        sourceType = TextSourceType.OCR,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(TranslationRuntimeState.Paused, coordinator.runtimeState.value)
+        assertEquals(listOf("<Hello>"), renderer.visibleText)
+        coordinator.stop()
+    }
+
+    /** Half a batch must not vanish quietly. */
+    @Test
+    fun `a mixed batch keeps only the image elements while paused`() = runTest {
+        val coordinator = start()
+        coordinator.pause()
+        advanceUntilIdle()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(id = "node", text = "Nodes"),
+                    TestElements.element(id = "ocr", text = "Pixels", sourceType = TextSourceType.OCR),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("<Pixels>"), renderer.visibleText)
         coordinator.stop()
     }
 

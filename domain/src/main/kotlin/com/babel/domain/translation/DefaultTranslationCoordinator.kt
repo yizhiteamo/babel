@@ -9,6 +9,7 @@ import com.babel.core.model.RequestId
 import com.babel.core.model.StyleHints
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationError
 import com.babel.core.model.TranslationRequest
 import com.babel.core.model.TranslationResult
@@ -157,7 +158,7 @@ class DefaultTranslationCoordinator(
             when (event) {
                 is TextSourceEvent.Removed -> onRemoved(event.ids)
                 TextSourceEvent.Cleared -> onCleared()
-                is TextSourceEvent.Upserted -> Unit
+                is TextSourceEvent.Upserted -> onUpserted(event.elements.filterNot(::isPausedSource))
             }
             return
         }
@@ -169,7 +170,25 @@ class DefaultTranslationCoordinator(
         }
     }
 
+    /**
+     * Whether pausing applies to where this text came from.
+     *
+     * Pause is the text path's switch — that is what the control offering it
+     * says, and what a user pressing it means. Manga mode is a separate switch,
+     * and turning it on is an explicit request to translate images: a paused
+     * text path must not silently swallow it. Reported from a device, where
+     * pausing text translation left manga mode recognising 18 lines and
+     * rendering none of them.
+     *
+     * Decided per element rather than per batch. A batch mixing both sources
+     * does not arise today, but dropping half of one silently is the kind of
+     * bug that takes a day to find.
+     */
+    private fun isPausedSource(element: TextElement): Boolean =
+        element.sourceType == TextSourceType.ACCESSIBILITY
+
     private suspend fun onUpserted(elements: List<TextElement>) {
+        if (elements.isEmpty()) return
         val pair = languages ?: return
         val readyToShow = mutableListOf<RenderedTranslation>()
         val toHide = mutableListOf<TextElementId>()

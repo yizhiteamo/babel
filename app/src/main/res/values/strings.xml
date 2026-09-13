@@ -23,7 +23,7 @@
     <string name="runtime_state_running">Running</string>
     <string name="runtime_state_paused">Paused</string>
     <string name="runtime_state_off">Not running</string>
-    <string name="runtime_explanation">Pausing stops new text being translated. What is already on screen stays until the content changes.</string>
+    <string name="runtime_explanation">Pausing stops new text being translated. What is already on screen stays until the content changes. Manga mode is separate and keeps working.</string>
     <string name="runtime_action_pause">Pause</string>
     <string name="runtime_action_resume">Resume</string>
 

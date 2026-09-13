@@ -20,7 +20,7 @@
     <string name="runtime_state_running">进行中</string>
     <string name="runtime_state_paused">已暂停</string>
     <string name="runtime_state_off">未运行</string>
-    <string name="runtime_explanation">暂停后不再翻译新出现的文字。已经显示的译文会保留到页面内容变化为止。</string>
+    <string name="runtime_explanation">暂停后不再翻译新出现的文字。已经显示的译文会保留到页面内容变化为止。漫画模式是独立开关，不受影响。</string>
     <string name="runtime_action_pause">暂停</string>
     <string name="runtime_action_resume">继续</string>
 

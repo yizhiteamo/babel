@@ -14,6 +14,15 @@ sealed interface TranslationRuntimeState {
 
     data object Running : TranslationRuntimeState
 
+    /**
+     * The user paused the **text** path. Newly acquired accessibility text is
+     * not translated; what is already drawn stays until the content changes.
+     *
+     * Manga mode is unaffected, because it is a separate switch the user turns
+     * on deliberately. One coordinator still owns this state — pausing narrows
+     * what it acts on, it does not split the state in two
+     * (`docs/systems/runtime-state.md`).
+     */
     data object Paused : TranslationRuntimeState
 
     data class Error(val error: TranslationError) : TranslationRuntimeState

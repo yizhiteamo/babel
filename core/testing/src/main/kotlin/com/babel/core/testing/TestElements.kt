@@ -34,11 +34,12 @@ object TestElements {
         packageName: String? = DEFAULT_PACKAGE,
         windowId: Int? = 1,
         metadata: Map<String, String> = emptyMap(),
+        sourceType: TextSourceType = TextSourceType.ACCESSIBILITY,
     ): TextElement = TextElement(
         id = TextElementId(id),
         text = text,
         bounds = bounds,
-        sourceType = TextSourceType.ACCESSIBILITY,
+        sourceType = sourceType,
         source = SourceIdentity(packageName = packageName, windowId = windowId),
         revision = Revision(revision),
         isProtected = isProtected,
