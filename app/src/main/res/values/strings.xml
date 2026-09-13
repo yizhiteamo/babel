@@ -25,4 +25,14 @@
     <string name="language_follow_system">Follow system language</string>
     <string name="language_action_cancel">Cancel</string>
 
+    <!-- Manga mode (V2) -->
+    <string name="capture_section_title">Manga mode</string>
+    <string name="capture_explanation">Reads the screen as an image so text inside pictures can be translated. Android asks for permission each time a session starts.</string>
+    <string name="capture_action_start">Start</string>
+    <string name="capture_action_stop">Stop</string>
+    <string name="capture_state_idle">Off</string>
+    <string name="capture_state_requesting">Waiting for permission…</string>
+    <string name="capture_state_active">Reading the screen</string>
+    <string name="capture_state_failed">Could not start</string>
+
 </resources>

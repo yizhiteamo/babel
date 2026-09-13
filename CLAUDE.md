@@ -253,6 +253,7 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 | `:data:translation` | data | `MlKitTranslator` (on-device), `InMemoryTranslationCache` |
 | `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization |
 | `:platform:overlay` | platform | overlay windows, `TranslationRenderer`, coordinate mapping |
+| `:platform:capture` | platform | MediaProjection session, foreground service, frame retrieval (V2) |
 | `:app` | UI | Compose screens, `AndroidLogger`, Hilt wiring for the pure-Kotlin domain |
 
 Dependency rules that the build enforces:

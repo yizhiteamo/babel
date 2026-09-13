@@ -11,6 +11,8 @@ import com.babel.domain.language.LanguageResolver
 import com.babel.domain.runtime.CapabilityChecker
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.vision.CaptureState
+import com.babel.domain.vision.ScreenCaptureController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +25,7 @@ data class HomeUiState(
     val capabilities: CapabilityState = CapabilityState(),
     val settings: BabelSettings = BabelSettings(),
     val targetLanguage: LanguageTag? = null,
+    val captureState: CaptureState = CaptureState.IDLE,
 ) {
     val accessibilityGranted: Boolean
         get() = capabilities[Capability.ACCESSIBILITY_SERVICE] == CapabilityStatus.AVAILABLE
@@ -45,12 +48,14 @@ class HomeViewModel @Inject constructor(
     private val capabilityChecker: CapabilityChecker,
     private val settingsRepository: SettingsRepository,
     private val languageResolver: LanguageResolver,
+    screenCapture: ScreenCaptureController,
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = combine(
         capabilityChecker.state,
         settingsRepository.settings,
-    ) { capabilities, settings ->
+        screenCapture.state,
+    ) { capabilities, settings, captureState ->
         HomeUiState(
             capabilities = capabilities,
             settings = settings,
@@ -58,6 +63,7 @@ class HomeViewModel @Inject constructor(
                 settings.sourceLanguageMode,
                 settings.targetLanguageMode,
             ).target,
+            captureState = captureState,
         )
     }.stateIn(
         scope = viewModelScope,

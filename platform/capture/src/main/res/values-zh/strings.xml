@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="capture_notification_title">Babel 正在读取屏幕</string>
+    <string name="capture_notification_text">正在本机翻译，不会上传或保存。</string>
+    <string name="capture_channel_name">屏幕翻译</string>
+    <string name="capture_channel_description">Babel 翻译屏幕内容期间显示。</string>
+
+</resources>

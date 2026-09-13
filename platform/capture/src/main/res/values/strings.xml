@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      The notification is mandatory for a projection service, and it doubles as
+      the user's standing indication that the screen is being read. Worded to
+      say plainly what is happening, including that nothing leaves the device.
+    -->
+    <string name="capture_notification_title">Babel is reading the screen</string>
+    <string name="capture_notification_text">Translating on this device. Nothing is uploaded or saved.</string>
+    <string name="capture_channel_name">Screen translation</string>
+    <string name="capture_channel_description">Shown while Babel is translating what is on screen.</string>
+
+</resources>

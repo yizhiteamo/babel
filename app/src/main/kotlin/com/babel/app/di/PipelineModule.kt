@@ -11,6 +11,8 @@ import com.babel.domain.privacy.DefaultSensitiveContentPolicy
 import com.babel.domain.privacy.SensitiveContentPolicy
 import com.babel.domain.runtime.CapabilityChecker
 import com.babel.domain.scope.TranslationScopePolicy
+import com.babel.domain.vision.ScreenCaptureController
+import com.babel.platform.capture.MediaProjectionScreenCapture
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.DefaultTranslationCoordinator
 import com.babel.domain.translation.TranslationCache
@@ -77,4 +79,9 @@ abstract class LoggingModule {
     abstract fun bindTranslationScopePolicy(
         impl: AndroidTranslationScope,
     ): TranslationScopePolicy
+
+    @Binds
+    abstract fun bindScreenCaptureController(
+        impl: MediaProjectionScreenCapture,
+    ): ScreenCaptureController
 }

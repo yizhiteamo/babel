@@ -56,6 +56,7 @@ dependencies {
     implementation(project(":data:settings"))
     implementation(project(":data:translation"))
     implementation(project(":platform:accessibility"))
+    implementation(project(":platform:capture"))
     implementation(project(":platform:overlay"))
 
     implementation(libs.androidx.core.ktx)

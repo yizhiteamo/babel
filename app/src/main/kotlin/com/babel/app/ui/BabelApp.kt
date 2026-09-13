@@ -37,7 +37,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
+import com.babel.app.capture.rememberCaptureSessionLauncher
 import com.babel.core.model.LanguageTag
+import com.babel.domain.vision.CaptureState
+import com.babel.platform.capture.MediaProjectionScreenCapture
 
 /**
  * Root of the app's own UI.
@@ -49,6 +52,7 @@ import com.babel.core.model.LanguageTag
  */
 @Composable
 fun BabelApp(
+    screenCapture: MediaProjectionScreenCapture,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -58,6 +62,7 @@ fun BabelApp(
     RefreshOnResume(viewModel::refreshCapabilities)
 
     var showLanguagePicker by remember { mutableStateOf(false) }
+    val captureLauncher = rememberCaptureSessionLauncher(screenCapture)
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -121,6 +126,12 @@ fun BabelApp(
                     }
                 }
             }
+
+            CaptureCard(
+                state = state.captureState,
+                onStart = captureLauncher::start,
+                onStop = captureLauncher::stop,
+            )
         }
     }
 
@@ -133,6 +144,61 @@ fun BabelApp(
             },
             onDismiss = { showLanguagePicker = false },
         )
+    }
+}
+
+/**
+ * Manga mode. Separate from the permission cards because capture is a session
+ * rather than a granted permission — Android 15 re-asks every time it starts,
+ * so there is no persistent "granted" state to display.
+ */
+@Composable
+private fun CaptureCard(
+    state: CaptureState,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.capture_section_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(
+                        when (state) {
+                            CaptureState.IDLE -> R.string.capture_state_idle
+                            CaptureState.REQUESTING -> R.string.capture_state_requesting
+                            CaptureState.ACTIVE -> R.string.capture_state_active
+                            CaptureState.FAILED -> R.string.capture_state_failed
+                        },
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Text(
+                text = stringResource(R.string.capture_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (state == CaptureState.ACTIVE) {
+                OutlinedButton(onClick = onStop) {
+                    Text(stringResource(R.string.capture_action_stop))
+                }
+            } else {
+                OutlinedButton(onClick = onStart) {
+                    Text(stringResource(R.string.capture_action_start))
+                }
+            }
+        }
     }
 }
 
