@@ -47,6 +47,51 @@ Paging and pinch-zoom are the whole interaction surface of a comic reader, and
 forwarding them through `dispatchGesture` costs latency and cannot reproduce
 zoom faithfully. Trading working interaction for a faint ghost is a bad deal.
 
+## Rejected: inpainting the erased area
+
+Comparable desktop tools — [manga-image-translator](https://github.com/zyddnys/manga-image-translator)
+is the reference point — erase the original with LaMa or Stable Diffusion
+inpainting, and their showcase output has no trace of it. Adopting that was
+considered and rejected, for a reason that is not obvious and is worth writing
+out so it need not be re-derived.
+
+**Inpainting cannot reduce the ghost.** Compositing is per pixel:
+
+```
+result = 0.8 × ours + 0.2 × what is on screen
+```
+
+Where an original stroke sits, the screen holds black. However perfectly the
+layer beneath our text is reconstructed, that pixel comes out as:
+
+```
+0.8 × 255 (reconstructed white) + 0.2 × 0 (original stroke) = 204
+```
+
+Identical to filling the area with flat white. The ghost originates in the lower
+layer; nothing done to the upper one removes it.
+
+Inpainting would improve exactly one thing here: blending the overlay's edges
+into a complex background — screentones, gradients, sound effects painted across
+artwork. That benefit is real but secondary, and does not justify 30–200MB of
+model, inference latency and heat, unless real material shows a high proportion
+of non-flat bubble backgrounds. `docs/milestones/v2.md` records what to measure.
+
+## Not a like-for-like comparison
+
+The desktop tools operate under different constraints, so their output is not a
+target we are failing to reach:
+
+- They batch-process image files offline; we composite over a live screen. They
+  are not subject to the opacity cap at all — they rewrite the pixels.
+- They require the reader to export pages and run them through a pipeline first;
+  we work inside whatever comic app the user already has.
+- They can spend seconds per page on a GPU; we answer a page turn.
+
+Their approach is better at erasure. Ours is better at being there when you turn
+the page. Comparing only the first is how a sound trade-off gets mistaken for a
+defect.
+
 ## Consequences
 
 - A faint ghost of the original text remains. This is accepted, and its cause is
