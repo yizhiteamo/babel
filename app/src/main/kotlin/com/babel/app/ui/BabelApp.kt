@@ -37,10 +37,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
-import com.babel.app.capture.rememberCaptureSessionLauncher
 import com.babel.core.model.LanguageTag
 import com.babel.domain.vision.CaptureState
-import com.babel.platform.capture.MediaProjectionScreenCapture
 
 /**
  * Root of the app's own UI.
@@ -52,7 +50,6 @@ import com.babel.platform.capture.MediaProjectionScreenCapture
  */
 @Composable
 fun BabelApp(
-    screenCapture: MediaProjectionScreenCapture,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -62,7 +59,6 @@ fun BabelApp(
     RefreshOnResume(viewModel::refreshCapabilities)
 
     var showLanguagePicker by remember { mutableStateOf(false) }
-    val captureLauncher = rememberCaptureSessionLauncher(screenCapture)
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -129,8 +125,8 @@ fun BabelApp(
 
             CaptureCard(
                 state = state.captureState,
-                onStart = captureLauncher::start,
-                onStop = captureLauncher::stop,
+                onStart = viewModel::startMangaMode,
+                onStop = viewModel::stopMangaMode,
             )
         }
     }
@@ -148,9 +144,13 @@ fun BabelApp(
 }
 
 /**
- * Manga mode. Separate from the permission cards because capture is a session
- * rather than a granted permission — Android 15 re-asks every time it starts,
- * so there is no persistent "granted" state to display.
+ * Manga mode. Separate from the permission cards because it is a mode the user
+ * turns on here, not a permission granted in system settings.
+ *
+ * It used to be a session with a consent dialog in front of it. Taking pictures
+ * through the already-authorised accessibility service removed the dialog, the
+ * recording indicator and the foreground service along with it (ADR 009), which
+ * is why this is now just a button.
  */
 @Composable
 private fun CaptureCard(
@@ -176,8 +176,8 @@ private fun CaptureCard(
                     text = stringResource(
                         when (state) {
                             CaptureState.IDLE -> R.string.capture_state_idle
-                            CaptureState.REQUESTING -> R.string.capture_state_requesting
                             CaptureState.ACTIVE -> R.string.capture_state_active
+                            CaptureState.UNAVAILABLE -> R.string.capture_state_unavailable
                             CaptureState.FAILED -> R.string.capture_state_failed
                         },
                     ),
@@ -189,7 +189,13 @@ private fun CaptureCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (state == CaptureState.ACTIVE) {
+            if (state == CaptureState.UNAVAILABLE) {
+                Text(
+                    text = stringResource(R.string.capture_unavailable_reason),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else if (state == CaptureState.ACTIVE) {
                 OutlinedButton(onClick = onStop) {
                     Text(stringResource(R.string.capture_action_stop))
                 }

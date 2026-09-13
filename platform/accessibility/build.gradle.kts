@@ -27,6 +27,9 @@ android {
 // :data:translation, so a provider call from here cannot compile.
 dependencies {
     implementation(project(":domain"))
+    // The frame contract only. Still cannot see :platform:capture, so ML Kit
+    // stays out of the V1 path.
+    implementation(project(":platform:screen"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
@@ -34,6 +37,7 @@ dependencies {
     ksp(libs.hilt.android.compiler)
 
     testImplementation(project(":core:testing"))
+    testImplementation(project(":platform:screen"))
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

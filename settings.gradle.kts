@@ -33,6 +33,10 @@ include(":data:settings")
 include(":data:translation")
 
 // Platform layer (Android capabilities -> project-owned models)
+// Contract shared by platform modules whose interface mentions an Android
+// type, so it cannot live in :domain. Implementation-free.
+include(":platform:screen")
+
 include(":platform:accessibility")
 include(":platform:overlay")
 include(":platform:capture")

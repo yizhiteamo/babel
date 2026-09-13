@@ -1,41 +1,64 @@
 package com.babel.domain.vision
 
+import com.babel.domain.acquisition.TextSource
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * What screen capture is doing.
+ * What manga mode is doing.
  *
  * Deliberately not folded into [com.babel.core.model.CapabilityState]: the other
- * capabilities are permissions granted once and then simply present, whereas
- * capture is a **session**. From Android 15 the user must re-authorise every
- * session and a token cannot be reused, so "granted" is not a state this can
- * ever be in.
+ * capabilities are permissions the user grants in system settings, whereas this
+ * is a mode the user turns on and off inside the app.
  */
 enum class CaptureState {
-    /** No session. Nothing is being read from the screen. */
+    /** Off. Nothing is being read from the screen as an image. */
     IDLE,
 
-    /** Waiting for the user to allow capture. */
-    REQUESTING,
-
-    /** A session is live and frames can be taken. */
+    /** On. Frames are being read and recognised. */
     ACTIVE,
 
-    /** The last session ended unexpectedly; see logs. */
+    /**
+     * Cannot be turned on here: the device is below Android 11, or the
+     * accessibility service that takes the pictures is not running.
+     */
+    UNAVAILABLE,
+
+    /** The last attempt failed; see logs. */
     FAILED,
 }
 
 /**
- * Observes and ends a capture session.
+ * Turns manga mode on and off.
  *
- * There is no `start` here on purpose: beginning a session requires an Activity
- * to receive the system's consent dialog, so it is initiated from the UI layer
- * and only its lifetime is managed through this contract.
+ * There used to be no `start` here, because MediaProjection consent had to be
+ * collected by an Activity and so a session could only begin from the UI layer.
+ * Frames now come from the accessibility service the user has already
+ * authorised, so there is no dialog and no reason to withhold `start`
+ * (ADR 009).
  */
 interface ScreenCaptureController {
 
     val state: StateFlow<CaptureState>
 
-    /** Ends the session and releases the virtual display. */
+    /** Turns the mode on. No-op when the state is [CaptureState.UNAVAILABLE]. */
+    fun start()
+
+    /** Turns the mode off and drops anything it was showing. */
     fun stop()
+}
+
+/**
+ * Reads the screen once and publishes whatever text it finds.
+ *
+ * Free of Android types on purpose, so the accessibility service can drive the
+ * scan loop without being able to see the OCR module — which would drag ML Kit
+ * into the V1 path. The pixels themselves travel by a separate route that never
+ * passes through the domain.
+ */
+interface ImageTextScanner : TextSource {
+
+    suspend fun scanOnce()
+
+    /** Drops everything currently tracked, e.g. when the mode is turned off. */
+    suspend fun clear()
 }

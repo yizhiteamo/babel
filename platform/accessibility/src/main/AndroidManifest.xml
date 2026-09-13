@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Manga mode posts an ongoing notification while it reads the screen. The
+      platform no longer requires one — MediaProjection used to force it — so
+      this is the project keeping screen reading visible on its own terms
+      (ADR 009).
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application>
         <service
             android:name=".BabelAccessibilityService"

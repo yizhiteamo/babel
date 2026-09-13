@@ -251,15 +251,17 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 | `:core:testing` | test | Shared fakes (`FakeTranslator`, `RecordingRenderer`, …). Consumed via `testImplementation` only |
 | `:data:settings` | data | `DataStoreSettingsRepository`, `AndroidSystemLocaleProvider` |
 | `:data:translation` | data | `MlKitTranslator` (on-device), `InMemoryTranslationCache` |
-| `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization |
+| `:platform:screen` | platform | `ScreenFrameSource` — contract only, no implementation |
+| `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization, screen frames (ADR 009) |
 | `:platform:overlay` | platform | overlay windows, `TranslationRenderer`, coordinate mapping |
-| `:platform:capture` | platform | MediaProjection session, foreground service, frame retrieval (V2) |
+| `:platform:capture` | platform | OCR recognition, region grouping → `TextElement` (V2) |
 | `:app` | UI | Compose screens, `AndroidLogger`, Hilt wiring for the pure-Kotlin domain |
 
 Dependency rules that the build enforces:
 
 - `:core:model`, `:core:common`, and `:domain` use the **Kotlin JVM** plugin, not the Android plugin. An `android.*` import in the domain does not compile. Bounds are `TextBounds`, not `android.graphics.Rect`; locales are `LanguageTag`, not `java.util.Locale` leaking outward.
 - `:platform:*` and `:data:*` depend on `:domain` only — never on each other. An acquisition adapter cannot call a provider, and a renderer cannot call a provider, because neither can see `:data:translation`.
+- The one exception is `:platform:screen`, which any platform module may depend on. It holds contracts and no implementation, and exists only because `ScreenFrameSource` must mention `Bitmap`, which cannot enter the pure-Kotlin domain. Two platform modules depending on it is not the same as depending on each other: the accessibility service takes the frames and the OCR module reads them, and neither can see the other — which is what keeps ML Kit out of the V1 path.
 - `:app` is the only module that depends on every layer; that is its job (DI wiring). Acquisition and capture logic must not appear there.
 
 Adding a new acquisition method (OCR in V2, tracked OCR in V3) means a new `:platform:*` module implementing `TextSource` plus a new `TextSourceType` value — nothing downstream changes. That is the point of the split; do not break it for convenience.
@@ -280,7 +282,11 @@ Behavioral invariants that must survive any change:
 - `TextSourceEvent.Removed`/`Cleared` are how stale overlays get cleaned up during scrolling and app switches.
 - Pass `Redact.text(...)` to loggers, never raw screen text.
 - `LanguageResolver` owns locale policy, including narrowing a device tag to what a provider accepts. ML Kit rejects `zh-Hans-CN` outright, so nothing downstream may assume a regional tag survives.
+- Manga mode needs API 30 (`AccessibilityService.takeScreenshot`) and reports `CaptureState.UNAVAILABLE` below it. V1 still runs down to minSdk 26 — only manga mode is gated (ADR 009).
+- A frame includes Babel's own overlays, so `FrameChangeDetector` is what stops the OCR path from reading its own output. `FLAG_SECURE` is not an alternative: measured on device, it blanks the entire mirror and the user's screenshots with it.
 - Scope and privacy are separate policies and must stay that way: scope asks whether an app is worth translating, privacy whether text may leave the screen. Adding an app to one does not belong in the other.
+
+Testing on a device: `uiautomator dump` disconnects the accessibility service while it runs, which tears down the pipeline and resets manga mode. Read state from `logcat` and `screencap` instead — a UI dump taken to check a result is what destroys it.
 
 Testing the pipeline: a collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.
 

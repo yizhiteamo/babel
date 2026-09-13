@@ -48,7 +48,7 @@ class HomeViewModel @Inject constructor(
     private val capabilityChecker: CapabilityChecker,
     private val settingsRepository: SettingsRepository,
     private val languageResolver: LanguageResolver,
-    screenCapture: ScreenCaptureController,
+    private val screenCapture: ScreenCaptureController,
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -73,6 +73,14 @@ class HomeViewModel @Inject constructor(
 
     /** Permissions change outside the app, so re-read them on return. */
     fun refreshCapabilities() = capabilityChecker.refresh()
+
+    /**
+     * No consent dialog stands in front of this any more, so it is a direct
+     * call rather than something the Activity has to launch (ADR 009).
+     */
+    fun startMangaMode() = screenCapture.start()
+
+    fun stopMangaMode() = screenCapture.stop()
 
     fun selectTargetLanguage(tag: LanguageTag?) {
         viewModelScope.launch {

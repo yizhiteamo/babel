@@ -23,11 +23,15 @@ android {
     }
 }
 
-// Screen capture only. Depends on :domain for contracts, and like every other
-// platform module cannot see :data:translation — capture must not reach a
-// provider directly (ADR 005).
+// Recognising text in screen images. Frames arrive through :platform:screen;
+// taking them is somebody else's job (ADR 009). Like every other platform
+// module it cannot see :data:translation, so it cannot reach a provider
+// directly (ADR 005).
 dependencies {
     implementation(project(":domain"))
+    // Consumes frames through the contract; it does not know, and must not
+    // know, which platform capability produced them.
+    implementation(project(":platform:screen"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)

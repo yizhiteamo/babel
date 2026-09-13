@@ -10,7 +10,7 @@ import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.scope.TranslationScopePolicy
 import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.vision.CaptureState
-import com.babel.domain.vision.ScreenCaptureController
+import com.babel.domain.vision.ImageTextScanner
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
@@ -19,6 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -46,7 +47,16 @@ class BabelAccessibilityService : AccessibilityService() {
     lateinit var scopePolicy: TranslationScopePolicy
 
     @Inject
-    lateinit var screenCapture: ScreenCaptureController
+    lateinit var mangaMode: MangaModeController
+
+    @Inject
+    lateinit var screenshots: AccessibilityScreenshotSource
+
+    @Inject
+    lateinit var imageScanner: ImageTextScanner
+
+    @Inject
+    lateinit var indicator: MangaModeIndicator
 
     @Inject
     lateinit var coordinator: TranslationCoordinator
@@ -89,14 +99,62 @@ class BabelAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         logger.info(TAG, "accessibility service connected")
 
+        // Only a live service can take a screenshot, so manga mode's frames
+        // come from here (ADR 009).
+        screenshots.attach(this)
+        mangaMode.onServiceAvailabilityChanged()
+
         val newScope = CoroutineScope(SupervisorJob() + dispatchers.default)
         scope = newScope
 
         newScope.launch { textSource.events().collect(coordinator::submit) }
+        newScope.launch { imageScanner.events().collect(coordinator::submit) }
         newScope.launch { coordinator.renderUpdates.collect(renderer::apply) }
         newScope.launch { runScanLoop() }
+        newScope.launch { runImageScanLoop() }
+        newScope.launch { followMangaMode() }
 
         coordinator.start()
+    }
+
+    /**
+     * Reads the screen as an image while manga mode is on. Both acquisition
+     * paths feed the one coordinator, so nothing downstream knows which of them
+     * produced an element.
+     *
+     * A fixed interval, but a cheap one: [ImageTextScanner] compares each frame
+     * against the last it recognised and returns immediately when the page has
+     * not changed, so a static comic costs one recognition, not one per tick.
+     */
+    private suspend fun runImageScanLoop() {
+        val current = scope ?: return
+        while (current.isActive) {
+            delay(IMAGE_SCAN_INTERVAL_MS)
+            if (mangaMode.state.value == CaptureState.ACTIVE) imageScanner.scanOnce()
+        }
+    }
+
+    /**
+     * Screen reading used to be visible because MediaProjection forced a
+     * notification, and `docs/systems/privacy.md` welcomed it rather than
+     * merely tolerating it. Nothing forces one now, so the notification is
+     * posted deliberately: the platform stopped requiring visibility, the
+     * project still does (ADR 009).
+     */
+    private suspend fun followMangaMode() {
+        var wasActive = false
+        mangaMode.state.collect { state ->
+            val active = state == CaptureState.ACTIVE
+            if (active == wasActive) return@collect
+            wasActive = active
+
+            if (active) {
+                indicator.show()
+            } else {
+                indicator.hide()
+                imageScanner.clear()
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -126,6 +184,9 @@ class BabelAccessibilityService : AccessibilityService() {
 
     private fun teardown() {
         lastWindowKey = null
+        screenshots.detach()
+        mangaMode.onServiceAvailabilityChanged()
+        indicator.hide()
         coordinator.stop()
         scope?.cancel()
         scope = null
@@ -154,7 +215,7 @@ class BabelAccessibilityService : AccessibilityService() {
         // Manga mode owns the screen while it runs. Both paths feed the same
         // coordinator, so leaving this one active would translate the same
         // screen twice and stack two layers of overlays on top of each other.
-        if (screenCapture.state.value == CaptureState.ACTIVE) {
+        if (mangaMode.state.value == CaptureState.ACTIVE) {
             if (lastWindowKey != null) {
                 lastWindowKey = null
                 textSource.clear()
@@ -210,5 +271,12 @@ class BabelAccessibilityService : AccessibilityService() {
          * short enough that text appears without feeling delayed.
          */
         const val SCAN_DEBOUNCE_MS = 250L
+
+        /**
+         * Manga mode has no event to react to — a comic page does not fire
+         * content-changed — so it polls. The change check inside the scanner is
+         * what keeps that from being expensive.
+         */
+        const val IMAGE_SCAN_INTERVAL_MS = 1_500L
     }
 }

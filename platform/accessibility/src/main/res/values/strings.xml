@@ -6,8 +6,16 @@
 
     <!--
       The first copy a user reads about Babel, and it carries the privacy claim.
-      Keep both parts: what is read, and that nothing is uploaded.
+      Keep all three parts: what is read, that pictures may be taken, and that
+      nothing is uploaded. The middle one was added when manga mode moved from
+      MediaProjection to accessibility screenshots (ADR 009) — the system used
+      to announce screen reading with its own dialog and recording indicator,
+      and this sentence is now the only place the user is told.
     -->
-    <string name="accessibility_service_description">Reads the text currently on screen so it can be translated in place. Text is translated on this device and is not uploaded.</string>
+    <string name="accessibility_service_description">Reads the text currently on screen so it can be translated in place. In manga mode it also takes pictures of the screen to read text inside images. Everything is translated on this device and is not uploaded.</string>
+
+    <string name="manga_indicator_channel">Manga mode</string>
+    <string name="manga_indicator_title">Manga mode is on</string>
+    <string name="manga_indicator_text">Babel is reading the screen as images. Translation happens on this device.</string>
 
 </resources>

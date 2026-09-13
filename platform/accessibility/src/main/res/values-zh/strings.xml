@@ -2,6 +2,10 @@
 <resources>
 
     <!-- 显示在系统无障碍设置中，是用户最先读到的说明，其中的隐私声明必须保留 -->
-    <string name="accessibility_service_description">读取当前屏幕上的文字，以便就地译出。文字在本机翻译，不会上传。</string>
+    <string name="accessibility_service_description">读取当前屏幕上的文字，以便就地译出。漫画模式下还会截取屏幕画面，以读取图片中的文字。全部内容在本机翻译，不会上传。</string>
+
+    <string name="manga_indicator_channel">漫画模式</string>
+    <string name="manga_indicator_title">漫画模式已开启</string>
+    <string name="manga_indicator_text">Babel 正在以图像方式读取屏幕。翻译在本机进行。</string>
 
 </resources>

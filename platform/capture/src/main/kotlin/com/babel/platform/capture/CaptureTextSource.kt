@@ -9,11 +9,12 @@ import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextElementIds
-import com.babel.domain.acquisition.TextSource
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.vision.FrameChangeDetector
+import com.babel.domain.vision.ImageTextScanner
 import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
+import com.babel.platform.screen.ScreenFrameSource
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -32,10 +33,10 @@ import kotlinx.coroutines.sync.withLock
  */
 @Singleton
 class CaptureTextSource @Inject internal constructor(
-    private val capture: MediaProjectionScreenCapture,
+    private val frames: ScreenFrameSource,
     private val recognizer: TextRecognizer,
     private val logger: BabelLogger,
-) : TextSource {
+) : ImageTextScanner {
 
     override val sourceType: TextSourceType = TextSourceType.OCR
 
@@ -59,8 +60,8 @@ class CaptureTextSource @Inject internal constructor(
      * object this code touches, and holding one per scan would be the easiest
      * way to run the process out of memory.
      */
-    suspend fun scanOnce() {
-        val frame = capture.latestFrame() ?: return
+    override suspend fun scanOnce() {
+        val frame = frames.latestFrame() ?: return
 
         val signature = FrameSignature.of(frame)
         if (!FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
@@ -95,7 +96,7 @@ class CaptureTextSource @Inject internal constructor(
     }
 
     /** Drops everything currently tracked, e.g. when the session ends. */
-    suspend fun clear() {
+    override suspend fun clear() {
         lock.withLock {
             previousIds = emptySet()
             lastRecognized = null

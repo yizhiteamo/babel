@@ -27,11 +27,12 @@
 
     <!-- Manga mode (V2) -->
     <string name="capture_section_title">Manga mode</string>
-    <string name="capture_explanation">Reads the screen as an image so text inside pictures can be translated. Android asks for permission each time a session starts.</string>
+    <string name="capture_explanation">Reads the screen as an image so text inside pictures can be translated. Uses the accessibility permission you have already granted.</string>
     <string name="capture_action_start">Start</string>
     <string name="capture_action_stop">Stop</string>
     <string name="capture_state_idle">Off</string>
-    <string name="capture_state_requesting">Waiting for permission…</string>
+    <string name="capture_state_unavailable">Unavailable</string>
+    <string name="capture_unavailable_reason">Manga mode needs Android 11 or later and the Babel accessibility service switched on.</string>
     <string name="capture_state_active">Reading the screen</string>
     <string name="capture_state_failed">Could not start</string>
 

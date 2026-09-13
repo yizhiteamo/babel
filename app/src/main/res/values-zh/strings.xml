@@ -24,11 +24,12 @@
 
     <!-- 漫画模式（V2） -->
     <string name="capture_section_title">漫画模式</string>
-    <string name="capture_explanation">以图像方式读取屏幕，从而翻译图片中的文字。每次开启会话，系统都会询问一次权限。</string>
+    <string name="capture_explanation">以图像方式读取屏幕，从而翻译图片中的文字。使用你已经授予的无障碍权限，不再单独询问。</string>
     <string name="capture_action_start">开启</string>
     <string name="capture_action_stop">停止</string>
     <string name="capture_state_idle">未开启</string>
-    <string name="capture_state_requesting">等待授权…</string>
+    <string name="capture_state_unavailable">不可用</string>
+    <string name="capture_unavailable_reason">漫画模式需要 Android 11 及以上，并且已开启 Babel 无障碍服务。</string>
     <string name="capture_state_active">正在读取屏幕</string>
     <string name="capture_state_failed">无法开启</string>
 
