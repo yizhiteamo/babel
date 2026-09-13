@@ -12,19 +12,14 @@ import com.babel.core.model.TextBounds
 data class RecognizedLine(
     val text: String,
     val bounds: TextBounds,
+    /**
+     * What the engine said about how this line is set, or null if it said
+     * nothing.
+     *
+     * Kept as engine input rather than derived here so that a recogniser which
+     * knows the answer is believed over any inference of ours. ML Kit reports a
+     * line angle and is authoritative; [TextRegionGrouper] falls back to shape
+     * only when this is null.
+     */
+    val orientation: TextOrientation? = null,
 )
-
-/**
- * How lines are laid out on the page, which decides both how they group and in
- * what order they read.
- *
- * A page can mix both — vertical dialogue alongside horizontal sound effects or
- * notes — so this is a property of a group of lines, never a global setting.
- */
-enum class ReadingDirection {
-    /** Japanese comics: columns read top to bottom, columns ordered right to left. */
-    VERTICAL_RTL,
-
-    /** Western text: lines read left to right, ordered top to bottom. */
-    HORIZONTAL_LTR,
-}

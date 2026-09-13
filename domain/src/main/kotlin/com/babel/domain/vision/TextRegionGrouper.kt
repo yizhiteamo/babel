@@ -41,27 +41,77 @@ data class GroupingConfig(
  * This exists because a recogniser's own grouping cannot be trusted. Measured on
  * ML Kit: one bubble came back as two separate blocks, while another block held
  * two columns concatenated in the wrong order. Both are geometry problems and
- * are fixed here rather than downstream — see `docs/milestones/v2.md` for the
- * observations this is built against.
+ * are fixed here rather than downstream — see `docs/milestones/v2.md`.
+ *
+ * Orientation is resolved per line, not per page. Comics mix vertical dialogue
+ * with horizontal captions, and the two must never be grouped together: what
+ * counts as "adjacent" is itself orientation-dependent, so mixing them would
+ * corrupt the bubbles, not merely their order.
  */
 class TextRegionGrouper(
     private val config: GroupingConfig = GroupingConfig(),
 ) {
 
+    /**
+     * @param forcedOrientation overrides detection entirely. For tests and for
+     *   material known to be uniform; leave null to decide per line.
+     */
     fun group(
         lines: List<RecognizedLine>,
-        direction: ReadingDirection,
+        forcedOrientation: TextOrientation? = null,
     ): List<TextRegion> {
         val usable = lines.filter { it.text.isNotBlank() && !it.bounds.isEmpty }
         if (usable.isEmpty()) return emptyList()
 
-        val groups = partitionByAdjacency(usable, direction)
+        val resolved = resolveOrientations(usable, forcedOrientation)
 
-        val regions = groups.map { group ->
-            TextRegion(sortForReading(group, direction), group.union())
-        }
-        return orderRegions(regions, direction)
+        // Partition first: adjacency means different things in each orientation,
+        // so the two must be grouped independently.
+        val regions = resolved.entries
+            .groupBy({ it.value }, { it.key })
+            .flatMap { (orientation, group) -> regionsWithin(group, orientation) }
+
+        return orderPage(regions)
     }
+
+    /**
+     * Engine first, shape second, page majority last.
+     *
+     * The majority fallback matters for single characters: their box is square,
+     * so shape says nothing, and a lone "!" should follow the page it sits on
+     * rather than default to either orientation arbitrarily.
+     */
+    private fun resolveOrientations(
+        lines: List<RecognizedLine>,
+        forced: TextOrientation?,
+    ): Map<RecognizedLine, TextOrientation> {
+        if (forced != null) return lines.associateWith { forced }
+
+        val decided = lines.associateWith { line ->
+            line.orientation ?: TextOrientationDetector.fromBounds(line.bounds)
+        }
+
+        val majority = decided.values.filterNotNull()
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            ?: TextOrientation.HORIZONTAL
+
+        return decided.mapValues { (_, orientation) -> orientation ?: majority }
+    }
+
+    private fun regionsWithin(
+        lines: List<RecognizedLine>,
+        orientation: TextOrientation,
+    ): List<TextRegion> =
+        partitionByAdjacency(lines, orientation).map { group ->
+            TextRegion(
+                lines = sortForReading(group, orientation),
+                bounds = group.union(),
+                orientation = orientation,
+            )
+        }
 
     /**
      * Union-find over "these two lines are neighbours", so a chain of columns
@@ -69,7 +119,7 @@ class TextRegionGrouper(
      */
     private fun partitionByAdjacency(
         lines: List<RecognizedLine>,
-        direction: ReadingDirection,
+        orientation: TextOrientation,
     ): List<List<RecognizedLine>> {
         val parent = IntArray(lines.size) { it }
 
@@ -87,7 +137,7 @@ class TextRegionGrouper(
 
         for (i in lines.indices) {
             for (j in i + 1 until lines.size) {
-                if (areNeighbours(lines[i].bounds, lines[j].bounds, direction)) {
+                if (areNeighbours(lines[i].bounds, lines[j].bounds, orientation)) {
                     parent[find(i)] = find(j)
                 }
             }
@@ -107,16 +157,16 @@ class TextRegionGrouper(
     private fun areNeighbours(
         a: TextBounds,
         b: TextBounds,
-        direction: ReadingDirection,
-    ): Boolean = when (direction) {
-        ReadingDirection.VERTICAL_RTL -> {
+        orientation: TextOrientation,
+    ): Boolean = when (orientation) {
+        TextOrientation.VERTICAL -> {
             val gap = gapBetween(a.left, a.right, b.left, b.right)
             val thickness = maxOf(a.width, b.width)
             val overlap = overlapRatio(a.top, a.bottom, b.top, b.bottom)
             gap <= thickness * config.maxGapRatio && overlap >= config.minOverlapRatio
         }
 
-        ReadingDirection.HORIZONTAL_LTR -> {
+        TextOrientation.HORIZONTAL -> {
             val gap = gapBetween(a.top, a.bottom, b.top, b.bottom)
             val thickness = maxOf(a.height, b.height)
             val overlap = overlapRatio(a.left, a.right, b.left, b.right)
@@ -144,36 +194,50 @@ class TextRegionGrouper(
      */
     private fun sortForReading(
         lines: List<RecognizedLine>,
-        direction: ReadingDirection,
-    ): List<RecognizedLine> = when (direction) {
-        ReadingDirection.VERTICAL_RTL ->
-            lines.sortedWith(compareByDescending<RecognizedLine> { it.bounds.right }
-                .thenBy { it.bounds.top })
+        orientation: TextOrientation,
+    ): List<RecognizedLine> = when (orientation) {
+        TextOrientation.VERTICAL ->
+            lines.sortedWith(
+                compareByDescending<RecognizedLine> { it.bounds.right }.thenBy { it.bounds.top },
+            )
 
-        ReadingDirection.HORIZONTAL_LTR ->
-            lines.sortedWith(compareBy<RecognizedLine> { it.bounds.top }
-                .thenBy { it.bounds.left })
+        TextOrientation.HORIZONTAL ->
+            lines.sortedWith(
+                compareBy<RecognizedLine> { it.bounds.top }.thenBy { it.bounds.left },
+            )
     }
 
     /**
-     * Bubbles on a Japanese page read right to left across a row of panels,
-     * then down to the next row.
+     * Orders regions by rows of panels, then across each row.
      *
-     * Sorting by top and then by right does not work: bubbles sharing a row are
-     * not aligned to the pixel. In the measured sample the top-right bubble
-     * starts at y=122 and the top-left at y=101, so a plain top-first sort puts
-     * the left one first and reverses the page. Rows are therefore formed from
-     * vertical overlap before ordering within them.
+     * Sorting by top then by right does not work: bubbles sharing a row are not
+     * aligned to the pixel. In the measured sample the top-right bubble starts
+     * at y=122 and the top-left at y=101, so a plain top-first sort puts the
+     * left one first and reverses the page. Rows are therefore built from
+     * vertical overlap first.
+     *
+     * Note this cannot be a `Comparator`: "shares a row" is not transitive — A
+     * may overlap B and B overlap C while A and C do not — and a comparator
+     * built on it gives unstable results or throws.
+     *
+     * Which way a row reads follows the page's dominant orientation, not each
+     * region's: a horizontal caption on a Japanese page is still encountered in
+     * right-to-left page order.
      */
-    private fun orderRegions(
-        regions: List<TextRegion>,
-        direction: ReadingDirection,
-    ): List<TextRegion> = when (direction) {
-        ReadingDirection.VERTICAL_RTL ->
-            intoRows(regions).flatMap { row -> row.sortedByDescending { it.bounds.right } }
+    private fun orderPage(regions: List<TextRegion>): List<TextRegion> {
+        val dominant = regions
+            .groupingBy { it.orientation }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            ?: TextOrientation.HORIZONTAL
 
-        ReadingDirection.HORIZONTAL_LTR ->
-            intoRows(regions).flatMap { row -> row.sortedBy { it.bounds.left } }
+        return intoRows(regions).flatMap { row ->
+            when (dominant) {
+                TextOrientation.VERTICAL -> row.sortedByDescending { it.bounds.right }
+                TextOrientation.HORIZONTAL -> row.sortedBy { it.bounds.left }
+            }
+        }
     }
 
     /** Regions whose vertical extents overlap belong to the same row of panels. */
@@ -195,14 +259,11 @@ class TextRegionGrouper(
         return rows
     }
 
-    private fun List<RecognizedLine>.union(): TextBounds {
-        val space = first().bounds.space
-        return TextBounds(
-            left = minOf { it.bounds.left },
-            top = minOf { it.bounds.top },
-            right = maxOf { it.bounds.right },
-            bottom = maxOf { it.bounds.bottom },
-            space = space,
-        )
-    }
+    private fun List<RecognizedLine>.union(): TextBounds = TextBounds(
+        left = minOf { it.bounds.left },
+        top = minOf { it.bounds.top },
+        right = maxOf { it.bounds.right },
+        bottom = maxOf { it.bounds.bottom },
+        space = first().bounds.space,
+    )
 }

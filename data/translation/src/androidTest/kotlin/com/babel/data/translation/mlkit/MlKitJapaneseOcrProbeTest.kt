@@ -94,7 +94,16 @@ class MlKitJapaneseOcrProbeTest {
             // all: if a block's columns are not separable here, a reversed
             // block like "いい天気今日は" can never be put right downstream.
             block.lines.forEachIndexed { lineIndex, line ->
-                println("OCR_PROBE     line[$index.$lineIndex] box=${line.boundingBox} text=${line.text}")
+                // `angle` and the element boxes are checked before writing any
+                // orientation heuristic of our own: if the engine already
+                // distinguishes vertical from horizontal, guessing from the
+                // aspect ratio would be reinventing it badly.
+                val elementBoxes = line.elements.joinToString(" ") { "${it.text}@${it.boundingBox}" }
+                println(
+                    "OCR_PROBE     line[$index.$lineIndex] box=${line.boundingBox} " +
+                        "angle=${line.angle} text=${line.text}",
+                )
+                println("OCR_PROBE       elements: $elementBoxes")
             }
         }
 

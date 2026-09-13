@@ -15,6 +15,13 @@ data class TextRegion(
     val lines: List<RecognizedLine>,
     /** Bounding box covering every line, used to place and erase. */
     val bounds: TextBounds,
+    /**
+     * How this region is set. Carried through because rendering needs it: a
+     * translation replacing vertical dialogue has to be laid out differently
+     * from one replacing a horizontal caption, and the information would
+     * otherwise be lost once grouping is done.
+     */
+    val orientation: TextOrientation,
 ) {
     /**
      * Joined without separators: Japanese columns continue one sentence, so a
