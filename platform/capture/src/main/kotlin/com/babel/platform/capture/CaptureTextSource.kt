@@ -63,7 +63,11 @@ class CaptureTextSource @Inject internal constructor(
      * object this code touches, and holding one per scan would be the easiest
      * way to run the process out of memory.
      */
-    override suspend fun scanOnce(packageName: String?) {
+    override suspend fun scanOnce(
+        packageName: String?,
+        exclusions: List<TextBounds>,
+        within: TextBounds?,
+    ) {
         val frame = frames.latestFrame() ?: return
 
         val signature = FrameSignature.of(frame)
@@ -81,10 +85,19 @@ class CaptureTextSource @Inject internal constructor(
             if (lines.isEmpty()) {
                 emptyList()
             } else {
-                val regions = grouper.group(lines)
+                val all = grouper.group(lines)
+                val regions = all
+                    .filter { within == null || it.bounds.centreIsIn(within) }
+                    .filterNot { it.bounds.isExcludedBy(exclusions) }
                 // Counts only — recognised text is screen content and stays out
                 // of diagnostics (`docs/systems/privacy.md`).
-                logger.debug(TAG, "recognised ${lines.size} lines in ${regions.size} regions")
+                // Counts only — recognised text is screen content and stays out
+                // of diagnostics (`docs/systems/privacy.md`).
+                logger.debug(
+                    TAG,
+                    "recognised ${lines.size} lines in ${all.size} regions, " +
+                        "${all.size - regions.size} on interface",
+                )
 
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
@@ -105,6 +118,22 @@ class CaptureTextSource @Inject internal constructor(
             lastRecognized = null
         }
         events.emit(TextSourceEvent.Cleared)
+    }
+
+    /**
+     * Whether this region sits on something the text path already sees.
+     *
+     * Judged by the region's centre rather than by any overlap: a bubble whose
+     * edge grazes a toolbar is still a bubble, and dropping it would lose the
+     * dialogue to protect the chrome.
+     */
+    private fun TextBounds.isExcludedBy(exclusions: List<TextBounds>): Boolean =
+        exclusions.any { centreIsIn(it) }
+
+    private fun TextBounds.centreIsIn(area: TextBounds): Boolean {
+        val centreX = (left + right) / 2
+        val centreY = (top + bottom) / 2
+        return centreX in area.left until area.right && centreY in area.top until area.bottom
     }
 
     /**

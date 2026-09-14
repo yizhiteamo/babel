@@ -1,5 +1,6 @@
 package com.babel.domain.vision
 
+import com.babel.core.model.TextBounds
 import com.babel.domain.acquisition.TextSource
 import kotlinx.coroutines.flow.StateFlow
 
@@ -63,7 +64,21 @@ interface ImageTextScanner : TextSource {
      *   they key on the package — a capture has no window to learn it from, so
      *   whoever drives the scan has to say.
      */
-    suspend fun scanOnce(packageName: String?)
+    /**
+     * @param exclusions areas of the screen this scan must ignore, in screen
+     *   coordinates. Image translation exists to read what the text path
+     *   cannot, so anything the text path can already see — the app's own
+     *   chrome, the system bars — is not artwork and is not its business.
+     */
+    /**
+     * @param within the app's content area, when it is known. Text outside it
+     *   is the app's own chrome and is never artwork. Null means unrestricted.
+     */
+    suspend fun scanOnce(
+        packageName: String?,
+        exclusions: List<TextBounds> = emptyList(),
+        within: TextBounds? = null,
+    )
 
     /** Drops everything currently tracked, e.g. when the mode is turned off. */
     suspend fun clear()

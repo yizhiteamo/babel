@@ -2,9 +2,15 @@ package com.babel.platform.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.babel.core.common.BabelLogger
 import com.babel.core.common.DispatcherProvider
+import android.os.Build
+import android.view.WindowInsets
+import android.view.WindowManager
+import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.Revision
+import com.babel.core.model.TextBounds
 import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.scope.TranslationScopePolicy
@@ -153,7 +159,126 @@ class BabelAccessibilityService : AccessibilityService() {
             }
             imageScanInScope = true
 
-            imageScanner.scanOnce(front)
+            imageScanner.scanOnce(front, interfaceAreas(), contentArea())
+        }
+    }
+
+    /**
+     * Parts of the screen that image translation should leave alone.
+     *
+     * Manga mode reads the whole display as pixels, so it sees the app's
+     * chrome, the address bar and the status bar clock alongside the artwork,
+     * and translates all of it. Reported from a device: a comic page covered in
+     * translations of browser tab titles.
+     *
+     * The rule is a definition rather than a guess about screen positions:
+     * image translation exists to read what the text path **cannot**, so
+     * anything the text path can already see is interface, not art. The
+     * accessibility tree is exactly that list, and it comes with bounds.
+     *
+     * The system bars are added separately — they belong to SystemUI's window,
+     * not to the app's tree.
+     *
+     * Known limit, worth stating: a reader that exposes its comic's text to
+     * accessibility would have that text skipped here, while the text path is
+     * suspended. Nobody translates it. Acceptable, because such an app needs no
+     * manga mode in the first place.
+     */
+    private fun interfaceAreas(): List<TextBounds> {
+        val areas = mutableListOf<TextBounds>()
+
+        for (root in interfaceRoots()) {
+            extractor.extract(root).mapTo(areas) { it.bounds }
+        }
+
+        val screen = resources.displayMetrics.let { it.widthPixels.toLong() * it.heightPixels }
+        return areas.filter { it.isLabelSized(screen) } + systemBars()
+    }
+
+    /**
+     * The app's content area, when the tree makes it obvious.
+     *
+     * Excluding what accessibility can see only reaches as far as what it
+     * exposes, and measured on this device Chromium exposes **two** text nodes
+     * for its entire window — its tab titles are not among them. No exclusion
+     * rule can remove what it cannot see.
+     *
+     * The same tree does expose the content area, as the container node that
+     * [isLabelSized] rejects: 1083x1383 offset below the toolbar, exactly the
+     * page. Turning the question around and keeping only what falls *inside*
+     * that container removes every kind of chrome at once — tab strip, address
+     * bar, system bars — without naming any of them.
+     *
+     * Null when no such container is found, in which case nothing is
+     * restricted: a wrong guess here would silence the whole screen.
+     */
+    private fun contentArea(): TextBounds? {
+        val screen = resources.displayMetrics.let { it.widthPixels.toLong() * it.heightPixels }
+        return interfaceRoots()
+            .flatMap { extractor.extract(it) }
+            .map { it.bounds }
+            .filterNot { it.isLabelSized(screen) }
+            .maxByOrNull { it.width.toLong() * it.height }
+    }
+
+    /**
+     * Every window's tree, not just the front one.
+     *
+     * A browser's tab strip lives in a different window from its page, so the
+     * active window alone misses exactly the chrome that provoked this —
+     * measured: the address bar was excluded and the tab titles were not.
+     *
+     * Our own windows are skipped. The translations we draw carry text of their
+     * own, and feeding them back in as areas to avoid would have the overlay
+     * suppress the next scan of the very region it occupies.
+     */
+    private fun interfaceRoots(): List<AccessibilityNodeInfo> = try {
+        val fromWindows = windows.orEmpty()
+            .mapNotNull { it.root }
+            .filterNot { it.packageName?.toString() == packageName }
+        fromWindows.ifEmpty { listOfNotNull(rootInActiveWindow) }
+    } catch (failure: Exception) {
+        logger.warn(TAG, "could not read the window list", failure)
+        emptyList()
+    }
+
+    /**
+     * Whether this is small enough to be an interface label rather than a
+     * container.
+     *
+     * Measured on a comic page: the browser reports a text node of 1083x1383 —
+     * the whole content area — and treating it as interface dropped every
+     * bubble on the page. A node covering a quarter of the display is not
+     * telling us where text sits, it is a box with text somewhere inside it.
+     * V1 met the same container the first time it sized type from bounds.
+     */
+    private fun TextBounds.isLabelSized(screenArea: Long): Boolean =
+        width.toLong() * height <= screenArea / LABEL_MAX_SCREEN_FRACTION
+
+    /**
+     * Status and navigation bars, which no app's tree contains.
+     *
+     * The metrics call is API 30, which manga mode already requires — but the
+     * requirement lives in [MangaModeController], so it is restated here rather
+     * than assumed across a module boundary.
+     */
+    private fun systemBars(): List<TextBounds> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return emptyList()
+
+        val metrics = getSystemService(WindowManager::class.java)
+            ?.currentWindowMetrics ?: return emptyList()
+        val insets = metrics.windowInsets
+            .getInsets(WindowInsets.Type.systemBars())
+        val width = metrics.bounds.width()
+        val height = metrics.bounds.height()
+
+        return buildList {
+            if (insets.top > 0) {
+                add(TextBounds(0, 0, width, insets.top, CoordinateSpace.SCREEN))
+            }
+            if (insets.bottom > 0) {
+                add(TextBounds(0, height - insets.bottom, width, height, CoordinateSpace.SCREEN))
+            }
         }
     }
 
@@ -310,5 +435,8 @@ class BabelAccessibilityService : AccessibilityService() {
          * what keeps that from being expensive.
          */
         const val IMAGE_SCAN_INTERVAL_MS = 1_500L
+
+        /** A text node bigger than a quarter of the display is a container. */
+        const val LABEL_MAX_SCREEN_FRACTION = 4
     }
 }
