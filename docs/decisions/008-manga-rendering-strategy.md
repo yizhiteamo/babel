@@ -1,7 +1,8 @@
 # ADR 008 — Manga Rendering Strategy
 
 ## Status
-Accepted
+Accepted, with the opacity conclusion amended — see **Amendment: the ghost was
+avoidable** at the end.
 
 ## Context
 
@@ -100,3 +101,31 @@ defect.
   optimisation: without it this decision provides no benefit over V1.
 - If the ghost proves unacceptable on real material, the decision to revisit is
   fullscreen takeover, with gesture forwarding priced in — not a rendering tweak.
+
+## Amendment: the ghost was avoidable
+
+This ADR said the original always shows through at 20%, and treated that as a
+property of the platform. The arithmetic it gave was right — `0.8 × ours +
+0.2 × theirs`, and no amount of work on the upper layer changes the lower one —
+but the premise underneath it was not examined: that the overlay must be one
+window covering the whole screen with touches passing through it.
+
+`maximum_obscuring_opacity_for_touch` caps opacity for an untrusted overlay that
+**obscures the screen while letting touches past**. It exists to stop a
+screen-covering window nobody can touch from tricking the user. A window the
+size of a speech bubble that *does* take touches is not that, and is not capped.
+Measured: one window per translation, touchable, `dumpsys` reports `mAlpha=1.0`
+where the full-screen window reported `0.8`. The original is genuinely covered.
+
+The cost is a touch landing on a translation being consumed rather than passed
+on. Verified on a scrolling page with six translations on screen: a swipe
+between them still scrolls the page. Tapping a translation hides it, which is
+both the way out of a swallowed tap and the natural way to see the original.
+
+The earlier experiment that seemed to settle this removed `FLAG_NOT_TOUCHABLE`
+from the *full-screen* window and left the screen unusable. That result was
+real, and it answered a different question than the one it was taken to answer.
+
+What still stands: inpainting is not worth its cost, because sampling a flat
+colour is equivalent where the background is flat, and 25 of 26 real bubbles
+measured flat enough.

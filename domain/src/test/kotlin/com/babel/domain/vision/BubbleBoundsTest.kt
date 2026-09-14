@@ -101,6 +101,31 @@ class BubbleBoundsTest {
         assertEquals(label, BubbleBounds.expand(label, frame, rectangularBubble(strip)))
     }
 
+    /**
+     * The defect that forced the flood fill: a glyph the recogniser missed used
+     * to sit on the growing edge and stop it for good. Measured on real pages,
+     * bubbles several times wider than their text grew by 9 and 15 pixels, and
+     * the original showed around the translation.
+     *
+     * Letters are holes to flow around, not walls.
+     */
+    @Test
+    fun `unrecognised lettering inside the bubble does not block the search`() {
+        val bubble = bounds(100, 100, 500, 400)
+        val strays = listOf(bounds(300, 150, 330, 350), bounds(360, 150, 390, 350))
+        val inside = rectangularBubble(bubble)
+        val scene: (Int, Int) -> Boolean = { x, y ->
+            inside(x, y) && strays.none { x >= it.left && x < it.right && y >= it.top && y < it.bottom }
+        }
+
+        val column = bounds(200, 180, 240, 320)
+        val grown = BubbleBounds.expand(column, frame, scene)
+
+        // Must reach past both stray columns to the far side of the bubble.
+        assertTrue(grown.right > 400, "expected to flow past the lettering, got $grown")
+        assertTrue(grown.width > column.width * 5, "expected the bubble's width, got ${grown.width}")
+    }
+
     /** A strip that does end, like a button, is an enclosure like any other. */
     @Test
     fun `a bounded strip still counts as an enclosure`() {

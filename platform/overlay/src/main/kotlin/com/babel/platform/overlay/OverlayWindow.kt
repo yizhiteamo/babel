@@ -6,18 +6,38 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import android.widget.FrameLayout
 import com.babel.core.model.RenderedTranslation
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TextOrientation
 
 /**
- * Owns the window translations are drawn into.
+ * Owns the windows translations are drawn into — **one window per translation**,
+ * sized to the text it replaces.
  *
- * The container is laid out over the whole display and is entirely
- * non-interactive: `FLAG_NOT_TOUCHABLE` means every touch reaches the app
- * underneath, so translating a screen never changes how it behaves. That is a
- * V1 acceptance condition, and it is also why translations cannot be tappable.
+ * ## Why not one window over the whole screen
+ *
+ * It used to be exactly that, non-interactive, so every touch reached the app
+ * underneath. The cost was that the original text always showed through at 20%:
+ * Android caps the opacity of an untrusted, touch-passthrough overlay at
+ * `maximum_obscuring_opacity_for_touch` (0.8 by default, and unset on the test
+ * device so the default applies). We asked for `alpha = 1f` and `dumpsys`
+ * reported `mAlpha=0.8` — the system clamped it. The cap exists to stop a
+ * screen-covering window that cannot be touched from tricking the user.
+ *
+ * That reasoning does not apply to a window the size of a speech bubble. Each
+ * translation now gets its own window which **does** take touches, so nothing
+ * is obscured deceptively and the opacity stands: the original is genuinely
+ * replaced rather than shining through.
+ *
+ * What it costs is honest and small: a touch that lands on a translation is
+ * consumed rather than passed to the app. Everywhere else — the large majority
+ * of the screen — behaves exactly as before, so page turns and scrolling still
+ * work. Tapping a translation hides it for a moment, which is both the way out
+ * of a swallowed tap and the obvious way to check the original.
+ *
+ * An earlier experiment removed `FLAG_NOT_TOUCHABLE` from the *full-screen*
+ * window and left the screen unusable. That was the wrong experiment for this
+ * question, not evidence against it.
  *
  * All methods must run on the main thread — [OverlayRenderer] guarantees this.
  */
@@ -26,59 +46,40 @@ internal class OverlayWindow(private val context: Context) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-    private var container: FrameLayout? = null
     private val views = LinkedHashMap<TextElementId, TranslationView>()
     private val coordinateMapper = CoordinateMapper()
 
-    val isAttached: Boolean get() = container != null
+    private var attached = false
+
+    val isAttached: Boolean get() = attached
 
     fun canDraw(): Boolean = Settings.canDrawOverlays(context)
 
-    /** Returns false when the overlay permission is not granted. */
+    /**
+     * There is no window to create up front any more; this only reports whether
+     * windows may be added at all.
+     */
     fun attach(): Boolean {
-        if (container != null) return true
+        if (attached) return true
         if (!canDraw()) return false
-
-        val layout = FrameLayout(context)
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT,
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 0
-            y = 0
-            // Must be fully opaque, or the original text shows through the
-            // translation and the two render on top of each other. Some
-            // systems default overlay windows to a reduced alpha.
-            alpha = 1f
-        }
-
-        windowManager.addView(layout, params)
-        container = layout
-        refreshContainerOrigin(layout)
+        // Windows are positioned in screen coordinates, so there is no
+        // container whose origin could drift.
+        coordinateMapper.updateContainerOrigin(0, 0)
+        attached = true
         return true
     }
 
     fun detach() {
-        val layout = container ?: return
-        views.clear()
-        layout.removeAllViews()
-        runCatching { windowManager.removeView(layout) }
-        container = null
+        clear()
+        attached = false
     }
 
     fun show(translations: List<RenderedTranslation>) {
-        val layout = container ?: return
-        refreshContainerOrigin(layout)
+        if (!attached) return
 
         for (translation in translations) {
             val bounds = coordinateMapper.toRenderSpace(translation.bounds)
+
             // Vertical dialogue gets a vertical translation, which is how
             // lettering looks and how the translation lands on the columns it
             // replaces instead of beside them (`docs/milestones/v2.md`).
@@ -91,53 +92,66 @@ internal class OverlayWindow(private val context: Context) {
                 existing
             } else {
                 // A changed writing mode needs a different view, not a rebind.
-                existing?.let { layout.removeView(it.view) }
-                newView(wantsVertical).also {
-                    views[translation.elementId] = it
-                    layout.addView(it.view)
-                }
+                existing?.let { remove(it) }
+                newView(wantsVertical).also { views[translation.elementId] = it }
             }
 
             view.bind(translation)
-            view.view.layoutParams = FrameLayout.LayoutParams(
-                bounds.width.coerceAtLeast(1),
-                bounds.height.coerceAtLeast(1),
-            ).apply {
-                leftMargin = bounds.left
-                topMargin = bounds.top
+
+            val params = layoutParams(bounds.left, bounds.top, bounds.width, bounds.height)
+            if (view.view.isAttachedToWindow) {
+                runCatching { windowManager.updateViewLayout(view.view, params) }
+            } else {
+                runCatching { windowManager.addView(view.view, params) }
             }
             view.view.visibility = View.VISIBLE
-            view.view.requestLayout()
         }
     }
 
     fun hide(ids: List<TextElementId>) {
-        val layout = container ?: return
         for (id in ids) {
-            views.remove(id)?.let { layout.removeView(it.view) }
+            views.remove(id)?.let(::remove)
         }
     }
 
-    private fun newView(vertical: Boolean): TranslationView =
-        if (vertical) VerticalTranslationView(context) else TranslationTextView(context)
+    fun clear() {
+        views.values.forEach(::remove)
+        views.clear()
+    }
+
+    private fun remove(view: TranslationView) {
+        runCatching { windowManager.removeView(view.view) }
+    }
+
+    private fun newView(vertical: Boolean): TranslationView {
+        val view = if (vertical) VerticalTranslationView(context) else TranslationTextView(context)
+        // Tap to look underneath. A translation swallows the touch that lands on
+        // it, so it has to offer something in return — and "show me the
+        // original" is the thing a reader wants from it anyway.
+        view.view.setOnClickListener { it.visibility = View.INVISIBLE }
+        return view
+    }
 
     private val TranslationView.isVertical: Boolean
         get() = this is VerticalTranslationView
 
-    fun clear() {
-        val layout = container ?: return
-        views.clear()
-        layout.removeAllViews()
-    }
-
     /**
-     * Re-read on every batch: the system may reposition the window across
-     * rotation or an insets change, and a stale origin puts every translation
-     * off by the height of the status bar.
+     * Touchable on purpose — see the note on this class. `FLAG_NOT_FOCUSABLE`
+     * stays: taking touches is not a reason to steal the keyboard.
      */
-    private fun refreshContainerOrigin(layout: FrameLayout) {
-        val location = IntArray(2)
-        layout.getLocationOnScreen(location)
-        coordinateMapper.updateContainerOrigin(location[0], location[1])
-    }
+    private fun layoutParams(left: Int, top: Int, width: Int, height: Int) =
+        WindowManager.LayoutParams(
+            width.coerceAtLeast(1),
+            height.coerceAtLeast(1),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.OPAQUE,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = left
+            y = top
+            alpha = 1f
+        }
 }
