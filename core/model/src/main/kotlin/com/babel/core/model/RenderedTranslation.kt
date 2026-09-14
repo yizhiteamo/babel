@@ -25,4 +25,13 @@ data class RenderedTranslation(
     val text: String,
     val bounds: TextBounds,
     val style: StyleHints = StyleHints(),
+    /**
+     * Where the text being replaced came from.
+     *
+     * A renderer needs it: replacing text in a live app and replacing it in a
+     * captured image are not the same job. The first must let every touch
+     * through and therefore cannot be opaque; the second may take the touches
+     * that land on it and therefore can be (ADR 008's amendment).
+     */
+    val sourceType: TextSourceType = TextSourceType.ACCESSIBILITY,
 )

@@ -423,6 +423,7 @@ class DefaultTranslationCoordinator(
             // Carried straight through: the domain decides *what* to show, the
             // acquisition layer is the only one that ever saw the pixels.
             style = StyleHints(sourceStyle = element.style),
+            sourceType = element.sourceType,
         )
     }
 
