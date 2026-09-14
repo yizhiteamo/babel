@@ -33,10 +33,15 @@ import org.junit.runner.RunWith
  * belonging to someone else. Without it the test skips and says so, so the
  * repository stays runnable by anyone.
  *
- * Recognised text is never printed. It is screen content, and
- * `docs/systems/privacy.md` does not stop applying because this is a test. What
- * is printed is counts, sizes and percentages, plus the expected strings, which
- * are our own transcription rather than anything the device read.
+ * Recognised text **is** printed, by `reportPerBubble` alone. That is a
+ * deliberate exception, not an oversight: the page-wide character overlap this
+ * used to rely on cannot tell a correctly read bubble from two bubbles spliced
+ * together, and that distinction is the whole question. Seeing the strings is
+ * the only way to answer it.
+ *
+ * It is safe here and nowhere else: the material is supplied locally, never
+ * committed, and this is a test rather than the app. The app's own diagnostics
+ * still carry counts and sizes only (`docs/systems/privacy.md`).
  */
 @RunWith(AndroidJUnit4::class)
 class MangaMaterialEvaluationTest {
@@ -94,6 +99,7 @@ class MangaMaterialEvaluationTest {
         var open = 0
         val enclosedFlatness = mutableListOf<Double>()
         val openFlatness = mutableListOf<Double>()
+        val offCentre = mutableListOf<Double>()
 
         for (page in pages) {
             val bitmap = BitmapFactory.decodeFile(page.absolutePath)
@@ -130,6 +136,14 @@ class MangaMaterialEvaluationTest {
                 // painted onto the art.
                 val isEnclosed = grown != region.bounds
                 val flat = flatnessOf(bitmap, grown)
+
+                // How far the translation will be drawn from the text it
+                // replaces. The renderer centres in the grown box, but the text
+                // sits wherever it sits inside it — nothing measured this
+                // before, and "looks well covered" in a screenshot was the only
+                // check the alignment ever had.
+                val drift = drift(region.bounds, grown)
+                offCentre += drift
                 if (isEnclosed) {
                     enclosed++
                     enclosedFlatness += flat
@@ -142,12 +156,14 @@ class MangaMaterialEvaluationTest {
                     "MANGA_EVAL   region ${region.bounds.width}x${region.bounds.height}" +
                         " -> ${grown.width}x${grown.height}" +
                         " enclosed=$isEnclosed flatness=${percent(flat)}" +
+                        " drift=${percent(drift)}" +
                         " chars=${region.text.length} orientation=${region.orientation}",
                 )
             }
 
             groundTruth[page.name]?.let { expected ->
                 reportAccuracy(page.name, expected, regions.joinToString("") { it.text })
+                reportPerBubble(page.name, expected, regions.map { it.text })
             }
 
             bitmap.recycle()
@@ -157,6 +173,7 @@ class MangaMaterialEvaluationTest {
         println("MANGA_EVAL enclosed(bubbles)=$enclosed open(no enclosure)=$open")
         report("enclosed", enclosedFlatness)
         report("open", openFlatness)
+        report("drift", offCentre)
     }
 
     /**
@@ -174,6 +191,58 @@ class MangaMaterialEvaluationTest {
             println("MANGA_EVAL   ocr $page ${percent(ratios[index])}  $bubble")
         }
         println("MANGA_EVAL   ocr $page average=${percent(ratios.average())}")
+    }
+
+    /**
+     * Distance between the text's centre and its grown box's centre, as a
+     * fraction of the text box's size.
+     *
+     * 0 means the translation lands exactly where the original was. Anything
+     * approaching 0.5 means it is drawn a whole text-width away — which is what
+     * "the bubbles are misaligned" looks like from the outside.
+     */
+    private fun drift(text: TextBounds, grown: TextBounds): Double {
+        val dx = ((text.left + text.right) - (grown.left + grown.right)) / 2.0
+        val dy = ((text.top + text.bottom) - (grown.top + grown.bottom)) / 2.0
+        val scale = maxOf(text.width, text.height).coerceAtLeast(1)
+        return kotlin.math.hypot(dx, dy) / scale
+    }
+
+    /**
+     * Each recognised region against the transcribed bubble it resembles most.
+     *
+     * The page-wide character overlap above flatters badly: it asks only
+     * whether a character appears *somewhere* on the page, so a region holding
+     * two bubbles' text spliced together scores well while translating to
+     * nonsense. This asks the question that matters — is this region one
+     * bubble, and in the right order.
+     *
+     * It prints recognised text, which the app itself never does. That is the
+     * point of it being a test over material supplied locally and never
+     * committed.
+     */
+    private fun reportPerBubble(page: String, expected: List<String>, regions: List<String>) {
+        regions.forEach { region ->
+            val clean = region.filterNot(Char::isWhitespace)
+            val best = expected.minByOrNull { distance(clean, it) }
+            val score = best?.let { 1.0 - distance(clean, it).toDouble() / maxOf(clean.length, it.length, 1) }
+            println("MANGA_EVAL   bubble $page ${percent(score ?: 0.0)} got=\"$clean\" near=\"${best.orEmpty()}\"")
+        }
+    }
+
+    /** Levenshtein, so a spliced pair of bubbles scores far worse than a typo. */
+    private fun distance(a: String, b: String): Int {
+        var previous = IntArray(b.length + 1) { it }
+        for (i in 1..a.length) {
+            val current = IntArray(b.length + 1)
+            current[0] = i
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                current[j] = minOf(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + cost)
+            }
+            previous = current
+        }
+        return previous[b.length]
     }
 
     private fun flatnessOf(bitmap: Bitmap, bounds: TextBounds): Double {
