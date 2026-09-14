@@ -18,3 +18,7 @@ local.properties
 # Real manga pages used to judge V2 quality. Supplied locally, never committed:
 # it is somebody else's copyrighted work (docs/milestones/v2.md).
 /comic-sample/
+
+# Model weights, fetched locally and never committed — same rule as the manga
+# pages: somebody else's artefact, and far too large for a repository.
+/models/
