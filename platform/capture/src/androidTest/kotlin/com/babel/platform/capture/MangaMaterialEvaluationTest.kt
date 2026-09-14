@@ -57,25 +57,7 @@ class MangaMaterialEvaluationTest {
      * error.** A character transcribed wrongly here counts against OCR that
      * read it rightly.
      */
-    private val groundTruth = mapOf(
-        "jap-mag-01.jpg" to listOf(
-            "先生も汗拭きシート使いますか",
-            "いいの",
-            "はいいくらでも使ってください",
-            "そっちは私の使用済み",
-            "先生先生",
-        ),
-        "jap-mag-04.jpg" to listOf(
-            "スーパーアルバイターの資格次が最終試験この本も最終ですッ",
-            "どんなことが書かれて",
-            "仕事中突然視界が高くなったり増えたり手足色声が変化して",
-            "周囲が泣いたり騒いだり逃げ出した時店主の言葉や誘導は無視して",
-            "目を閉じて",
-            "絶対に動かないこと",
-            "あんまりわかんないケドッ",
-            "がんばりまーす",
-        ),
-    )
+    private val groundTruth = BubbleScoring.groundTruth
 
     @Test
     fun measureRealPages() = runBlocking {
@@ -224,25 +206,10 @@ class MangaMaterialEvaluationTest {
     private fun reportPerBubble(page: String, expected: List<String>, regions: List<String>) {
         regions.forEach { region ->
             val clean = region.filterNot(Char::isWhitespace)
-            val best = expected.minByOrNull { distance(clean, it) }
-            val score = best?.let { 1.0 - distance(clean, it).toDouble() / maxOf(clean.length, it.length, 1) }
+            val best = expected.maxByOrNull { BubbleScoring.similarity(clean, it) }
+            val score = best?.let { BubbleScoring.similarity(clean, it) }
             println("MANGA_EVAL   bubble $page ${percent(score ?: 0.0)} got=\"$clean\" near=\"${best.orEmpty()}\"")
         }
-    }
-
-    /** Levenshtein, so a spliced pair of bubbles scores far worse than a typo. */
-    private fun distance(a: String, b: String): Int {
-        var previous = IntArray(b.length + 1) { it }
-        for (i in 1..a.length) {
-            val current = IntArray(b.length + 1)
-            current[0] = i
-            for (j in 1..b.length) {
-                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
-                current[j] = minOf(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + cost)
-            }
-            previous = current
-        }
-        return previous[b.length]
     }
 
     private fun flatnessOf(bitmap: Bitmap, bounds: TextBounds): Double {

@@ -39,7 +39,14 @@ internal class MlKitTextRecognizer @Inject constructor(
     }
 
     override suspend fun recognize(frame: Bitmap): List<RecognizedLine> = try {
-        val result = recognizer.process(InputImage.fromBitmap(frame, 0)).await()
+        val scale = scaleFor(frame)
+        val enlarged = if (scale > 1) frame.enlargedBy(scale) else frame
+
+        val result = try {
+            recognizer.process(InputImage.fromBitmap(enlarged, 0)).await()
+        } finally {
+            if (enlarged !== frame) enlarged.recycle()
+        }
 
         result.textBlocks
             .flatMap { it.lines }
@@ -50,7 +57,10 @@ internal class MlKitTextRecognizer @Inject constructor(
 
                 RecognizedLine(
                     text = text,
-                    bounds = box.toTextBounds(),
+                    // Back to the frame's own coordinates: the engine measured
+                    // an enlarged copy, and boxes twice their true size would
+                    // put every translation in the wrong place.
+                    bounds = box.toTextBounds(scale),
                     // The engine's own angle beats any inference from shape, and
                     // is decisive where shape is not: a single character is
                     // square and tells shape nothing.
@@ -66,11 +76,36 @@ internal class MlKitTextRecognizer @Inject constructor(
         emptyList()
     }
 
-    private fun Rect.toTextBounds() = TextBounds(
-        left = left,
-        top = top,
-        right = right,
-        bottom = bottom,
+    /**
+     * Enlarging the frame before recognition, measured rather than assumed.
+     *
+     * A page shown on a phone gives glyphs around 27px, which is where ML Kit
+     * starts confusing similar characters — 汗 read as 井, 験 as 線, 誘導 as
+     * 絵尊 — and a sentence with two wrong characters translates to nonsense.
+     *
+     * Five variants were compared on real pages against hand-transcribed text
+     * (`OcrPreprocessingExperimentTest`). Doubling was the only one that
+     * improved **both** pages: 85%→91% and 82%→87%. Raising contrast and
+     * re-reading magnified crops each helped one page and hurt the other, so
+     * neither was taken.
+     *
+     * The cost is memory: a doubled 1080x1920 frame is about 33MB, held for the
+     * length of one recognition. [MAX_PIXELS] keeps that bounded on larger
+     * displays rather than trusting the number to stay small.
+     */
+    private fun scaleFor(frame: Bitmap): Int {
+        val pixels = frame.width.toLong() * frame.height
+        return if (pixels * SCALE * SCALE <= MAX_PIXELS) SCALE else 1
+    }
+
+    private fun Bitmap.enlargedBy(factor: Int): Bitmap =
+        Bitmap.createScaledBitmap(this, width * factor, height * factor, true)
+
+    private fun Rect.toTextBounds(scale: Int) = TextBounds(
+        left = left / scale,
+        top = top / scale,
+        right = right / scale,
+        bottom = bottom / scale,
         // Frames are captured from the display, so boxes are already in screen
         // coordinates.
         space = CoordinateSpace.SCREEN,
@@ -78,5 +113,11 @@ internal class MlKitTextRecognizer @Inject constructor(
 
     private companion object {
         const val TAG = "TextRecognizer"
+
+        /** Doubling won the comparison; see [scaleFor]. */
+        const val SCALE = 2
+
+        /** Roughly 8.5 megapixels, so a doubled 1080x1920 frame still fits. */
+        const val MAX_PIXELS = 8_500_000L
     }
 }
