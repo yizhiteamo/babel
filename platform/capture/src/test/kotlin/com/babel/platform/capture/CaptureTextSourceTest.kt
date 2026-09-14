@@ -26,7 +26,7 @@ class CaptureTextSourceTest {
     }
 
     private class UnusedRecognizer : TextRecognizer {
-        override val language = LanguageTag("ja")
+        override fun languageOf(text: String) = LanguageTag("ja")
         var called = false
         override suspend fun recognize(frame: Bitmap): List<RecognizedLine> {
             called = true

@@ -216,16 +216,47 @@ class DefaultTranslationCoordinatorTest {
     }
 
     @Test
-    fun `window change clears everything`() = runTest {
+    fun `window change clears what that source produced`() = runTest {
         val coordinator = start()
         coordinator.submit(TextSourceEvent.Upserted(listOf(TestElements.element(text = "Hello"))))
         advanceUntilIdle()
 
-        coordinator.submit(TextSourceEvent.Cleared)
+        coordinator.submit(TextSourceEvent.Cleared(TextSourceType.ACCESSIBILITY))
         advanceUntilIdle()
 
         assertTrue(renderer.visible.isEmpty())
-        assertTrue(renderer.updates.any { it is RenderUpdate.ClearAll })
+        coordinator.stop()
+    }
+
+    /**
+     * Manga mode hands the screen back and forth between the two paths, so one
+     * standing down is routine. It must not take the other's overlays with it —
+     * before `Cleared` carried a source it emitted `ClearAll`, and the path
+     * still working lost everything it had on screen.
+     */
+    @Test
+    fun `one source clearing leaves the other source on screen`() = runTest {
+        val coordinator = start()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(id = "node", text = "Hello"),
+                    TestElements.element(
+                        id = "bubble",
+                        text = "Bonjour",
+                        sourceType = TextSourceType.OCR,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(2, renderer.visible.size)
+
+        coordinator.submit(TextSourceEvent.Cleared(TextSourceType.OCR))
+        advanceUntilIdle()
+
+        assertEquals(listOf(TextElementId("node")), renderer.visible.keys.toList())
+        assertTrue(renderer.updates.none { it is RenderUpdate.ClearAll })
         coordinator.stop()
     }
 

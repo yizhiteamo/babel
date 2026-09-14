@@ -34,6 +34,6 @@ class FakeTextSource(
     }
 
     suspend fun clear() {
-        emit(TextSourceEvent.Cleared)
+        emit(TextSourceEvent.Cleared(sourceType))
     }
 }

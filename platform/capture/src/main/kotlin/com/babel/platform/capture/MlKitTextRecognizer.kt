@@ -6,6 +6,7 @@ import com.babel.core.common.BabelLogger
 import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.TextBounds
+import com.babel.domain.vision.JapaneseScript
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.TextOrientationDetector
 import com.google.mlkit.vision.common.InputImage
@@ -30,8 +31,13 @@ internal class MlKitTextRecognizer @Inject constructor(
     private val logger: BabelLogger,
 ) : TextRecognizer {
 
-    /** This client is built with [JapaneseTextRecognizerOptions]; it reads Japanese. */
-    override val language: LanguageTag = LanguageTag("ja")
+    /**
+     * This client is built with [JapaneseTextRecognizerOptions], but that model
+     * reads Latin script alongside Japanese — so what it produces is only
+     * Japanese when it actually says so in kana ([JapaneseScript]).
+     */
+    override fun languageOf(text: String): LanguageTag? =
+        JAPANESE.takeIf { JapaneseScript.isPresentIn(text) }
 
 
     private val recognizer by lazy {
@@ -113,6 +119,8 @@ internal class MlKitTextRecognizer @Inject constructor(
 
     private companion object {
         const val TAG = "TextRecognizer"
+
+        val JAPANESE = LanguageTag("ja")
 
         /** Doubling won the comparison; see [scaleFor]. */
         const val SCALE = 2

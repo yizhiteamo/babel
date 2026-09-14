@@ -36,8 +36,8 @@ screenshot contains, and the masked-text rule catches it.
 ### Two gaps the review found, both fixed
 
 **Scope was not applied to manga mode at all.** The node path checks it, but
-manga mode suspends the node path — so with manga mode on, walking into any app
-meant reading the whole screen with no policy applied. A capture reads
+the image path takes over the screens that path cannot read — so with manga mode
+on, walking into any app meant reading the whole screen with no policy applied. A capture reads
 everything on display, which makes scope matter *more* here than for nodes, not
 less. The scan loop now checks the foreground package, and reading the launcher
 went from happening to not: measured 0 recognitions on the home screen against 7

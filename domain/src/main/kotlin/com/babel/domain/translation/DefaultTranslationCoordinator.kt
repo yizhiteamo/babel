@@ -157,7 +157,7 @@ class DefaultTranslationCoordinator(
             // must not keep an overlay alive.
             when (event) {
                 is TextSourceEvent.Removed -> onRemoved(event.ids)
-                TextSourceEvent.Cleared -> onCleared()
+                is TextSourceEvent.Cleared -> onCleared(event.sourceType)
                 is TextSourceEvent.Upserted -> onUpserted(event.elements.filterNot(::isPausedSource))
             }
             return
@@ -166,7 +166,7 @@ class DefaultTranslationCoordinator(
         when (event) {
             is TextSourceEvent.Upserted -> onUpserted(event.elements)
             is TextSourceEvent.Removed -> onRemoved(event.ids)
-            TextSourceEvent.Cleared -> onCleared()
+            is TextSourceEvent.Cleared -> onCleared(event.sourceType)
         }
     }
 
@@ -236,10 +236,25 @@ class DefaultTranslationCoordinator(
         if (removed.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(removed))
     }
 
-    private suspend fun onCleared() {
-        tracked.values.forEach { it.job?.cancel() }
-        tracked.clear()
-        _renderUpdates.emit(RenderUpdate.ClearAll)
+    /**
+     * Drops what one source produced, leaving the other source's work alone.
+     *
+     * Scoped rather than total because manga mode passes the screen back and
+     * forth between the two paths — one stands down on a page the other can
+     * read — so a clear is now a routine event rather than a session ending.
+     * `ClearAll` stays for [stop], which really does end everything.
+     */
+    private suspend fun onCleared(sourceType: TextSourceType) {
+        val removed = mutableListOf<TextElementId>()
+        val iterator = tracked.entries.iterator()
+        while (iterator.hasNext()) {
+            val (id, entry) = iterator.next()
+            if (entry.element.sourceType != sourceType) continue
+            entry.job?.cancel()
+            iterator.remove()
+            removed += id
+        }
+        if (removed.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(removed))
     }
 
     private suspend fun onTranslated(message: Message.Translated) {

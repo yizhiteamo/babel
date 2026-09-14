@@ -101,8 +101,23 @@ class BabelAccessibilityService : AccessibilityService() {
     /** Identity of the window the last scan read, to detect a real app change. */
     private var lastWindowKey: String? = null
 
-    /** Whether the last image scan was allowed, so leaving scope clears once. */
-    private var imageScanInScope = false
+    /**
+     * The package the image path is currently translating, or null when it is
+     * not running at all.
+     *
+     * One field rather than a flag per reason, because every reason to stop has
+     * the same consequence — what was recognised on the old screen has to go.
+     * It covers leaving scope, the node path taking the screen back, manga mode
+     * being switched off, and the case that had no handling whatsoever: walking
+     * into a different app while manga mode stays on. Reported from a device as
+     * bubbles left behind on the next thing the user opened.
+     *
+     * Volatile because [followMangaMode] writes it too, so that switching the
+     * mode off clears immediately rather than at the next tick. A lost update
+     * there can only cost one redundant clear.
+     */
+    @Volatile
+    private var imagePathOwner: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -127,9 +142,9 @@ class BabelAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Reads the screen as an image while manga mode is on. Both acquisition
-     * paths feed the one coordinator, so nothing downstream knows which of them
-     * produced an element.
+     * Reads the screen as an image while manga mode is on **and this screen
+     * needs it**. Both acquisition paths feed the one coordinator, so nothing
+     * downstream knows which of them produced an element.
      *
      * A fixed interval, but a cheap one: [ImageTextScanner] compares each frame
      * against the last it recognised and returns immediately when the page has
@@ -139,86 +154,137 @@ class BabelAccessibilityService : AccessibilityService() {
         val current = scope ?: return
         while (current.isActive) {
             delay(IMAGE_SCAN_INTERVAL_MS)
-            if (mangaMode.state.value != CaptureState.ACTIVE) continue
+            if (mangaMode.state.value != CaptureState.ACTIVE) {
+                standDownImagePath()
+                continue
+            }
 
             // Scope is checked here too, and it has to be.
             //
-            // The node path checks it in [scanVisibleText], but manga mode
-            // suspends that path — so without this, turning manga mode on and
-            // walking into a banking app would read the whole screen with no
-            // policy applied anywhere. A capture reads everything on display,
-            // which makes scope matter more here than it does for nodes, not
-            // less (`docs/systems/scope.md`).
+            // The node path checks it in [scanVisibleText], but the image path
+            // takes over screens that path cannot read — so without this,
+            // turning manga mode on and walking into a banking app would read
+            // the whole screen with no policy applied anywhere. A capture reads
+            // everything on display, which makes scope matter more here than it
+            // does for nodes, not less (`docs/systems/scope.md`).
             val front = activePackage()
             if (!scopePolicy.isInScope(front)) {
-                if (imageScanInScope) {
-                    imageScanInScope = false
-                    imageScanner.clear()
-                }
+                standDownImagePath()
                 continue
             }
-            imageScanInScope = true
 
-            imageScanner.scanOnce(front, interfaceAreas(), contentArea())
+            val layout = readScreenLayout()
+            if (!layout.imagePathOwnsScreen) {
+                // The node path can read this screen, so it should: it is
+                // faster and more accurate than recognising pixels, and running
+                // both would stack two layers of overlays.
+                standDownImagePath()
+                continue
+            }
+
+            // A different app, with manga mode still on. Nothing else notices:
+            // the change detector compares pixels, and one white page followed
+            // by another does not clear the threshold.
+            if (imagePathOwner != front) {
+                if (imagePathOwner != null) imageScanner.clear()
+                imagePathOwner = front
+            }
+
+            imageScanner.scanOnce(front, layout.interfaceAreas, layout.contentArea)
         }
     }
 
     /**
-     * Parts of the screen that image translation should leave alone.
+     * Takes the image path's translations off the screen and stops it running.
      *
-     * Manga mode reads the whole display as pixels, so it sees the app's
-     * chrome, the address bar and the status bar clock alongside the artwork,
-     * and translates all of it. Reported from a device: a comic page covered in
-     * translations of browser tab titles.
-     *
-     * The rule is a definition rather than a guess about screen positions:
-     * image translation exists to read what the text path **cannot**, so
-     * anything the text path can already see is interface, not art. The
-     * accessibility tree is exactly that list, and it comes with bounds.
-     *
-     * The system bars are added separately — they belong to SystemUI's window,
-     * not to the app's tree.
-     *
-     * Known limit, worth stating: a reader that exposes its comic's text to
-     * accessibility would have that text skipped here, while the text path is
-     * suspended. Nobody translates it. Acceptable, because such an app needs no
-     * manga mode in the first place.
+     * Idempotent, so the loop can call it on every tick that the image path
+     * should not be running without clearing over and over.
      */
-    private fun interfaceAreas(): List<TextBounds> {
-        val areas = mutableListOf<TextBounds>()
-
-        for (root in interfaceRoots()) {
-            extractor.extract(root).mapTo(areas) { it.bounds }
-        }
-
-        val screen = resources.displayMetrics.let { it.widthPixels.toLong() * it.heightPixels }
-        return areas.filter { it.isLabelSized(screen) } + systemBars()
+    private suspend fun standDownImagePath() {
+        if (imagePathOwner == null) return
+        imagePathOwner = null
+        imageScanner.clear()
     }
 
     /**
-     * The app's content area, when the tree makes it obvious.
+     * What one walk of the window trees says about the screen in front.
      *
-     * Excluding what accessibility can see only reaches as far as what it
-     * exposes, and measured on this device Chromium exposes **two** text nodes
-     * for its entire window — its tab titles are not among them. No exclusion
-     * rule can remove what it cannot see.
-     *
-     * The same tree does expose the content area, as the container node that
-     * [isLabelSized] rejects: 1083x1383 offset below the toolbar, exactly the
-     * page. Turning the question around and keeping only what falls *inside*
-     * that container removes every kind of chrome at once — tab strip, address
-     * bar, system bars — without naming any of them.
-     *
-     * Null when no such container is found, in which case nothing is
-     * restricted: a wrong guess here would silence the whole screen.
+     * Three questions are asked of the same information, so it is read once:
+     * which areas the image path must leave alone, which area is the app's
+     * content, and — the one that decides which path runs at all — whether the
+     * text path can read this screen already.
      */
-    private fun contentArea(): TextBounds? {
+    private class ScreenLayout(
+        /**
+         * Parts of the screen image translation must leave alone.
+         *
+         * Manga mode reads the whole display as pixels, so it sees the app's
+         * chrome, the address bar and the status bar clock alongside the
+         * artwork, and translates all of it. Reported from a device: a comic
+         * page covered in translations of browser tab titles.
+         *
+         * The rule is a definition rather than a guess about screen positions:
+         * image translation exists to read what the text path **cannot**, so
+         * anything the text path can already see is interface, not art. The
+         * accessibility tree is exactly that list, and it comes with bounds.
+         * The system bars are added separately — they belong to SystemUI's
+         * window, not to the app's tree.
+         */
+        val interfaceAreas: List<TextBounds>,
+        /**
+         * The app's content area, when the tree makes it obvious.
+         *
+         * Excluding what accessibility can see only reaches as far as what it
+         * exposes, and measured on this device Chromium exposes **two** text
+         * nodes for its entire window — its tab titles are not among them. No
+         * exclusion rule can remove what it cannot see.
+         *
+         * The same tree does expose the content area, as the container node
+         * that [isLabelSized] rejects: 1083x1383 offset below the toolbar,
+         * exactly the page. Turning the question around and keeping only what
+         * falls *inside* that container removes every kind of chrome at once —
+         * tab strip, address bar, system bars — without naming any of them.
+         *
+         * Null when no such container is found, in which case nothing is
+         * restricted: a wrong guess here would silence the whole screen.
+         */
+        val contentArea: TextBounds?,
+        /** Label-sized text nodes sitting inside [contentArea]. */
+        val labelsInContent: Int,
+    ) {
+        /**
+         * Whether this screen holds text **only** the image path can reach.
+         *
+         * The same rule that decides which areas to skip, applied to the screen
+         * as a whole: image translation exists to read what the text path
+         * cannot. A comic page is one image, so the tree exposes no labels
+         * inside it and the image path takes over; an article exposes a label
+         * per paragraph, so the text path keeps it.
+         *
+         * This is what stops manga mode from being a global takeover. Leaving
+         * it on and opening an article used to put the whole article through
+         * OCR — slower, less accurate, and covered in opaque boxes — while the
+         * path that could read it properly sat suspended.
+         */
+        val imagePathOwnsScreen: Boolean
+            get() = labelsInContent < MIN_CONTENT_LABELS
+    }
+
+    private fun readScreenLayout(): ScreenLayout {
         val screen = resources.displayMetrics.let { it.widthPixels.toLong() * it.heightPixels }
-        return interfaceRoots()
-            .flatMap { extractor.extract(it) }
-            .map { it.bounds }
-            .filterNot { it.isLabelSized(screen) }
-            .maxByOrNull { it.width.toLong() * it.height }
+        val bounds = interfaceRoots().flatMap { extractor.extract(it) }.map { it.bounds }
+        val (labels, containers) = bounds.partition { it.isLabelSized(screen) }
+
+        val content = containers.maxByOrNull { it.width.toLong() * it.height }
+        val inContent = when (content) {
+            // No container to judge by, so every label counts: whatever the
+            // tree exposed is text the node path can read.
+            null -> labels.size
+            else -> labels.count { it.centreIsIn(content) }
+        }
+
+        logger.debug(TAG, "screen layout: $inContent labels inside the content area")
+        return ScreenLayout(labels + systemBars(), content, inContent)
     }
 
     /**
@@ -308,7 +374,9 @@ class BabelAccessibilityService : AccessibilityService() {
                 indicator.show()
             } else {
                 indicator.hide()
-                imageScanner.clear()
+                // Immediately rather than at the next tick of the scan loop:
+                // the user switched the mode off and expects the bubbles gone.
+                standDownImagePath()
             }
         }
     }
@@ -340,7 +408,7 @@ class BabelAccessibilityService : AccessibilityService() {
 
     private fun teardown() {
         lastWindowKey = null
-        imageScanInScope = false
+        imagePathOwner = null
         screenshots.detach()
         mangaMode.onServiceAvailabilityChanged()
         indicator.hide()
@@ -369,15 +437,28 @@ class BabelAccessibilityService : AccessibilityService() {
             return
         }
 
-        // Manga mode owns the screen while it runs. Both paths feed the same
-        // coordinator, so leaving this one active would translate the same
-        // screen twice and stack two layers of overlays on top of each other.
+        // Manga mode owns a screen only while it is the one that can read it.
+        // Both paths feed the same coordinator, so running both would translate
+        // the same screen twice and stack two layers of overlays — but standing
+        // down on *every* screen is what made manga mode ruin plain text. The
+        // decision is read live rather than shared between the two coroutines,
+        // so there is no flag to race over.
         if (mangaMode.state.value == CaptureState.ACTIVE) {
-            if (lastWindowKey != null) {
-                lastWindowKey = null
-                textSource.clear()
+            if (readScreenLayout().imagePathOwnsScreen) {
+                if (lastWindowKey != null) {
+                    lastWindowKey = null
+                    textSource.clear()
+                }
+                return
             }
-            return
+
+            // This screen is text, and the image path may have been part-way
+            // through recognising the previous one when the user moved. Taking
+            // its overlays down here, on the window event, rather than leaving
+            // it to notice at the end of its own scan is the difference between
+            // a flicker and four seconds of opaque boxes sitting on the
+            // article — measured on a device, which is where this was reported.
+            standDownImagePath()
         }
 
         val packageName = root.packageName?.toString()
@@ -438,5 +519,19 @@ class BabelAccessibilityService : AccessibilityService() {
 
         /** A text node bigger than a quarter of the display is a container. */
         const val LABEL_MAX_SCREEN_FRACTION = 4
+
+        /**
+         * How many labels inside the content area mean the text path can read
+         * this screen, so the image path should leave it alone.
+         *
+         * Set from measurement, like [LABEL_MAX_SCREEN_FRACTION] and
+         * `FrameChangeDetector.CHANGED_FRACTION` before it. Measured in
+         * Chromium on this device: a comic page reports **0** labels inside its
+         * content area on every sample, an article reports **8**. The threshold
+         * sits in that gap rather than on either edge, because a reader may
+         * label its own content area with a page number or a chapter title
+         * without that making the page readable as text.
+         */
+        const val MIN_CONTENT_LABELS = 3
     }
 }

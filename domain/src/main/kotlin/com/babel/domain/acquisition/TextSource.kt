@@ -16,8 +16,17 @@ sealed interface TextSourceEvent {
 
     data class Removed(val ids: List<TextElementId>) : TextSourceEvent
 
-    /** Window/app changed, or the source shut down; drop everything. */
-    data object Cleared : TextSourceEvent
+    /**
+     * Window/app changed, or the source shut down; drop everything **this
+     * source** produced.
+     *
+     * The source has to say which it is. Both acquisition paths feed one
+     * coordinator, and manga mode hands the screen back and forth between them
+     * (`docs/systems/accessibility.md`), so a clear that dropped everything
+     * would take the other path's live overlays with it — measured on a
+     * device as translations vanishing the moment the other path stood down.
+     */
+    data class Cleared(val sourceType: TextSourceType) : TextSourceEvent
 }
 
 /**

@@ -16,11 +16,16 @@ import com.babel.domain.vision.RecognizedLine
 internal interface TextRecognizer {
 
     /**
-     * The language this engine reads. Stamped onto every element it produces,
-     * because knowing beats detecting: language identification run on OCR
-     * output attributed Japanese manga to Finnish (`docs/milestones/v2.md`).
+     * What language [text] is in, as far as this engine can vouch for it, or
+     * null to leave the question to detection.
+     *
+     * Knowing beats detecting — language identification run on OCR output
+     * attributed Japanese manga to Finnish (`docs/milestones/v2.md`) — but the
+     * engine can only vouch for what it actually read, not for what it is built
+     * to read. ML Kit's Japanese recogniser also reads Latin, and stamping `ja`
+     * on an English page had manga mode translating it ja→zh.
      */
-    val language: LanguageTag
+    fun languageOf(text: String): LanguageTag?
 
 
     /**

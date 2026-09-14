@@ -51,6 +51,6 @@ class AccessibilityTextSource @Inject constructor() : TextSource {
     /** The window or app changed; nothing previously seen is still valid. */
     suspend fun clear() {
         lock.withLock { previousIds = emptySet() }
-        events.emit(TextSourceEvent.Cleared)
+        events.emit(TextSourceEvent.Cleared(sourceType))
     }
 }

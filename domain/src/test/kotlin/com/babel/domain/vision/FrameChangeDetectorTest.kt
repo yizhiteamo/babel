@@ -56,4 +56,44 @@ class FrameChangeDetectorTest {
     fun `a differently shaped signature forces recognition`() {
         assertTrue(FrameChangeDetector.shouldRecognize(IntArray(10), IntArray(20)))
     }
+
+    /**
+     * Nothing has settled before there is a frame to compare against, so the
+     * first tick of a session buys one interval of patience rather than reading
+     * whatever happens to be on screen.
+     */
+    @Test
+    fun `nothing has settled before the first frame`() {
+        assertFalse(FrameChangeDetector.hasSettled(null, page()))
+    }
+
+    @Test
+    fun `a page that has not moved has settled`() {
+        assertTrue(FrameChangeDetector.hasSettled(page(), page()))
+    }
+
+    /**
+     * The case this exists for: the accessibility tree described the comic
+     * while the browser was still painting the article it was leaving, and the
+     * capture read the outgoing page onto the incoming one.
+     */
+    @Test
+    fun `a page in transition has not settled`() {
+        val midTransition = page().altering(fraction = 0.40)
+
+        assertFalse(FrameChangeDetector.hasSettled(page(), midTransition))
+    }
+
+    /**
+     * Settling and changing are asked of different pairs, so a real page turn
+     * that has finished drawing answers yes to both — otherwise a new page
+     * would never be read at all.
+     */
+    @Test
+    fun `a finished page turn has both settled and changed`() {
+        val turned = page().altering(fraction = 0.80)
+
+        assertTrue(FrameChangeDetector.hasSettled(turned, turned))
+        assertTrue(FrameChangeDetector.shouldRecognize(page(), turned))
+    }
 }

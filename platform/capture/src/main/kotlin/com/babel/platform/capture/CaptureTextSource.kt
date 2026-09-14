@@ -51,8 +51,25 @@ class CaptureTextSource @Inject internal constructor(
     private var previousIds: Set<TextElementId> = emptySet()
     private var generation = 0L
 
+    /**
+     * How many times [clear] has run, so a scan can tell whether the screen it
+     * was reading went away while it read it.
+     *
+     * Recognition takes seconds, and a user changing pages does not wait for
+     * it. Without this, a clear issued mid-scan is undone by the scan that
+     * caused it: the results arrive afterwards and put the old screen's
+     * translations back, where nothing is left to take them down again.
+     */
+    private var clears = 0L
+
     /** Signature of the last frame actually recognised; null before the first. */
     private var lastRecognized: IntArray? = null
+
+    /**
+     * Signature of the last frame *seen*, recognised or not, so a screen still
+     * being painted can be told from one that has come to rest.
+     */
+    private var lastSeen: IntArray? = null
 
     override fun events(): Flow<TextSourceEvent> = events.asSharedFlow()
 
@@ -68,13 +85,19 @@ class CaptureTextSource @Inject internal constructor(
         exclusions: List<TextBounds>,
         within: TextBounds?,
     ) {
+        val startedAfter = lock.withLock { clears }
         val frame = frames.latestFrame() ?: return
 
         val signature = FrameSignature.of(frame)
-        if (!FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
-            // Same page as last time. Returning without publishing leaves the
-            // existing translations in place — re-recognising would replace
-            // them with a slightly different reading of the same page.
+        val settled = FrameChangeDetector.hasSettled(lastSeen, signature)
+        lastSeen = signature
+
+        // Two questions, and both have to say yes. Has the page come to rest —
+        // reading one mid-transition puts the outgoing screen's text across the
+        // incoming one — and is it a different page from the one already read?
+        // Re-recognising the same page would replace its translations with a
+        // slightly different reading of it.
+        if (!settled || !FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
             frame.recycle()
             return
         }
@@ -108,33 +131,23 @@ class CaptureTextSource @Inject internal constructor(
             frame.recycle()
         }
 
-        publish(elements)
+        publish(elements, startedAfter)
     }
 
     /** Drops everything currently tracked, e.g. when the session ends. */
     override suspend fun clear() {
         lock.withLock {
+            clears += 1
             previousIds = emptySet()
             lastRecognized = null
+            lastSeen = null
         }
-        events.emit(TextSourceEvent.Cleared)
+        events.emit(TextSourceEvent.Cleared(sourceType))
     }
 
-    /**
-     * Whether this region sits on something the text path already sees.
-     *
-     * Judged by the region's centre rather than by any overlap: a bubble whose
-     * edge grazes a toolbar is still a bubble, and dropping it would lose the
-     * dialogue to protect the chrome.
-     */
+    /** Whether this region sits on something the text path already sees. */
     private fun TextBounds.isExcludedBy(exclusions: List<TextBounds>): Boolean =
         exclusions.any { centreIsIn(it) }
-
-    private fun TextBounds.centreIsIn(area: TextBounds): Boolean {
-        val centreX = (left + right) / 2
-        val centreY = (top + bottom) / 2
-        return centreX in area.left until area.right && centreY in area.top until area.bottom
-    }
 
     /**
      * Works out where a translation should go and what colour it should be.
@@ -197,16 +210,22 @@ class CaptureTextSource @Inject internal constructor(
                 source = SourceIdentity(packageName = packageName),
                 revision = Revision(generation),
                 style = placement.style,
-                // The recogniser reads one language by construction, so the
-                // pipeline is told rather than left to guess.
-                sourceLanguage = recognizer.language,
+                // Told rather than guessed where the recogniser can vouch for
+                // it, and left to detection where it cannot.
+                sourceLanguage = recognizer.languageOf(region.text),
             )
         }
     }
 
     /** Same diffing as the accessibility source: only changes go downstream. */
-    private suspend fun publish(elements: List<TextElement>) {
+    private suspend fun publish(elements: List<TextElement>, startedAfter: Long) {
         val (removed, upserted) = lock.withLock {
+            if (clears != startedAfter) {
+                // Cleared while this scan ran, so it is a reading of a screen
+                // the user has already left. Publishing it would undo the clear.
+                logger.debug(TAG, "dropped a scan of a screen that is gone")
+                return
+            }
             val currentIds = elements.mapTo(LinkedHashSet()) { it.id }
             val gone = previousIds - currentIds
             previousIds = currentIds
