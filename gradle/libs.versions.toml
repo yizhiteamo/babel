@@ -21,6 +21,7 @@ kotlinxCoroutines = "1.9.0"
 mlkitTranslate = "17.0.3"
 mlkitLanguageId = "17.0.6"
 mlkitTextJapanese = "16.0.1"
+onnxruntime = "1.22.0"
 javaxInject = "1"
 junit = "4.13.2"
 androidxTestJunit = "1.2.1"
@@ -62,6 +63,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 mlkit-translate = { group = "com.google.mlkit", name = "translate", version.ref = "mlkitTranslate" }
 mlkit-language-id = { group = "com.google.mlkit", name = "language-id", version.ref = "mlkitLanguageId" }
 mlkit-text-recognition-japanese = { group = "com.google.mlkit", name = "text-recognition-japanese", version.ref = "mlkitTextJapanese" }
+onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 
 # Coroutines
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }

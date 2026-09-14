@@ -43,6 +43,11 @@ dependencies {
 
     // Judging real material needs a real device: ML Kit's recogniser and
     // Bitmap both need one. See MangaMaterialEvaluationTest.
+    // Test-only for now. Stage 2 asks whether a phone can run the comic models
+    // at all; until that is answered the app ships exactly what it shipped
+    // before, on the same principle that kept Android plumbing out of the way
+    // until the models proved themselves on the desktop.
+    androidTestImplementation(libs.onnxruntime.android)
     androidTestImplementation(kotlin("test"))
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)
