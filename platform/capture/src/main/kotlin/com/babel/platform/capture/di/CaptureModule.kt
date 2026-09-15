@@ -2,7 +2,11 @@ package com.babel.platform.capture.di
 
 import com.babel.domain.vision.ImageTextScanner
 import com.babel.platform.capture.CaptureTextSource
+import com.babel.platform.capture.DetectingPageReader
 import com.babel.platform.capture.MlKitTextRecognizer
+import com.babel.platform.capture.OnnxBubbleDetector
+import com.babel.platform.capture.PageReader
+import com.babel.platform.capture.TextDetector
 import com.babel.platform.capture.TextRecognizer
 import dagger.Binds
 import dagger.Module
@@ -36,4 +40,18 @@ internal abstract class RecognizerModule {
     @Binds
     @Singleton
     abstract fun bindTextRecognizer(impl: MlKitTextRecognizer): TextRecognizer
+
+    @Binds
+    @Singleton
+    abstract fun bindTextDetector(impl: OnnxBubbleDetector): TextDetector
+
+    /**
+     * The detecting reader, which falls back to the grouping one by itself when
+     * no model is present. Bound this way round so that the fallback is a
+     * dependency of the thing that needs it rather than a decision taken here —
+     * the condition is "is there a model", and only the detector knows.
+     */
+    @Binds
+    @Singleton
+    abstract fun bindPageReader(impl: DetectingPageReader): PageReader
 }

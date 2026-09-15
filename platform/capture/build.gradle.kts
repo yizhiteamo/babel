@@ -47,7 +47,9 @@ dependencies {
     // at all; until that is answered the app ships exactly what it shipped
     // before, on the same principle that kept Android plumbing out of the way
     // until the models proved themselves on the desktop.
-    androidTestImplementation(libs.onnxruntime.android)
+    // Real dependency now, not just a test one. Stage 2 kept it out of the app
+    // until the numbers justified it; they do (`docs/milestones/v2.md`).
+    implementation(libs.onnxruntime.android)
     androidTestImplementation(kotlin("test"))
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)

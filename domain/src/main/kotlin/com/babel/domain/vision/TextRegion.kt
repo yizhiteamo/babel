@@ -23,6 +23,22 @@ data class TextRegion(
      * otherwise be lost once grouping is done.
      */
     val orientation: TextOrientation,
+    /**
+     * The balloon this region sits in, when something knows where it is.
+     *
+     * Not a replacement for [bounds], which stays the lettering. The two answer
+     * different questions and each is better at its own: a detector knows
+     * *which* balloon, but reports its bounding rectangle — and filling that
+     * opaquely covers the outline and the corners outside an oval, which was
+     * measured on a device and looked worse than what it replaced. Growing a box
+     * out from the text until the pixels stop matching produces a rectangle that
+     * sits *inside* the balloon, which is the shape wanted.
+     *
+     * So this is the **limit** on that growth. It is what stops the growth
+     * leaking out through a balloon's tail — the failure that had the flood-fill
+     * version reverted (`docs/milestones/v2.md`).
+     */
+    val enclosure: TextBounds? = null,
 ) {
     /**
      * Joined without separators: Japanese columns continue one sentence, so a

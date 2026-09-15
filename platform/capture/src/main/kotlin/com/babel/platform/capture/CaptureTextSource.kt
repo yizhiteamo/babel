@@ -17,7 +17,6 @@ import com.babel.domain.vision.FrameChangeDetector
 import com.babel.domain.vision.ImageTextScanner
 import com.babel.domain.vision.OcrPunctuation
 import com.babel.domain.vision.TextRegion
-import com.babel.domain.vision.TextRegionGrouper
 import com.babel.platform.screen.ScreenFrameSource
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -39,13 +38,12 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class CaptureTextSource @Inject internal constructor(
     private val frames: ScreenFrameSource,
+    private val pages: PageReader,
     private val recognizer: TextRecognizer,
     private val logger: BabelLogger,
 ) : ImageTextScanner {
 
     override val sourceType: TextSourceType = TextSourceType.OCR
-
-    private val grouper = TextRegionGrouper()
 
     private val events = MutableSharedFlow<TextSourceEvent>(extraBufferCapacity = 64)
 
@@ -157,14 +155,13 @@ class CaptureTextSource @Inject internal constructor(
 
         val elements = try {
             val recognizeStarted = System.currentTimeMillis()
-            val lines = recognizer.recognize(page)
+            val all = pages.read(page)
             val recognizeMs = System.currentTimeMillis() - recognizeStarted
 
-            if (lines.isEmpty()) {
+            if (all.isEmpty()) {
                 emptyList()
             } else {
                 val placeStarted = System.currentTimeMillis()
-                val all = grouper.group(lines)
                 val regions = all
                     // Already guaranteed when the frame was cropped to it.
                     .filter { crop != null || within == null || it.bounds.centreIsIn(within) }
@@ -173,8 +170,8 @@ class CaptureTextSource @Inject internal constructor(
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                val placed = toElements(regions, packageName) { bounds, set ->
-                    val placement = placeIn(page, bounds, set)
+                val placed = toElements(regions, packageName) { bounds, set, enclosure ->
+                    val placement = placeIn(page, bounds, set, enclosure)
                     // Back to screen coordinates, which is the only space
                     // anything downstream knows about.
                     placement.copy(bounds = placement.bounds.movedBy(dx, dy))
@@ -189,7 +186,7 @@ class CaptureTextSource @Inject internal constructor(
                 // page appearing is what the *waiting* costs.
                 logger.debug(
                     TAG,
-                    "recognised ${lines.size} lines in ${all.size} regions, " +
+                    "read ${all.size} regions, " +
                         "${all.size - regions.size} on interface " +
                         "(capture ${captureMs}ms, recognise ${recognizeMs}ms, " +
                         "place ${System.currentTimeMillis() - placeStarted}ms)",
@@ -258,7 +255,12 @@ class CaptureTextSource @Inject internal constructor(
      * it is the tighter, more certain sample, and it is what defines the
      * background that the growing then follows.
      */
-    private fun placeIn(frame: Bitmap, text: TextBounds, set: TextOrientation): Placement {
+    private fun placeIn(
+        frame: Bitmap,
+        text: TextBounds,
+        set: TextOrientation,
+        enclosure: TextBounds?,
+    ): Placement {
         // How the source was set travels with how it looked: a renderer given
         // vertical dialogue can set the translation vertically too, which is
         // both how lettering looks and how a translation comes to cover the
@@ -268,7 +270,11 @@ class CaptureTextSource @Inject internal constructor(
 
         val bubble = BubbleBounds.expand(
             start = text,
-            limit = FrameSampler.frameBounds(frame),
+            // The detected balloon when there is one. Growing to the whole frame
+            // is what let the old version leak out through a balloon's tail; a
+            // limit the detector supplies stops that without giving up the
+            // inscribed shape that growing produces.
+            limit = enclosure ?: FrameSampler.frameBounds(frame),
             isBackground = FrameSampler.backgroundTest(frame, background),
         )
         return Placement(bubble, style)
@@ -279,7 +285,7 @@ class CaptureTextSource @Inject internal constructor(
     private fun toElements(
         regions: List<TextRegion>,
         packageName: String?,
-        place: (TextBounds, TextOrientation) -> Placement,
+        place: (TextBounds, TextOrientation, TextBounds?) -> Placement,
     ): List<TextElement> {
         val occurrences = mutableMapOf<String, Int>()
         generation += 1
@@ -293,7 +299,7 @@ class CaptureTextSource @Inject internal constructor(
             val text = OcrPunctuation.normalize(region.text)
             val index = occurrences.getOrDefault(text, 0)
             occurrences[text] = index + 1
-            val placement = place(region.bounds, region.orientation)
+            val placement = place(region.bounds, region.orientation, region.enclosure)
 
             TextElement(
                 id = TextElementIds.forContent(
