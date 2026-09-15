@@ -6,11 +6,13 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.babel.core.model.ApiKey
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.ProviderId
 import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.settings.BabelSettings
+import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.SettingsRepository
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
@@ -74,6 +76,24 @@ class DataStoreSettingsRepository(
         }
     }
 
+    /**
+     * The key is stored beside the rest, in the app's private DataStore.
+     *
+     * Worth being plain about what that is and is not: it is readable by this
+     * app and by anyone with the device unlocked and root, and it is not
+     * hardware-backed. It is the user's own credential for a service they chose,
+     * which is the same posture a terminal's config file takes. What it must
+     * never do is travel — it goes to the configured endpoint and nowhere else,
+     * and [ApiKey] cannot print itself into a log.
+     */
+    override suspend fun setRemoteProvider(settings: RemoteProviderSettings) {
+        dataStore.edit { prefs ->
+            prefs[Keys.REMOTE_ENDPOINT] = settings.endpoint
+            prefs[Keys.REMOTE_MODEL] = settings.model
+            prefs[Keys.REMOTE_KEY] = settings.apiKey.value
+        }
+    }
+
     override suspend fun setAutoStart(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[Keys.AUTO_START] = enabled }
     }
@@ -82,6 +102,11 @@ class DataStoreSettingsRepository(
         sourceLanguageMode = readSourceMode(prefs),
         targetLanguageMode = readTargetMode(prefs),
         provider = prefs[Keys.PROVIDER]?.takeIf { it.isNotBlank() }?.let(::ProviderId),
+        remote = RemoteProviderSettings(
+            endpoint = prefs[Keys.REMOTE_ENDPOINT].orEmpty(),
+            model = prefs[Keys.REMOTE_MODEL].orEmpty(),
+            apiKey = ApiKey(prefs[Keys.REMOTE_KEY].orEmpty()),
+        ),
         autoStart = prefs[Keys.AUTO_START] ?: false,
     )
 
@@ -105,6 +130,9 @@ class DataStoreSettingsRepository(
         val TARGET_MODE = stringPreferencesKey("target_language_mode")
         val TARGET_LANGUAGE = stringPreferencesKey("target_language")
         val PROVIDER = stringPreferencesKey("provider")
+        val REMOTE_ENDPOINT = stringPreferencesKey("remote_endpoint")
+        val REMOTE_MODEL = stringPreferencesKey("remote_model")
+        val REMOTE_KEY = stringPreferencesKey("remote_api_key")
         val AUTO_START = booleanPreferencesKey("auto_start")
     }
 

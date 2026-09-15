@@ -6,6 +6,7 @@ import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.language.SystemLocaleProvider
 import com.babel.domain.settings.BabelSettings
+import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.SettingsRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,6 +31,10 @@ class FakeSettingsRepository(
 
     override suspend fun setProvider(provider: ProviderId?) {
         state.value = state.value.copy(provider = provider)
+    }
+
+    override suspend fun setRemoteProvider(settings: RemoteProviderSettings) {
+        state.value = state.value.copy(remote = settings)
     }
 
     override suspend fun setAutoStart(enabled: Boolean) {

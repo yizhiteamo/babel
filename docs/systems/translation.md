@@ -55,6 +55,20 @@ Responsibilities:
 
 Old results must never overwrite newer visible content.
 
+## Local and remote
+
+Two routes, chosen by settings and defaulting to the on-device one
+(`RoutingTranslator`). Remote translation runs only when the user has both
+selected it and configured an endpoint — see ADR 010 for why it exists at all
+and `docs/systems/privacy.md` for what it changes.
+
+The routes are not wrapped identically, and that is deliberate.
+`FragmentingTranslator` splits a line at its ellipses, which measurably recovers
+sentences ML Kit would otherwise drop; measured against a stronger model the
+same splitting *hurts*, because that model can use the context a whole balloon
+gives it (`docs/milestones/v2.md`). So the wrapper belongs to the engine it
+compensates for, not to the pipeline.
+
 ## Provider Independence
 
 Provider SDK/HTTP types must not escape into common domain logic.

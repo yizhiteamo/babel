@@ -13,6 +13,33 @@ Minimize unnecessary handling and persistence of user-visible screen content.
 - route provider access through the translation layer
 - make local vs remote processing boundaries explicit
 
+## Text may leave the device, and only when asked
+
+This used to say that nothing left the device and that the app held no network
+permission. **The second half is no longer true.** Babel declares
+`android.permission.INTERNET`, and it buys exactly one feature: translation
+through a remote endpoint the user configures (ADR 010). On-device translation
+was measured against a hosted model and reaches about half the quality at 579MB,
+which made the ceiling worth offering a way past.
+
+What holds:
+
+- **It is off by default, and off is two things being false.** A route has to be
+  selected *and* an endpoint configured. Neither alone sends anything.
+- **Frames never travel, under any setting.** Only recognised text does.
+- **The privacy policy runs first, unchanged.** `DefaultSensitiveContentPolicy`
+  rejects protected and password-like text before any provider is called, and
+  providers are reachable only through the translation layer — which is what
+  makes that ordering a guarantee rather than a habit (ADR 005).
+- **The interface says so where the switch is**, not in a submenu, and the
+  warning is shown while the feature is on rather than standing permanently.
+- **The credential cannot print itself.** `ApiKey.toString()` reveals nothing, so
+  a settings object reaching a log does not take the key with it. It is stored in
+  the app's private DataStore: readable by this app, not hardware-backed, and
+  never sent anywhere but the configured endpoint.
+- **Failures log a status, never a body.** A rejected request routinely quotes
+  the request back, sometimes with the key in it.
+
 ## Review: captured images (V2)
 
 Carried out when manga mode became usable, as this document asked for.
@@ -22,8 +49,10 @@ or `Bitmap.compress` call anywhere in the capture or accessibility modules —
 checked, not assumed. A frame exists as one bitmap, is recycled at the end of
 the scan that used it, and only the most recent one is held.
 
-**Frames never leave the device.** Recognition and translation are both ML Kit
-on-device models. No network permission is involved in either.
+**Frames never leave the device.** Recognition is an on-device ML Kit model, and
+a frame is recycled at the end of the scan that read it. This holds under every
+setting, including the one below — what a remote translator receives is
+recognised *text*, never a picture.
 
 **Frames are never logged.** Diagnostics carry counts, sizes and element ids.
 

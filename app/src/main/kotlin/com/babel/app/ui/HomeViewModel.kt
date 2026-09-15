@@ -9,7 +9,9 @@ import com.babel.core.model.LanguageTag
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.runtime.CapabilityChecker
+import com.babel.core.model.ApiKey
 import com.babel.domain.settings.BabelSettings
+import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.vision.CaptureState
 import com.babel.core.model.TranslationRuntimeState
@@ -124,6 +126,42 @@ class HomeViewModel @Inject constructor(
                 },
             )
         }
+    }
+
+    /**
+     * Turns remote translation on, and records where to reach it.
+     *
+     * Both halves are written together because either alone is meaningless: a
+     * configured endpoint nobody selected sends nothing, and a selected
+     * provider with no endpoint fails every request
+     * (`docs/decisions/010-remote-translation.md`).
+     */
+    fun enableRemoteTranslation(endpoint: String, model: String, apiKey: String) {
+        viewModelScope.launch {
+            val existing = uiState.value.settings.remote
+            settingsRepository.setRemoteProvider(
+                RemoteProviderSettings(
+                    endpoint = endpoint.trim(),
+                    model = model.trim(),
+                    // Blank means "keep what is stored", so the dialog never has
+                    // to show the key back in order to edit the model beside it.
+                    apiKey = apiKey.trim().takeIf { it.isNotEmpty() }?.let(::ApiKey)
+                        ?: existing.apiKey,
+                ),
+            )
+            settingsRepository.setProvider(RemoteProviderSettings.PROVIDER)
+        }
+    }
+
+    /**
+     * Stops sending anything, without forgetting the configuration.
+     *
+     * Clearing the endpoint too would make turning it back on a retyping
+     * exercise. Deselecting the provider is what stops the sending, and it is
+     * the half the user is actually asking about.
+     */
+    fun disableRemoteTranslation() {
+        viewModelScope.launch { settingsRepository.setProvider(null) }
     }
 
     fun supportedLanguages(): List<LanguageTag> = languageResolver.supportedLanguages()

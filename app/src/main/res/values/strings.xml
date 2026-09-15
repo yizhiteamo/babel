@@ -46,4 +46,22 @@
     <string name="capture_state_active">Reading the screen</string>
     <string name="capture_state_failed">Could not start</string>
 
+    <!-- Remote translation (off by default; ADR 010) -->
+    <string name="remote_section_title">Online translation</string>
+    <string name="remote_state_off">Off</string>
+    <string name="remote_state_on">On</string>
+    <string name="remote_explanation">On-device translation is limited. A hosted model reads the whole balloon and translates it far better — but the text on your screen has to be sent to the service you name. Off unless you turn it on.</string>
+    <string name="remote_warning">While this is on, recognised text leaves your device. Nothing else about Babel sends anything anywhere.</string>
+    <string name="remote_action_configure">Set up</string>
+    <string name="remote_action_change">Change</string>
+    <string name="remote_action_disable">Turn off</string>
+    <string name="remote_dialog_title">Online translation</string>
+    <string name="remote_field_endpoint">Endpoint</string>
+    <string name="remote_field_model">Model</string>
+    <string name="remote_field_key">API key</string>
+    <string name="remote_field_key_kept">Saved key kept — leave blank to reuse it</string>
+    <string name="remote_dialog_hint">Any OpenAI-compatible chat endpoint: a hosted service, or something running on your own machine.</string>
+    <string name="remote_dialog_save">Save and turn on</string>
+    <string name="remote_dialog_cancel">Cancel</string>
+
 </resources>

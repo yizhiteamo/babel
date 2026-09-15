@@ -43,4 +43,22 @@
     <string name="capture_state_active">正在读取屏幕</string>
     <string name="capture_state_failed">无法开启</string>
 
+    <!-- 联网翻译（默认关闭；ADR 010） -->
+    <string name="remote_section_title">联网翻译</string>
+    <string name="remote_state_off">未开启</string>
+    <string name="remote_state_on">已开启</string>
+    <string name="remote_explanation">本机翻译能力有限。联网模型能读懂整个气泡，译得好得多——代价是屏幕上的文字会被发送到你指定的服务。不开启则不会发送。</string>
+    <string name="remote_warning">开启期间，识别出的文字会离开你的设备。Babel 的其余功能不向任何地方发送数据。</string>
+    <string name="remote_action_configure">设置</string>
+    <string name="remote_action_change">修改</string>
+    <string name="remote_action_disable">关闭</string>
+    <string name="remote_dialog_title">联网翻译</string>
+    <string name="remote_field_endpoint">接口地址</string>
+    <string name="remote_field_model">模型</string>
+    <string name="remote_field_key">API 密钥</string>
+    <string name="remote_field_key_kept">已保存密钥，留空表示沿用</string>
+    <string name="remote_dialog_hint">任何兼容 OpenAI 格式的对话接口：可以是在线服务，也可以是你自己机器上跑的。</string>
+    <string name="remote_dialog_save">保存并开启</string>
+    <string name="remote_dialog_cancel">取消</string>
+
 </resources>

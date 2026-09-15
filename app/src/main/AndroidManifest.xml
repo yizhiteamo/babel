@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+        The only permission Babel holds, and it buys exactly one thing: remote
+        translation, which is off until the user turns it on and configures an
+        endpoint (ADR 010). Everything else — screen reading, recognition,
+        on-device translation, rendering — works without it and always has.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".BabelApplication"
         android:allowBackup="false"

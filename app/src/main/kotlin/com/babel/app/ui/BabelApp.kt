@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -40,6 +42,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
 import com.babel.core.model.LanguageTag
+import com.babel.domain.settings.BabelSettings
+import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.vision.CaptureState
 
 /**
@@ -61,6 +65,7 @@ fun BabelApp(
     RefreshOnResume(viewModel::refreshCapabilities)
 
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showRemoteSetup by remember { mutableStateOf(false) }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -142,6 +147,12 @@ fun BabelApp(
                 onStart = viewModel::startMangaMode,
                 onStop = viewModel::stopMangaMode,
             )
+
+            RemoteTranslationCard(
+                settings = state.settings,
+                onConfigure = { showRemoteSetup = true },
+                onDisable = viewModel::disableRemoteTranslation,
+            )
         }
     }
 
@@ -155,6 +166,164 @@ fun BabelApp(
             onDismiss = { showLanguagePicker = false },
         )
     }
+
+    if (showRemoteSetup) {
+        RemoteTranslationDialog(
+            current = state.settings.remote,
+            onSave = { endpoint, model, key ->
+                viewModel.enableRemoteTranslation(endpoint, model, key)
+                showRemoteSetup = false
+            },
+            onDismiss = { showRemoteSetup = false },
+        )
+    }
+}
+
+/**
+ * The switch that lets recognised text leave the device.
+ *
+ * Written to be refused as easily as accepted. On-device translation was
+ * measured against a hosted model and tops out around half the distance
+ * (`docs/milestones/v2.md`), so the offer is a real one — but what it costs is
+ * the whole privacy posture of the app, and the card says so in the same breath
+ * rather than in a settings screen nobody opens (ADR 010).
+ */
+@Composable
+private fun RemoteTranslationCard(
+    settings: BabelSettings,
+    onConfigure: () -> Unit,
+    onDisable: () -> Unit,
+) {
+    val on = settings.usesRemoteTranslation
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.remote_section_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(
+                        if (on) R.string.remote_state_on else R.string.remote_state_off,
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Text(
+                text = stringResource(R.string.remote_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (on) {
+                // Shown only while it applies. A standing warning about
+                // something that is switched off teaches people to skip
+                // warnings.
+                Text(
+                    text = stringResource(R.string.remote_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onConfigure) {
+                    Text(
+                        stringResource(
+                            if (on) {
+                                R.string.remote_action_change
+                            } else {
+                                R.string.remote_action_configure
+                            },
+                        ),
+                    )
+                }
+                if (on) {
+                    OutlinedButton(onClick = onDisable) {
+                        Text(stringResource(R.string.remote_action_disable))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteTranslationDialog(
+    current: RemoteProviderSettings,
+    onSave: (endpoint: String, model: String, apiKey: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var endpoint by remember { mutableStateOf(current.endpoint) }
+    var model by remember { mutableStateOf(current.model) }
+    // Deliberately not seeded from the stored key: showing a credential back in
+    // a text field is how it ends up in a screenshot. Blank means "keep it".
+    var apiKey by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.remote_dialog_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = stringResource(R.string.remote_dialog_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = endpoint,
+                    onValueChange = { endpoint = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.remote_field_endpoint)) },
+                )
+                OutlinedTextField(
+                    value = model,
+                    onValueChange = { model = it },
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.remote_field_model)) },
+                )
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    label = { Text(stringResource(R.string.remote_field_key)) },
+                    supportingText = if (current.apiKey.isPresent) {
+                        { Text(stringResource(R.string.remote_field_key_kept)) }
+                    } else {
+                        null
+                    },
+                )
+                Text(
+                    text = stringResource(R.string.remote_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(endpoint, model, apiKey) },
+                // Turning it on with nowhere to send to would fail every
+                // request and read as a bug rather than as a blank field.
+                enabled = endpoint.isNotBlank() && model.isNotBlank() &&
+                    (apiKey.isNotBlank() || current.apiKey.isPresent),
+            ) {
+                Text(stringResource(R.string.remote_dialog_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.remote_dialog_cancel))
+            }
+        },
+    )
 }
 
 /**

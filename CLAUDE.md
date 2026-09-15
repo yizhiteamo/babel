@@ -250,7 +250,7 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 | `:domain` | domain | Pipeline contracts plus `DefaultLanguageResolver`, `DefaultSensitiveContentPolicy`, `DefaultTranslationScopePolicy`, `DefaultTranslationCoordinator` |
 | `:core:testing` | test | Shared fakes (`FakeTranslator`, `RecordingRenderer`, …). Consumed via `testImplementation` only |
 | `:data:settings` | data | `DataStoreSettingsRepository`, `AndroidSystemLocaleProvider` |
-| `:data:translation` | data | `MlKitTranslator` (on-device), `InMemoryTranslationCache` |
+| `:data:translation` | data | `MlKitTranslator` (on-device), `ChatTranslator` (remote, off by default — ADR 010), `InMemoryTranslationCache` |
 | `:platform:screen` | platform | `ScreenFrameSource` — contract only, no implementation |
 | `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization, screen frames (ADR 009) |
 | `:platform:overlay` | platform | overlay windows, `TranslationRenderer`, coordinate mapping |

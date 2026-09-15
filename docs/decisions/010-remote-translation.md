@@ -1,0 +1,71 @@
+# ADR 010 — Remote Translation, Off By Default
+
+## Status
+Accepted
+
+## Decision
+
+Babel may translate through a remote, user-configured, OpenAI-compatible chat
+endpoint. It is **off unless the user both selects it and configures it**, and
+every other part of the app continues to work without a network.
+
+## Reason
+
+On-device translation was measured and it tops out well short of what users
+expect. Three engines on the same thirteen hand-transcribed balloons
+(`docs/milestones/v2.md`):
+
+| | Quality | Size |
+|---|---|---|
+| ML Kit (on-device, shipped) | `先生も汗拭きシート使いますか?` → 你用汗水表吗？ | ~30MB per language |
+| opus-mt int8 | → 老师也洗过手脚吗? | 146MB |
+| opus-mt unquantised | → 老师也用擦汗纸吗? | 579MB |
+| A hosted model | → 老师也用擦汗湿巾吗？ | — |
+
+The best local option reaches roughly half the distance and asks 579MB for it,
+and there is no intermediate size — quantising either half of the model is
+already worse than quantising neither. Closing the rest of the gap is not
+available from anything that runs on the phone.
+
+So the choice is not "local or remote". It is "accept a visible quality ceiling"
+or "let the user decide to spend their privacy on it". This makes that a
+decision the user takes, knowingly, rather than one the app takes for them.
+
+## What this costs, stated plainly
+
+`docs/systems/privacy.md` could previously say that frames and text never leave
+the device and that the app holds no network permission. **The second half is no
+longer true**: `android.permission.INTERNET` is now declared. The first half
+holds while the feature is off, which is its default state.
+
+Frames still never leave under any setting. What can travel is recognised text,
+after the privacy policy has already excluded what it excludes — providers are
+reachable only through the translation layer, which is what makes that ordering
+guaranteed rather than incidental (ADR 005).
+
+## Shape
+
+- **An OpenAI-compatible chat endpoint, not a named service.** One request shape
+  covers the hosted model this was asked for, the several providers that copy
+  its API, and anything the user runs on their own machine. Naming a vendor would
+  buy nothing and exclude all of that.
+- **Two independent switches.** `provider` selects the route and
+  `RemoteProviderSettings` says where to reach it. Both are required, so neither
+  a stray selection nor a half-filled form can start sending.
+- **The key is a type, not a string.** `ApiKey.toString()` never reveals it, so a
+  settings object that reaches a log cannot take the credential with it.
+- **The remote route is not wrapped in `FragmentingTranslator`.** That wrapper
+  splits a line at its ellipses and measurably helps ML Kit, which cannot use
+  context; it measurably hurts a stronger model, which can. The wrapper belongs
+  to the engine, not to the pipeline.
+
+## Alternatives considered
+
+- **Ship opus-mt at 579MB.** Rejected as the *only* answer, not on principle: it
+  is half the improvement for a large download, and it does not reach what was
+  asked for. It stays a candidate for the on-device route.
+- **Bundle a key.** Impossible to do safely in a client application, and it would
+  make the network the default rather than the choice.
+- **A Babel-operated relay.** It would centralise everybody's screen text on
+  infrastructure this project does not have, in exchange for convenience. Not
+  worth it at any scale this is at.

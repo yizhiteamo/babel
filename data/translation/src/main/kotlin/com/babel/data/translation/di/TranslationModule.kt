@@ -6,8 +6,14 @@ import com.babel.data.translation.mlkit.MlKitTranslator
 import com.babel.domain.language.DefaultLanguageResolver
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.language.SystemLocaleProvider
+import com.babel.core.common.DispatcherProvider
+import com.babel.data.translation.remote.ChatTranslator
+import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.FragmentingTranslator
+import com.babel.domain.translation.RoutingTranslator
 import com.babel.domain.translation.TranslationCache
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import com.babel.core.common.BabelLogger
 import com.babel.domain.translation.Translator
 import dagger.Module
@@ -21,17 +27,31 @@ import javax.inject.Singleton
 object TranslationModule {
 
     /**
-     * The provider, wrapped so a line of comic dialogue is translated one
-     * ellipsis-separated fragment at a time.
+     * Whichever translator the user has asked for, on-device by default.
      *
-     * The wrapper is provider-neutral and reports the provider's own id, so
-     * cache keys are unaffected and swapping the engine keeps the behaviour
-     * (`docs/milestones/v2.md`).
+     * The two routes are wrapped differently, and that is the point.
+     * [FragmentingTranslator] cuts a line at its ellipses, which measurably
+     * recovers sentences ML Kit would otherwise drop — but it is a compensation
+     * for a weak engine. A stronger one does better on whole balloons and worse
+     * on fragments (`docs/milestones/v2.md`), so the remote route is left
+     * unwrapped.
+     *
+     * The scope outlives any screen: the route follows settings for as long as
+     * the process runs, and the coordinator holds this translator for the same
+     * span.
      */
     @Provides
     @Singleton
-    fun provideTranslator(logger: BabelLogger): Translator =
-        FragmentingTranslator(MlKitTranslator(logger = logger))
+    fun provideTranslator(
+        settingsRepository: SettingsRepository,
+        dispatchers: DispatcherProvider,
+        logger: BabelLogger,
+    ): Translator = RoutingTranslator(
+        local = FragmentingTranslator(MlKitTranslator(logger = logger)),
+        remote = ChatTranslator(settingsRepository, logger),
+        settingsRepository = settingsRepository,
+        scope = CoroutineScope(SupervisorJob() + dispatchers.default),
+    )
 
     @Provides
     @Singleton
