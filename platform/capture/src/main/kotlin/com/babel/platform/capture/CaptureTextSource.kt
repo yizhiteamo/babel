@@ -15,6 +15,7 @@ import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.vision.BubbleBounds
 import com.babel.domain.vision.FrameChangeDetector
 import com.babel.domain.vision.ImageTextScanner
+import com.babel.domain.vision.OcrPunctuation
 import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
 import com.babel.platform.screen.ScreenFrameSource
@@ -284,8 +285,14 @@ class CaptureTextSource @Inject internal constructor(
         generation += 1
 
         return regions.map { region ->
-            val index = occurrences.getOrDefault(region.text, 0)
-            occurrences[region.text] = index + 1
+            // Repaired here, once, where the recogniser's mistakes are made:
+            // `......` is not how anybody writes `……`, and a provider given the
+            // raw form returns the dots without the words. Doing it before the
+            // id is derived also keeps the id stable across the repair
+            // (`docs/systems/text-model.md`).
+            val text = OcrPunctuation.normalize(region.text)
+            val index = occurrences.getOrDefault(text, 0)
+            occurrences[text] = index + 1
             val placement = place(region.bounds, region.orientation)
 
             TextElement(
@@ -294,10 +301,10 @@ class CaptureTextSource @Inject internal constructor(
                     // itself, so a constant keeps ids stable across frames
                     // while content decides identity.
                     scope = SCOPE,
-                    text = region.text,
+                    text = text,
                     occurrence = index,
                 ),
-                text = region.text,
+                text = text,
                 bounds = placement.bounds,
                 sourceType = TextSourceType.OCR,
                 // Carried so the privacy policy's per-app exclusions apply
@@ -308,7 +315,7 @@ class CaptureTextSource @Inject internal constructor(
                 style = placement.style,
                 // Told rather than guessed where the recogniser can vouch for
                 // it, and left to detection where it cannot.
-                sourceLanguage = recognizer.languageOf(region.text),
+                sourceLanguage = recognizer.languageOf(text),
             )
         }
     }
