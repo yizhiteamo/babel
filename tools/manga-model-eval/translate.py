@@ -38,29 +38,59 @@ import time
 import numpy as np
 import onnxruntime as ort
 
-# Exactly what manga-ocr read from the two transcribed pages, with a reference
-# rendering — the same fifteen the device harness uses, so the two are directly
-# comparable. Punctuation is already repaired, as it now is in the app.
-BUBBLES = [
-    ("先生も汗拭きシート使いますか?", "老师也要用擦汗巾吗？"),
-    ("いいの?", "可以吗？"),
-    ("はい", "好的"),
-    ("いくらでも使ってください", "请随便用"),
-    ("そっちは私の使用済み…", "那个是我用过的…"),
-    ("…あ", "……啊"),
-    ("…先生?", "……老师？"),
-    ("スーパーアルバイターの資格、次が最終試験…この本も最終ですッ",
+# The material as **balloons**, each given as the lines manga-ocr reads from it.
+#
+# This structure exists because of what a comparison against GPT showed: GPT was
+# handed `はい いくらでも使ってください` as one balloon and answered with one
+# sentence, while this pipeline had been measured on `はい` and
+# `いくらでも使ってください` separately — and nothing translates `はい` on its own.
+# How much of the quality gap is *that*, rather than the engine, is what the
+# three join modes below are for.
+#
+# jap-mag-01 is five balloons that manga-ocr reads as seven regions; jap-mag-04
+# is eight balloons it already reads as eight. So the splitting shows on the
+# first page only, which makes the comparison a sharp one.
+#
+# References for jap-mag-01 are GPT's, quoted from the report that prompted
+# this; jap-mag-04's are the ones this project already used.
+BALLOONS = [
+    (["先生も汗拭きシート使いますか?"], "老师也用擦汗湿巾吗？"),
+    (["いいの?"], "可以吗？"),
+    (["はい", "いくらでも使ってください"], "嗯，请尽管用，想用多少都可以。"),
+    (["…あ", "そっちは私の使用済み…"], "……啊，那个是我已经用过的……"),
+    (["…先生?", "先生?"], "……老师？老师？"),
+    (["スーパーアルバイターの資格、次が最終試験…この本も最終ですッ"],
      "超级兼职者的资格，下一场就是最终考试…这本书也是最后一本了！"),
-    ("どんなことが書かれて…", "上面写了些什么…"),
-    ("…仕事中、突然視界が高くなったり…増えたり…手足…色…声が変化して…",
+    (["どんなことが書かれて…"], "上面写了些什么…"),
+    (["…仕事中、突然視界が高くなったり…増えたり…手足…色…声が変化して…"],
      "工作时视野会突然变高…会增多…手脚、颜色、声音都会变化…"),
-    ("周囲が泣いたり、騒いだり逃げ出した時…店主の…言葉や誘導は無視して…",
+    (["周囲が泣いたり、騒いだり逃げ出した時…店主の…言葉や誘導は無視して…"],
      "周围的人哭喊、骚动、逃跑时……请无视店主的话和指引……"),
-    ("目を…閉じて…", "闭上眼睛…"),
-    ("…絶対に…動かないこと…", "绝对…不要动…"),
-    ("…あんまりわかんないケドッ", "……虽然不太懂啦"),
-    ("がんばりまーす!!", "我会加油的！！"),
+    (["目を…閉じて…"], "闭上眼睛…"),
+    (["…絶対に…動かないこと…"], "绝对…不要动…"),
+    (["…あんまりわかんないケドッ"], "……虽然不太懂啦"),
+    (["がんばりまーす!!"], "我会加油的！！"),
 ]
+
+
+def inputs(mode):
+    """What actually gets sent to the engine, under each join mode.
+
+    - `fragments` — every line on its own, which is what this project measured
+      before and what a mis-grouped page produces anyway
+    - `joined` — the lines run together with no separator, which is exactly what
+      `TextRegion.text` builds today
+    - `spaced` — joined with a space, because that is the form GPT was given and
+      a separator is a one-line change in the grouper if it turns out to matter
+    """
+    for lines, reference in BALLOONS:
+        if mode == "fragments":
+            yield lines, reference
+        elif mode == "spaced":
+            yield [" ".join(lines)], reference
+        else:
+            yield ["".join(lines)], reference
+
 
 MAX_TOKENS = 96
 
@@ -170,8 +200,12 @@ class Opus:
             suffix = ""
         elif "--mm8" in sys.argv:
             suffix = "_mm8"
-        encoder_path = f"{folder}/encoder_model{suffix}.onnx"
-        decoder_path = f"{folder}/decoder_model{suffix}.onnx"
+        # The halves can be quantised independently, which is worth knowing:
+        # if only one of them carries the quality, the other can stay small.
+        encoder_suffix = "" if "--enc-fp32" in sys.argv else suffix
+        decoder_suffix = "" if "--dec-fp32" in sys.argv else suffix
+        encoder_path = f"{folder}/encoder_model{encoder_suffix}.onnx"
+        decoder_path = f"{folder}/decoder_model{decoder_suffix}.onnx"
 
         started = time.time()
         self.encoder = ort.InferenceSession(
@@ -229,20 +263,30 @@ def main():
     tag = model.label
     print(f"{tag} {folder} {model.size_mb:.0f}MB of onnx, sessions in {model.load_seconds:.1f}s")
 
+    mode = "joined"
+    for candidate in ("fragments", "spaced"):
+        if f"--{candidate}" in sys.argv:
+            mode = candidate
+    print(f"{tag} join mode: {mode}")
+
     total = 0.0
-    bubbles = BUBBLES[:limit]
-    for source, reference in bubbles:
+    balloons = list(inputs(mode))[:limit]
+    calls = 0
+    for lines, reference in balloons:
         started = time.time()
-        output = model.translate(source)
+        # One balloon may be several calls in `fragments` mode, which is the
+        # cost being measured as much as the wording is.
+        outputs = [model.translate(line) for line in lines]
         elapsed = time.time() - started
         total += elapsed
+        calls += len(lines)
         print(f"{tag} {elapsed:5.1f}s")
-        print(f"{tag}   ja  {source}")
-        print(f"{tag}   zh  {output}")
+        print(f"{tag}   ja  {' | '.join(lines)}")
+        print(f"{tag}   zh  {' | '.join(outputs)}")
         print(f"{tag}   ref {reference}")
 
-    print(f"{tag} === {len(bubbles)} bubbles, {total:.1f}s total, "
-          f"{total / len(bubbles):.1f}s each ===")
+    print(f"{tag} === {len(balloons)} balloons, {calls} calls, {total:.1f}s total, "
+          f"{total / len(balloons):.2f}s each ===")
 
 
 main()
