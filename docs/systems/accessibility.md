@@ -66,3 +66,20 @@ Two races make this more than a flag:
 - The tree describes the new screen before the pixels show it. A frame is only
   recognised once it has stopped moving (`FrameChangeDetector.hasSettled`),
   otherwise the outgoing page's text is read onto the incoming one.
+
+## What drives a scan
+
+Both paths are event-driven, on the same `onAccessibilityEvent` signal, each
+through its own conflated channel so that one falling behind cannot swallow the
+other's wake-ups. Both debounce by `SCAN_DEBOUNCE_MS` before acting.
+
+The image path also keeps a fixed timer, for apps that report no content changes
+at all. It is a fallback, not the driver: measured on a device, driving the image
+path from the timer alone cost 3.0s of a 5.9s wait, because the tree describes a
+new page long before the timer next fires. The timer's interval is not lowered to
+compensate — every tick takes a full screen capture, so a faster timer pays that
+forever, while an event fires only when something moved.
+
+Two drivers, one scanner: a scan holds a full-screen bitmap for seconds, so the
+second caller skips rather than queueing. Whatever provoked it will still be on
+screen when the running scan finishes or the next tick comes.

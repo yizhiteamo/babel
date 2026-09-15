@@ -325,15 +325,27 @@ class DefaultTranslationCoordinator(
     ): Job? {
         val active = scope ?: return null
         return active.launch {
+            // Timed because manga mode was reported as slow and there was no
+            // figure to answer with: recognition and translation are separate
+            // costs and only measurement says which one to work on. The text is
+            // never logged, only how long it took (`docs/systems/privacy.md`).
+            val started = System.currentTimeMillis()
             try {
                 val cached = cache.get(key)
                 if (cached != null) {
+                    logger.debug(TAG, "cached in ${System.currentTimeMillis() - started}ms")
                     mailbox.send(Message.Translated(element.id, cached, key))
                     return@launch
                 }
 
                 permits.withPermit {
+                    val waitedMs = System.currentTimeMillis() - started
                     val result = translateWithRetry(element, pair)
+                    logger.debug(
+                        TAG,
+                        "translated in ${System.currentTimeMillis() - started}ms" +
+                            " (queued ${waitedMs}ms)",
+                    )
                     when (val status = result.status) {
                         TranslationStatus.Translated -> {
                             cache.put(key, result.translatedText)

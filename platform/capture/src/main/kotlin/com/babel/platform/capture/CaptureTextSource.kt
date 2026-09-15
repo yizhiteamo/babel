@@ -20,6 +20,7 @@ import com.babel.domain.vision.TextRegionGrouper
 import com.babel.platform.screen.ScreenFrameSource
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -86,48 +87,116 @@ class CaptureTextSource @Inject internal constructor(
         within: TextBounds?,
     ) {
         val startedAfter = lock.withLock { clears }
-        val frame = frames.latestFrame() ?: return
+        val captureStarted = System.currentTimeMillis()
 
-        val signature = FrameSignature.of(frame)
-        val settled = FrameChangeDetector.hasSettled(lastSeen, signature)
-        lastSeen = signature
+        // Wait for the screen to stop moving, checking often.
+        //
+        // A frame read mid-transition puts the outgoing screen's text across
+        // the incoming one, so settling is not optional. But settling is
+        // decided by comparing two frames, and sampling once per 1.5s tick made
+        // the *first* page after any change cost a whole extra tick — half of a
+        // measured 3.0s wait. Re-checking here instead costs one short delay.
+        //
+        // [SETTLE_RECHECK_MS] clears the platform's screenshot throttle of
+        // roughly one per 333ms; below it the capture simply fails and the
+        // re-check learns nothing.
+        var frame: Bitmap? = null
+        var signature: IntArray? = null
+        for (attempt in 0 until SETTLE_ATTEMPTS) {
+            if (attempt > 0) delay(SETTLE_RECHECK_MS)
 
-        // Two questions, and both have to say yes. Has the page come to rest —
-        // reading one mid-transition puts the outgoing screen's text across the
-        // incoming one — and is it a different page from the one already read?
-        // Re-recognising the same page would replace its translations with a
-        // slightly different reading of it.
-        if (!settled || !FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
+            val candidate = frames.latestFrame() ?: return
+            val candidateSignature = FrameSignature.of(candidate)
+            val settled = FrameChangeDetector.hasSettled(lastSeen, candidateSignature)
+            lastSeen = candidateSignature
+
+            if (settled) {
+                frame = candidate
+                signature = candidateSignature
+                break
+            }
+            // Still moving. The bitmap is the largest object here, so it goes
+            // now rather than at the end of the loop.
+            candidate.recycle()
+        }
+
+        // Never came to rest — an animation, a video, a page still loading.
+        // Leave it to the next tick rather than reading a smear.
+        if (frame == null || signature == null) return
+        val captureMs = System.currentTimeMillis() - captureStarted
+
+        // A different page from the one already read? Re-recognising the same
+        // page would replace its translations with a slightly different reading
+        // of it.
+        if (!FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
             frame.recycle()
             return
         }
         lastRecognized = signature
 
+        // Read only the app's content area.
+        //
+        // Regions outside it are discarded a few lines below — they are the
+        // app's chrome, not artwork — so recognising them is work whose result
+        // goes straight in the bin. Measured on a comic page in a browser: 14 of
+        // 18 regions were thrown away, and recognition is the largest single
+        // cost in the pipeline.
+        //
+        // This can lose nothing that the filter would not have dropped anyway,
+        // which is what makes it safe to do before reading rather than after.
+        // The narrower frame also keeps [BubbleBounds] from growing a bubble up
+        // into the toolbar, and lowers the peak memory of doubling the frame.
+        val crop = within?.clippedTo(frame)
+        val page = crop?.let {
+            Bitmap.createBitmap(frame, it.left, it.top, it.width, it.height)
+        } ?: frame
+        val dx = crop?.left ?: 0
+        val dy = crop?.top ?: 0
+        val exclusionsInPage = if (crop == null) exclusions else exclusions.map { it.movedBy(-dx, -dy) }
+
         val elements = try {
-            val lines = recognizer.recognize(frame)
+            val recognizeStarted = System.currentTimeMillis()
+            val lines = recognizer.recognize(page)
+            val recognizeMs = System.currentTimeMillis() - recognizeStarted
+
             if (lines.isEmpty()) {
                 emptyList()
             } else {
+                val placeStarted = System.currentTimeMillis()
                 val all = grouper.group(lines)
                 val regions = all
-                    .filter { within == null || it.bounds.centreIsIn(within) }
-                    .filterNot { it.bounds.isExcludedBy(exclusions) }
-                // Counts only — recognised text is screen content and stays out
-                // of diagnostics (`docs/systems/privacy.md`).
-                // Counts only — recognised text is screen content and stays out
-                // of diagnostics (`docs/systems/privacy.md`).
-                logger.debug(
-                    TAG,
-                    "recognised ${lines.size} lines in ${all.size} regions, " +
-                        "${all.size - regions.size} on interface",
-                )
+                    // Already guaranteed when the frame was cropped to it.
+                    .filter { crop != null || within == null || it.bounds.centreIsIn(within) }
+                    .filterNot { it.bounds.isExcludedBy(exclusionsInPage) }
 
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                toElements(regions, packageName) { bounds, set -> placeIn(frame, bounds, set) }
+                val placed = toElements(regions, packageName) { bounds, set ->
+                    val placement = placeIn(page, bounds, set)
+                    // Back to screen coordinates, which is the only space
+                    // anything downstream knows about.
+                    placement.copy(bounds = placement.bounds.movedBy(dx, dy))
+                }
+
+                // Counts and durations only — recognised text is screen content
+                // and stays out of diagnostics (`docs/systems/privacy.md`).
+                //
+                // Timed because a user called manga mode slow and there was no
+                // figure to answer with. Reading them: capture and recognise are
+                // what the work costs, and the gap between this line and the
+                // page appearing is what the *waiting* costs.
+                logger.debug(
+                    TAG,
+                    "recognised ${lines.size} lines in ${all.size} regions, " +
+                        "${all.size - regions.size} on interface " +
+                        "(capture ${captureMs}ms, recognise ${recognizeMs}ms, " +
+                        "place ${System.currentTimeMillis() - placeStarted}ms)",
+                )
+                placed
             }
         } finally {
+            if (page !== frame) page.recycle()
             frame.recycle()
         }
 
@@ -148,6 +217,33 @@ class CaptureTextSource @Inject internal constructor(
     /** Whether this region sits on something the text path already sees. */
     private fun TextBounds.isExcludedBy(exclusions: List<TextBounds>): Boolean =
         exclusions.any { centreIsIn(it) }
+
+    private fun TextBounds.movedBy(dx: Int, dy: Int): TextBounds =
+        if (dx == 0 && dy == 0) this
+        else copy(left = left + dx, top = top + dy, right = right + dx, bottom = bottom + dy)
+
+    /**
+     * This rectangle trimmed to what the frame actually contains, or null when
+     * cropping to it would not be worth it.
+     *
+     * Null rather than an exception for the awkward cases — a content area
+     * reported larger than the display, or one so nearly the whole frame that
+     * copying the bitmap costs more than the recognition it saves. The caller
+     * then reads the whole frame, which is what it did before this existed.
+     */
+    private fun TextBounds.clippedTo(frame: Bitmap): TextBounds? {
+        val clipped = copy(
+            left = left.coerceIn(0, frame.width),
+            top = top.coerceIn(0, frame.height),
+            right = right.coerceIn(0, frame.width),
+            bottom = bottom.coerceIn(0, frame.height),
+        )
+        if (clipped.width < MIN_CROP || clipped.height < MIN_CROP) return null
+
+        val frameArea = frame.width.toLong() * frame.height
+        val cropArea = clipped.width.toLong() * clipped.height
+        return clipped.takeIf { cropArea <= frameArea * CROP_WORTH_IT_PERCENT / 100 }
+    }
 
     /**
      * Works out where a translation should go and what colour it should be.
@@ -238,6 +334,32 @@ class CaptureTextSource @Inject internal constructor(
 
     private companion object {
         const val TAG = "CaptureTextSource"
+
+        /**
+         * How long to wait before asking again whether the screen has stopped
+         * moving. Above the platform's screenshot throttle of roughly one per
+         * 333ms, so the re-check gets a frame rather than a failure.
+         */
+        const val SETTLE_RECHECK_MS = 350L
+
+        /**
+         * How many times to ask before giving up and leaving it to the next
+         * tick. Three bounds the wait at about 0.7s, which is shorter than the
+         * 1.5s tick it replaces — a screen that is still moving after that is
+         * animating, not loading.
+         */
+        const val SETTLE_ATTEMPTS = 3
+
+        /** Below this a "content area" is a misreading, not a page. */
+        const val MIN_CROP = 64
+
+        /**
+         * Only crop when it removes enough to pay for copying the bitmap. A
+         * browser's tab strip and address bar come to well under this; a
+         * full-screen reader exposes a content area that is nearly the whole
+         * display and is left alone.
+         */
+        const val CROP_WORTH_IT_PERCENT = 95
         const val SCOPE = "ocr"
     }
 }

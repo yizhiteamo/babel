@@ -27,6 +27,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Hosts the pipeline for as long as the user has the service enabled.
@@ -96,6 +97,19 @@ class BabelAccessibilityService : AccessibilityService() {
      */
     private val scanRequests = Channel<Unit>(Channel.CONFLATED)
 
+    /**
+     * The same signal for the image path, kept separate so one path falling
+     * behind cannot swallow the other's wake-ups.
+     *
+     * The image path used to be driven only by a 1.5s timer, on the reasoning
+     * that a comic page fires no content-change event. Measured on a device,
+     * that is false for the case that matters: turning to a comic in a browser
+     * fires one immediately, and the image path sat waiting for its timer
+     * anyway — 3.0s of a 5.9s wait was this. The timer stays as a fallback for
+     * apps that really are silent.
+     */
+    private val imageScanRequests = Channel<Unit>(Channel.CONFLATED)
+
     private var generation = 0L
 
     /** Identity of the window the last scan read, to detect a real app change. */
@@ -119,6 +133,9 @@ class BabelAccessibilityService : AccessibilityService() {
     @Volatile
     private var imagePathOwner: String? = null
 
+    /** Held for the length of a scan, so the two drivers cannot overlap. */
+    private val imageScanning = Mutex()
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         logger.info(TAG, "accessibility service connected")
@@ -136,27 +153,64 @@ class BabelAccessibilityService : AccessibilityService() {
         newScope.launch { coordinator.renderUpdates.collect(renderer::apply) }
         newScope.launch { runScanLoop() }
         newScope.launch { runImageScanLoop() }
+        newScope.launch { runImageEventLoop() }
         newScope.launch { followMangaMode() }
 
         coordinator.start()
     }
 
     /**
-     * Reads the screen as an image while manga mode is on **and this screen
-     * needs it**. Both acquisition paths feed the one coordinator, so nothing
-     * downstream knows which of them produced an element.
+     * The fallback driver: a fixed interval, for apps that report no content
+     * changes at all.
      *
-     * A fixed interval, but a cheap one: [ImageTextScanner] compares each frame
+     * Cheap when nothing is happening — [ImageTextScanner] compares each frame
      * against the last it recognised and returns immediately when the page has
      * not changed, so a static comic costs one recognition, not one per tick.
+     * It is not cheap enough to shorten, though: every tick takes a full screen
+     * capture, so a faster timer would pay that forever. Speed comes from
+     * [runImageEventLoop] instead, which fires only when something moved.
      */
     private suspend fun runImageScanLoop() {
         val current = scope ?: return
         while (current.isActive) {
             delay(IMAGE_SCAN_INTERVAL_MS)
+            considerImageScan()
+        }
+    }
+
+    /**
+     * The fast driver: the same content-change events the node path runs on.
+     *
+     * Measured on a device before this existed: turning to a comic in a browser
+     * fires a content-change event straight away, the node path acted on it
+     * within 250ms, and the image path waited for its own timer regardless —
+     * 3.0s of a 5.9s wait was that. Debounced exactly as [runScanLoop] is, so a
+     * burst of scroll events is one scan.
+     */
+    private suspend fun runImageEventLoop() {
+        for (request in imageScanRequests) {
+            delay(SCAN_DEBOUNCE_MS)
+            considerImageScan()
+        }
+    }
+
+    /**
+     * Decides whether to read the screen as an image, and does it. Both drivers
+     * share this: there is one rule, written once.
+     *
+     * Both acquisition paths feed the one coordinator, so nothing downstream
+     * knows which of them produced an element.
+     */
+    private suspend fun considerImageScan() {
+        // Two drivers, one scanner. A scan takes seconds and holds a full-screen
+        // bitmap, so a second one must not start alongside it. Skipping rather
+        // than queueing is deliberate: whatever provoked this will still be on
+        // screen when the running scan or the next tick looks.
+        if (!imageScanning.tryLock()) return
+        try {
             if (mangaMode.state.value != CaptureState.ACTIVE) {
                 standDownImagePath()
-                continue
+                return
             }
 
             // Scope is checked here too, and it has to be.
@@ -170,7 +224,7 @@ class BabelAccessibilityService : AccessibilityService() {
             val front = activePackage()
             if (!scopePolicy.isInScope(front)) {
                 standDownImagePath()
-                continue
+                return
             }
 
             val layout = readScreenLayout()
@@ -179,7 +233,7 @@ class BabelAccessibilityService : AccessibilityService() {
                 // faster and more accurate than recognising pixels, and running
                 // both would stack two layers of overlays.
                 standDownImagePath()
-                continue
+                return
             }
 
             // A different app, with manga mode still on. Nothing else notices:
@@ -191,6 +245,8 @@ class BabelAccessibilityService : AccessibilityService() {
             }
 
             imageScanner.scanOnce(front, layout.interfaceAreas, layout.contentArea)
+        } finally {
+            imageScanning.unlock()
         }
     }
 
@@ -386,7 +442,10 @@ class BabelAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_SCROLLED,
-            -> scanRequests.trySend(Unit)
+            -> {
+                scanRequests.trySend(Unit)
+                imageScanRequests.trySend(Unit)
+            }
 
             else -> Unit
         }

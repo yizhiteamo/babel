@@ -22,3 +22,8 @@ local.properties
 # Model weights, fetched locally and never committed — same rule as the manga
 # pages: somebody else's artefact, and far too large for a repository.
 /models/
+
+# JVM crash dumps. This machine runs Gradle beside an emulator and occasionally
+# runs out of memory mid-build; the dump lands wherever the worker was.
+hs_err_pid*.log
+replay_pid*.log
