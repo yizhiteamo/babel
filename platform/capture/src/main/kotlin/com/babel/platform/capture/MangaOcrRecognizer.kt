@@ -169,6 +169,7 @@ internal class MangaOcrRecognizer @Inject constructor(
 
     private suspend fun read(sessions: Sessions, crop: Bitmap): String {
         val environment = OrtEnvironment.getEnvironment()
+        val encodeStarted = System.currentTimeMillis()
         val pixels = crop.asPixelValues(environment)
 
         val encoded = try {
@@ -176,9 +177,20 @@ internal class MangaOcrRecognizer @Inject constructor(
         } finally {
             pixels.close()
         }
+        val encodeMs = System.currentTimeMillis() - encodeStarted
 
         return try {
-            decode(environment, sessions, encoded[0] as OnnxTensor)
+            val decodeStarted = System.currentTimeMillis()
+            val (text, steps) = decode(environment, sessions, encoded[0] as OnnxTensor)
+            // Split because the two halves have different cures: the encoder is
+            // one pass and a smaller input would shrink it, while the decoder is
+            // one pass per character and only a key/value cache would.
+            logger.debug(
+                TAG,
+                "balloon: encode ${encodeMs}ms, decode " +
+                    "${System.currentTimeMillis() - decodeStarted}ms, ${steps} steps",
+            )
+            text
         } finally {
             encoded.close()
         }
@@ -196,7 +208,7 @@ internal class MangaOcrRecognizer @Inject constructor(
         environment: OrtEnvironment,
         sessions: Sessions,
         hidden: OnnxTensor,
-    ): String {
+    ): Pair<String, Int> {
         val tokens = mutableListOf(CLS)
 
         for (step in 0 until MAX_TOKENS) {
@@ -227,12 +239,16 @@ internal class MangaOcrRecognizer @Inject constructor(
             tokens += next
         }
 
-        return tokens.drop(1)
+        // Returned rather than stashed on the instance: balloons are read
+        // concurrently, and a shared counter would report another balloon's
+        // number beside this one's timing.
+        val text = tokens.drop(1)
             .mapNotNull { sessions.vocabulary.getOrNull(it) }
             // `[CLS]`, `[SEP]`, `[UNK]` and friends are structure, not text.
             .filterNot { it.startsWith("[") }
             .joinToString("")
             .trim()
+        return text to tokens.size
     }
 
     /**

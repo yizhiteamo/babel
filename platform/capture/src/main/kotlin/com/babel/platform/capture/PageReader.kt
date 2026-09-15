@@ -79,6 +79,16 @@ internal class DetectingPageReader @Inject constructor(
         val bubbles = detector.detect(frame)
         logger.debug(TAG, "detector found ${bubbles.size} bubbles")
 
+        // One at a time, and that is a measured choice rather than the obvious
+        // one. Reading two balloons concurrently is genuinely faster — 3.3s to
+        // 2.4s on a page of eight — but each concurrent read holds its own
+        // activations, and the peak went from 494MB to **726MB**. Capping ONNX
+        // Runtime to one thread per session brought that back only to 652MB and
+        // gave up most of the speed (3.0s).
+        //
+        // 150–230MB for 0.3–0.9s is a bad trade in a pipeline already large
+        // enough to be worth killing. The decoder has no key/value cache, and
+        // an export carrying one is the lever that costs no memory.
         return bubbles.mapNotNull { bubble -> read(frame, bubble) }
     }
 
