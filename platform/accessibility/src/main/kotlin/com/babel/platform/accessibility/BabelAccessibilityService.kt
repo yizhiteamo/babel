@@ -110,6 +110,20 @@ class BabelAccessibilityService : AccessibilityService() {
      */
     private val imageScanRequests = Channel<Unit>(Channel.CONFLATED)
 
+    /**
+     * Scrolling, reported separately because it means something different.
+     *
+     * The image path cannot follow a scroll. Its coordinates come from pixels,
+     * and the pixels have moved — so every translation it has drawn is now over
+     * content it does not describe. The node path has no such problem: it reads
+     * fresh bounds from the tree on the same event.
+     *
+     * Kept off [imageScanRequests] because that one goes through the scan lock,
+     * and taking overlays down must not wait behind a scan that is already
+     * running — the scan in question is reading the screen the user just left.
+     */
+    private val imageScrollSignals = Channel<Unit>(Channel.CONFLATED)
+
     private var generation = 0L
 
     /** Identity of the window the last scan read, to detect a real app change. */
@@ -154,6 +168,7 @@ class BabelAccessibilityService : AccessibilityService() {
         newScope.launch { runScanLoop() }
         newScope.launch { runImageScanLoop() }
         newScope.launch { runImageEventLoop() }
+        newScope.launch { runImageScrollLoop() }
         newScope.launch { followMangaMode() }
 
         coordinator.start()
@@ -191,6 +206,26 @@ class BabelAccessibilityService : AccessibilityService() {
         for (request in imageScanRequests) {
             delay(SCAN_DEBOUNCE_MS)
             considerImageScan()
+        }
+    }
+
+    /**
+     * Takes image translations down as soon as the page moves under them.
+     *
+     * Measured on a device before this existed: a scroll left three
+     * translations sitting at their old screen positions for **3.6 seconds**,
+     * over artwork they had nothing to do with, while the untranslated bubbles
+     * that had scrolled into view sat beside them untouched.
+     *
+     * Nothing here restores them — [ImageTextScanner.clear] resets the frame it
+     * last recognised, so the next settled frame is rescanned and they come back
+     * where they belong. The translations themselves are cached, so coming back
+     * costs no provider call: that matters more now that a provider can be
+     * something the user pays per request (ADR 010).
+     */
+    private suspend fun runImageScrollLoop() {
+        for (signal in imageScrollSignals) {
+            imageScanner.clear()
         }
     }
 
@@ -441,10 +476,17 @@ class BabelAccessibilityService : AccessibilityService() {
         when (event?.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_SCROLLED,
             -> {
                 scanRequests.trySend(Unit)
                 imageScanRequests.trySend(Unit)
+            }
+
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                scanRequests.trySend(Unit)
+                imageScanRequests.trySend(Unit)
+                // Cheap enough for the main thread: one volatile read, and the
+                // work itself happens on [runImageScrollLoop].
+                if (imagePathOwner != null) imageScrollSignals.trySend(Unit)
             }
 
             else -> Unit

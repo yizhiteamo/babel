@@ -3,6 +3,7 @@ package com.babel.platform.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.graphics.Bitmap
 import android.os.Build
+import android.os.SystemClock
 import android.view.Display
 import androidx.annotation.RequiresApi
 import com.babel.core.common.BabelLogger
@@ -11,7 +12,10 @@ import java.util.concurrent.Executor
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Takes pictures of the screen through the accessibility service.
@@ -34,6 +38,10 @@ class AccessibilityScreenshotSource @Inject constructor(
     @Volatile
     private var service: AccessibilityService? = null
 
+    /** Serialises captures so the interval below is actually observed. */
+    private val pacing = Mutex()
+    private var lastCaptureAt = 0L
+
     override val isAvailable: Boolean
         get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && service != null
 
@@ -45,9 +53,28 @@ class AccessibilityScreenshotSource @Inject constructor(
         service = null
     }
 
+    /**
+     * Waits out the platform's screenshot interval rather than failing on it.
+     *
+     * `takeScreenshot` refuses with `ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT`
+     * if asked again too soon, and the caller has no way to tell that apart
+     * from a real failure. Measured on a device: scrolling fired scan requests
+     * faster than the interval, two of them came back empty, each abandoned its
+     * whole scan, and the page then waited on the 1.5s fallback timer — 2.2s of
+     * a 3.6s delay before stale translations came down.
+     *
+     * The interval is the platform's fact, so honouring it belongs here rather
+     * than in every caller that might ask twice.
+     */
     override suspend fun latestFrame(): Bitmap? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
-        return takeScreenshot(service ?: return null)
+        val current = service ?: return null
+
+        return pacing.withLock {
+            val since = SystemClock.elapsedRealtime() - lastCaptureAt
+            if (since < MIN_INTERVAL_MS) delay(MIN_INTERVAL_MS - since)
+            takeScreenshot(current).also { lastCaptureAt = SystemClock.elapsedRealtime() }
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.R)
@@ -98,5 +125,12 @@ class AccessibilityScreenshotSource @Inject constructor(
 
     private companion object {
         const val TAG = "Screenshot"
+
+        /**
+         * The platform allows roughly one screenshot every 333ms. Asking at a
+         * slightly longer interval leaves room for the clock disagreeing with
+         * itself, and costs nothing: nothing here wants screenshots faster.
+         */
+        const val MIN_INTERVAL_MS = 400L
     }
 }

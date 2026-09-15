@@ -49,6 +49,22 @@ inside its content area, an article reports 8. A page part-way through loading
 can briefly report 1–2, which is why the threshold sits in the gap rather than
 at 1.
 
+### Scrolling takes the image path down
+
+The node path reads fresh bounds from the tree on every `TYPE_VIEW_SCROLLED`,
+which is why its translations follow a scrolling page. The image path cannot:
+its coordinates come from pixels, and the pixels have moved, so everything it
+has drawn is now over content it does not describe.
+
+So a scroll clears it immediately, through a channel of its own rather than the
+one the scan lock guards — taking overlays down must not queue behind a scan
+that is still reading the screen the user has already left. Nothing restores
+them explicitly; clearing resets the last recognised frame, so the next settled
+frame is rescanned and they return in the right places.
+
+Measured before this existed: a single swipe left three translations at their old
+positions for 3.6 seconds (`docs/milestones/v2.md`).
+
 ### Standing down means clearing
 
 Whenever the image path stops owning a screen — the node path taking it back,
