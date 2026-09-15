@@ -18,6 +18,9 @@ import javax.inject.Singleton
  */
 internal interface PageReader {
     suspend fun read(frame: Bitmap): List<TextRegion>
+
+    /** Lets go of loaded models. Reading again afterwards reloads them. */
+    suspend fun release() = Unit
 }
 
 /**
@@ -56,7 +59,10 @@ internal class GroupingPageReader @Inject constructor(
 @Singleton
 internal class DetectingPageReader @Inject constructor(
     private val detector: TextDetector,
-    private val recognizer: TextRecognizer,
+    // Deliberately the bubble recogniser rather than the injected
+    // [TextRecognizer]: this is the only path that hands over a cropped balloon,
+    // which is the only input manga-ocr can read.
+    private val recognizer: BubbleRecognizer,
     private val fallback: GroupingPageReader,
     private val logger: BabelLogger,
 ) : PageReader {
@@ -74,6 +80,11 @@ internal class DetectingPageReader @Inject constructor(
         logger.debug(TAG, "detector found ${bubbles.size} bubbles")
 
         return bubbles.mapNotNull { bubble -> read(frame, bubble) }
+    }
+
+    override suspend fun release() {
+        detector.release()
+        recognizer.release()
     }
 
     private suspend fun read(frame: Bitmap, bubble: DetectedBubble): TextRegion? {

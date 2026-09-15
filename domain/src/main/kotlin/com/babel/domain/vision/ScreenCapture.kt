@@ -82,4 +82,18 @@ interface ImageTextScanner : TextSource {
 
     /** Drops everything currently tracked, e.g. when the mode is turned off. */
     suspend fun clear()
+
+    /**
+     * Lets go of anything expensive being held to be able to read at all.
+     *
+     * Separate from [clear], and called far less often: clearing happens on
+     * every scroll, while this happens when image translation is finished with
+     * for now. A scanner backed by models measured at **589MB** with them
+     * loaded, and holding that while the mode is off buys nothing
+     * (`docs/milestones/v2.md`).
+     *
+     * Reading again afterwards must still work — this is a cost to pay again,
+     * not a shutdown.
+     */
+    suspend fun release()
 }

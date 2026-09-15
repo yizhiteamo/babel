@@ -121,17 +121,20 @@ class CaptureTextSource @Inject internal constructor(
 
         // Never came to rest — an animation, a video, a page still loading.
         // Leave it to the next tick rather than reading a smear.
-        if (frame == null || signature == null) return
+        if (frame == null || signature == null) {
+            logger.debug(TAG, "skipped: the screen never came to rest")
+            return
+        }
         val captureMs = System.currentTimeMillis() - captureStarted
 
         // A different page from the one already read? Re-recognising the same
         // page would replace its translations with a slightly different reading
         // of it.
         if (!FrameChangeDetector.shouldRecognize(lastRecognized, signature)) {
+            logger.debug(TAG, "skipped: the same page as last read")
             frame.recycle()
             return
         }
-        lastRecognized = signature
 
         // Read only the app's content area.
         //
@@ -198,7 +201,12 @@ class CaptureTextSource @Inject internal constructor(
             frame.recycle()
         }
 
-        publish(elements, startedAfter)
+        publish(elements, startedAfter, signature)
+    }
+
+    override suspend fun release() {
+        clear()
+        pages.release()
     }
 
     /** Drops everything currently tracked, e.g. when the session ends. */
@@ -327,7 +335,11 @@ class CaptureTextSource @Inject internal constructor(
     }
 
     /** Same diffing as the accessibility source: only changes go downstream. */
-    private suspend fun publish(elements: List<TextElement>, startedAfter: Long) {
+    private suspend fun publish(
+        elements: List<TextElement>,
+        startedAfter: Long,
+        signature: IntArray,
+    ) {
         val (removed, upserted) = lock.withLock {
             if (clears != startedAfter) {
                 // Cleared while this scan ran, so it is a reading of a screen
@@ -335,6 +347,11 @@ class CaptureTextSource @Inject internal constructor(
                 logger.debug(TAG, "dropped a scan of a screen that is gone")
                 return
             }
+            // Recorded here rather than before the reading, and that matters:
+            // marking the page read and *then* throwing the reading away left
+            // the page looking done, so it was never read again. Measured as a
+            // comic that stayed untranslated until it was scrolled.
+            lastRecognized = signature
             val currentIds = elements.mapTo(LinkedHashSet()) { it.id }
             val gone = previousIds - currentIds
             previousIds = currentIds

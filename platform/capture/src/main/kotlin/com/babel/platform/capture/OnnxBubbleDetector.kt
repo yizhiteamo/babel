@@ -81,6 +81,16 @@ internal class OnnxBubbleDetector @Inject constructor(
         }
     }
 
+    override suspend fun release() {
+        loading.withLock {
+            session?.close()
+            session = null
+            // Not latched: releasing is a deliberate hand-back, not a failure,
+            // and the next scan is expected to load it again.
+            failed = false
+        }
+    }
+
     private suspend fun session(): OrtSession? {
         session?.let { return it }
         if (failed || !modelFile.exists()) return null

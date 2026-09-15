@@ -468,6 +468,11 @@ class BabelAccessibilityService : AccessibilityService() {
                 // Immediately rather than at the next tick of the scan loop:
                 // the user switched the mode off and expects the bubbles gone.
                 standDownImagePath()
+                // And let go of the models. Switched off is the one moment we
+                // know image translation is finished with for now; anything
+                // shorter — a scroll, an app switch — comes back too soon to be
+                // worth a reload (`docs/milestones/v2.md`).
+                imageScanner.release()
             }
         }
     }

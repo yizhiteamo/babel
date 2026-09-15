@@ -34,6 +34,9 @@ internal interface TextDetector {
      * @return one entry per balloon found, in no particular order.
      */
     suspend fun detect(frame: Bitmap): List<DetectedBubble>
+
+    /** Lets go of the loaded model. Detecting again afterwards reloads it. */
+    suspend fun release() = Unit
 }
 
 /**
