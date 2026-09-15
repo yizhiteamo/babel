@@ -45,3 +45,35 @@ everything else recorded in `docs/milestones/v2.md`.
 `orig_target_sizes` is **(width, height)**. Passing it the other way puts boxes
 past the right edge of the page and makes a working detector look broken — the
 first run here scored 2 of 5 bubbles for exactly that reason.
+
+## Stage 3: the translation engine
+
+`translate.py` runs a local LLM over the same fifteen hand-transcribed bubbles
+the device harness uses, so its output can be read beside ML Kit's.
+
+```bash
+pip install onnxruntime numpy tokenizers
+
+mkdir -p models/qwen
+curl -L -o models/qwen/model_q4f16.onnx \
+  https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct/resolve/main/onnx/model_q4f16.onnx
+for f in tokenizer.json config.json generation_config.json; do
+  curl -L -o "models/qwen/$f" \
+    "https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct/resolve/main/$f"
+done
+
+PYTHONIOENCODING=utf-8 python translate.py ../../models/qwen
+```
+
+`PYTHONIOENCODING=utf-8` is not optional on Windows: without it the console
+replaces every Japanese and Chinese character, and the output is unreadable —
+which is the entire point of the script.
+
+Qwen2.5-0.5B-Instruct is Apache-2.0 upstream. The result was **negative**, and
+the numbers are in `docs/milestones/v2.md`: 3.5s per bubble against a whole-page
+budget of 1.9s, 483MB, and an instruction-following collapse on short bubbles.
+
+One trap worth repeating here: `model_q4f16.onnx` does not load on the CPU
+provider with graph optimisations on. It is a GPU/WebGPU build. `translate.py`
+disables optimisations to get around it; anything CPU-bound should use `int8`
+or `q4` instead.
