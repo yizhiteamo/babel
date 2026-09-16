@@ -58,6 +58,14 @@ guaranteed rather than incidental (ADR 005).
   splits a line at its ellipses and measurably helps ML Kit, which cannot use
   context; it measurably hurts a stronger model, which can. The wrapper belongs
   to the engine, not to the pipeline.
+- **Cleartext is permitted to loopback and nowhere else.** "Anything the user
+  runs on their own machine" speaks plain HTTP, and since API 28 the platform
+  blocks that by default — so the offer above failed with a network error for
+  exactly the users who wanted to keep their screen text off the internet. The
+  network security config opens `localhost`, `127.0.0.1`, `::1` and the
+  emulator's `10.0.2.2`; a hosted service stays https-only. A config matches
+  hosts and not ranges, so a phone reaching a desktop at `192.168.x.x` still
+  needs https or `adb reverse` — a limit of the mechanism, not a policy choice.
 
 ## Alternatives considered
 

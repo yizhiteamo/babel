@@ -39,6 +39,12 @@ What holds:
   never sent anywhere but the configured endpoint.
 - **Failures log a status, never a body.** A rejected request routinely quotes
   the request back, sometimes with the key in it.
+- **Transport is https, except to the user's own machine.** The network security
+  config permits cleartext to loopback only (`localhost`, `127.0.0.1`, `::1`,
+  and the emulator's `10.0.2.2`); every other host is https or nothing. That
+  exception exists so a locally hosted model is usable at all — it is the one
+  configuration where the text never reaches the internet, and refusing it would
+  have pushed those users to a hosted service instead (ADR 010).
 
 ## Review: captured images (V2)
 

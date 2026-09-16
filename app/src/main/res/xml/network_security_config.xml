@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cleartext stays forbidden everywhere except a server on the user's own
+    machine, reached over loopback.
+
+    Why this file exists at all: the online-translation dialog offers "something
+    running on your own machine" as an alternative to a hosted service, and a
+    local server (Ollama, LM Studio, llama.cpp) speaks plain HTTP. Since API 28
+    the platform blocks cleartext by default, so that half of the offer silently
+    failed with a network error. Either the offer goes or this does.
+
+    Why it is only loopback: a network security config matches hosts, not
+    ranges — there is no way to write "any private address". A phone reaching a
+    desktop across wifi at 192.168.x.x therefore still needs https, or
+    `adb reverse tcp:<port> tcp:<port>`, which is what makes the loopback entry
+    reach the host. 10.0.2.2 is the emulator's alias for the same thing.
+
+    Nothing here relaxes anything for a hosted service: those remain https-only,
+    which is what the privacy rules assume when they say recognised text leaves
+    the device only to an endpoint the user named.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">::1</domain>
+        <!-- The emulator's route to the machine hosting it. -->
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
