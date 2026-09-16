@@ -69,6 +69,25 @@ same splitting *hurts*, because that model can use the context a whole balloon
 gives it (`docs/milestones/v2.md`). So the wrapper belongs to the engine it
 compensates for, not to the pipeline.
 
+### Which remote
+
+The remote arm is itself a choice of two, made by `RemoteTranslator`:
+
+| | Asks the user for | Good at | Blind to |
+|---|---|---|---|
+| Chat endpoint | address, model, key (optional) | using context — it can be told these are comic balloons | short input, where it may answer or refuse instead of translating |
+| DeepL | a key | short lines; it has no instruction to disobey | context; each balloon is a standalone sentence to it |
+
+Both are configured through `RemoteProviderSettings`, whose `isConfigured` asks
+a different question per service — an address and a model for the chat route, a
+key alone for DeepL. The UI asks that property rather than restating the rule,
+so the button a user presses and the gate that routes their text cannot
+disagree.
+
+`RoutingTranslator` stays a two-way question — on-device or not — because that
+is the one the privacy gate asks. Each service reports its own `ProviderId`, so
+a cached translation from one is never served for the other.
+
 ## Provider Independence
 
 Provider SDK/HTTP types must not escape into common domain logic.

@@ -13,6 +13,7 @@ import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
+import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
@@ -88,6 +89,7 @@ class DataStoreSettingsRepository(
      */
     override suspend fun setRemoteProvider(settings: RemoteProviderSettings) {
         dataStore.edit { prefs ->
+            prefs[Keys.REMOTE_SERVICE] = settings.service.name
             prefs[Keys.REMOTE_ENDPOINT] = settings.endpoint
             prefs[Keys.REMOTE_MODEL] = settings.model
             prefs[Keys.REMOTE_KEY] = settings.apiKey.value
@@ -103,12 +105,23 @@ class DataStoreSettingsRepository(
         targetLanguageMode = readTargetMode(prefs),
         provider = prefs[Keys.PROVIDER]?.takeIf { it.isNotBlank() }?.let(::ProviderId),
         remote = RemoteProviderSettings(
+            service = readRemoteService(prefs),
             endpoint = prefs[Keys.REMOTE_ENDPOINT].orEmpty(),
             model = prefs[Keys.REMOTE_MODEL].orEmpty(),
             apiKey = ApiKey(prefs[Keys.REMOTE_KEY].orEmpty()),
         ),
         autoStart = prefs[Keys.AUTO_START] ?: false,
     )
+
+    /**
+     * Falls back to the chat service, which is what every stored configuration
+     * predating this key is. An unrecognised name does the same rather than
+     * throwing: a settings file from a newer build must not crash an older one.
+     */
+    private fun readRemoteService(prefs: Preferences): RemoteService {
+        val stored = prefs[Keys.REMOTE_SERVICE] ?: return RemoteService.CHAT
+        return RemoteService.entries.firstOrNull { it.name == stored } ?: RemoteService.CHAT
+    }
 
     private fun readSourceMode(prefs: Preferences): SourceLanguageMode {
         if (prefs[Keys.SOURCE_MODE] != MODE_MANUAL) return SourceLanguageMode.AutoDetect
@@ -130,6 +143,7 @@ class DataStoreSettingsRepository(
         val TARGET_MODE = stringPreferencesKey("target_language_mode")
         val TARGET_LANGUAGE = stringPreferencesKey("target_language")
         val PROVIDER = stringPreferencesKey("provider")
+        val REMOTE_SERVICE = stringPreferencesKey("remote_service")
         val REMOTE_ENDPOINT = stringPreferencesKey("remote_endpoint")
         val REMOTE_MODEL = stringPreferencesKey("remote_model")
         val REMOTE_KEY = stringPreferencesKey("remote_api_key")

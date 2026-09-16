@@ -136,19 +136,12 @@ class HomeViewModel @Inject constructor(
      * provider with no endpoint fails every request
      * (`docs/decisions/010-remote-translation.md`).
      */
-    fun enableRemoteTranslation(endpoint: String, model: String, apiKey: String) {
+    fun enableRemoteTranslation(settings: RemoteProviderSettings) {
         viewModelScope.launch {
-            val existing = uiState.value.settings.remote
-            settingsRepository.setRemoteProvider(
-                RemoteProviderSettings(
-                    endpoint = endpoint.trim(),
-                    model = model.trim(),
-                    // Blank means "keep what is stored", so the dialog never has
-                    // to show the key back in order to edit the model beside it.
-                    apiKey = apiKey.trim().takeIf { it.isNotEmpty() }?.let(::ApiKey)
-                        ?: existing.apiKey,
-                ),
-            )
+            // Taken as given: the dialog resolved which service, and what a
+            // blank key means, against what was already stored. Re-deriving any
+            // of that here is how the two ended up disagreeing once already.
+            settingsRepository.setRemoteProvider(settings)
             settingsRepository.setProvider(RemoteProviderSettings.PROVIDER)
         }
     }

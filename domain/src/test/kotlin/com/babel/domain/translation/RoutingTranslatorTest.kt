@@ -12,6 +12,7 @@ import com.babel.core.model.TranslationResult
 import com.babel.core.model.TranslationStatus
 import com.babel.core.testing.FakeSettingsRepository
 import com.babel.domain.settings.RemoteProviderSettings
+import com.babel.domain.settings.RemoteService
 import kotlin.test.assertEquals
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -121,6 +122,45 @@ class RoutingTranslatorTest {
         settings.setProvider(RemoteProviderSettings.PROVIDER)
 
         assertEquals("remote:はい", translator.translate(request).translatedText)
+    }
+
+    /**
+     * DeepL asks for a key and nothing else — no address, no model — so the
+     * gate has to ask a different question for it than for the chat route.
+     */
+    @Test
+    fun `DeepL routes on a key alone`() = runTest(UnconfinedTestDispatcher()) {
+        val translator = routing(this)
+
+        settings.setRemoteProvider(
+            RemoteProviderSettings(
+                service = RemoteService.DEEPL,
+                apiKey = ApiKey("abc:fx"),
+            ),
+        )
+        settings.setProvider(RemoteProviderSettings.PROVIDER)
+
+        assertEquals("remote:はい", translator.translate(request).translatedText)
+    }
+
+    /** And the key is the whole of it, so without one there is nowhere to go. */
+    @Test
+    fun `DeepL without a key stays on-device`() = runTest(UnconfinedTestDispatcher()) {
+        val translator = routing(this)
+
+        settings.setRemoteProvider(
+            RemoteProviderSettings(
+                service = RemoteService.DEEPL,
+                // Filled in as if the chat route had been set up first, to make
+                // the point that these do not count for this service.
+                endpoint = "https://example.invalid/v1/chat/completions",
+                model = "some-model",
+                apiKey = ApiKey(""),
+            ),
+        )
+        settings.setProvider(RemoteProviderSettings.PROVIDER)
+
+        assertEquals("local:はい", translator.translate(request).translatedText)
     }
 
     /** What the gate is actually for: somewhere to send to. */

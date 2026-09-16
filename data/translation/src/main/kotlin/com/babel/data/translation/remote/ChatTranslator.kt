@@ -8,6 +8,7 @@ import com.babel.core.model.TranslationRequest
 import com.babel.core.model.TranslationResult
 import com.babel.core.model.TranslationStatus
 import com.babel.domain.settings.RemoteProviderSettings
+import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.Translator
 import java.io.IOException
@@ -53,7 +54,7 @@ class ChatTranslator(
     private val client: OkHttpClient = defaultClient(),
 ) : Translator {
 
-    override val id: ProviderId = RemoteProviderSettings.PROVIDER
+    override val id: ProviderId = RemoteService.CHAT.providerId
 
     /**
      * A general model translates between pairs nobody configured it for, so

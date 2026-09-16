@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -41,9 +42,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
+import com.babel.core.model.ApiKey
 import com.babel.core.model.LanguageTag
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
+import com.babel.domain.settings.RemoteService
 import com.babel.domain.vision.CaptureState
 
 /**
@@ -170,8 +173,8 @@ fun BabelApp(
     if (showRemoteSetup) {
         RemoteTranslationDialog(
             current = state.settings.remote,
-            onSave = { endpoint, model, key ->
-                viewModel.enableRemoteTranslation(endpoint, model, key)
+            onSave = {
+                viewModel.enableRemoteTranslation(it)
                 showRemoteSetup = false
             },
             onDismiss = { showRemoteSetup = false },
@@ -254,53 +257,83 @@ private fun RemoteTranslationCard(
     }
 }
 
+/**
+ * Where the remote route is set up, including which service is behind it.
+ *
+ * The two services ask for different things, and the dialog shows only what the
+ * chosen one needs: a chat endpoint wants an address and a model name, DeepL
+ * wants a key and nothing else. Offering all four fields for both would make
+ * three of them look required when they are not.
+ */
 @Composable
 private fun RemoteTranslationDialog(
     current: RemoteProviderSettings,
-    onSave: (endpoint: String, model: String, apiKey: String) -> Unit,
+    onSave: (RemoteProviderSettings) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var service by remember { mutableStateOf(current.service) }
     var endpoint by remember { mutableStateOf(current.endpoint) }
     var model by remember { mutableStateOf(current.model) }
     // Deliberately not seeded from the stored key: showing a credential back in
     // a text field is how it ends up in a screenshot. Blank means "keep it".
     var apiKey by remember { mutableStateOf("") }
 
+    // Exactly what pressing save would store, which is also what decides whether
+    // save can be pressed. Asking the model rather than restating its rule is
+    // what keeps the button and the gate that routes the text from disagreeing.
+    val draft = RemoteProviderSettings(
+        service = service,
+        endpoint = endpoint.trim(),
+        model = model.trim(),
+        apiKey = apiKey.trim().takeIf { it.isNotEmpty() }?.let(::ApiKey) ?: current.apiKey,
+    )
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.remote_dialog_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RemoteService.entries.forEach { option ->
+                        FilterChip(
+                            selected = service == option,
+                            onClick = { service = option },
+                            label = { Text(stringResource(option.labelRes())) },
+                        )
+                    }
+                }
                 Text(
-                    text = stringResource(R.string.remote_dialog_hint),
+                    text = stringResource(
+                        when (service) {
+                            RemoteService.CHAT -> R.string.remote_dialog_hint
+                            RemoteService.DEEPL -> R.string.remote_dialog_hint_deepl
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
-                    value = endpoint,
-                    onValueChange = { endpoint = it },
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.remote_field_endpoint)) },
-                )
-                OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.remote_field_model)) },
-                )
+                if (service == RemoteService.CHAT) {
+                    OutlinedTextField(
+                        value = endpoint,
+                        onValueChange = { endpoint = it },
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.remote_field_endpoint)) },
+                    )
+                    OutlinedTextField(
+                        value = model,
+                        onValueChange = { model = it },
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.remote_field_model)) },
+                    )
+                }
                 OutlinedTextField(
                     value = apiKey,
                     onValueChange = { apiKey = it },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     label = { Text(stringResource(R.string.remote_field_key)) },
-                    supportingText = if (current.apiKey.isPresent) {
-                        { Text(stringResource(R.string.remote_field_key_kept)) }
-                    } else {
-                        // Says so, because the field reads as required and the
-                        // one configuration that needs no key is also the only
-                        // one where the text never leaves the user's network.
-                        { Text(stringResource(R.string.remote_field_key_optional)) }
+                    supportingText = keyHint(service, current)?.let { hint ->
+                        { Text(stringResource(hint)) }
                     },
                 )
                 Text(
@@ -312,13 +345,12 @@ private fun RemoteTranslationDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(endpoint, model, apiKey) },
-                // Turning it on with nowhere to send to would fail every
-                // request and read as a bug rather than as a blank field. The
-                // key is not part of that: a server on the user's own machine
-                // wants none, and requiring one here made that configuration
-                // impossible to save at all.
-                enabled = endpoint.isNotBlank() && model.isNotBlank(),
+                onClick = { onSave(draft) },
+                // Turning it on with nowhere to send to would fail every request
+                // and read as a bug rather than as a blank field. What counts as
+                // "somewhere" differs per service, so the settings model is
+                // asked instead of the answer being written out twice.
+                enabled = draft.isConfigured,
             ) {
                 Text(stringResource(R.string.remote_dialog_save))
             }
@@ -329,6 +361,24 @@ private fun RemoteTranslationDialog(
             }
         },
     )
+}
+
+private fun RemoteService.labelRes(): Int = when (this) {
+    RemoteService.CHAT -> R.string.remote_service_chat
+    RemoteService.DEEPL -> R.string.remote_service_deepl
+}
+
+/**
+ * What to say under the key field, which is three different things.
+ *
+ * A stored key is kept when the field is left blank; a chat endpoint may not
+ * want a key at all; DeepL wants only that, so it says nothing and lets the
+ * label speak.
+ */
+private fun keyHint(service: RemoteService, current: RemoteProviderSettings): Int? = when {
+    current.apiKey.isPresent -> R.string.remote_field_key_kept
+    service == RemoteService.CHAT -> R.string.remote_field_key_optional
+    else -> null
 }
 
 /**

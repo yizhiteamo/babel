@@ -8,6 +8,8 @@ import com.babel.domain.language.LanguageResolver
 import com.babel.domain.language.SystemLocaleProvider
 import com.babel.core.common.DispatcherProvider
 import com.babel.data.translation.remote.ChatTranslator
+import com.babel.data.translation.remote.DeepLTranslator
+import com.babel.data.translation.remote.RemoteTranslator
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.FragmentingTranslator
 import com.babel.domain.translation.RoutingTranslator
@@ -36,6 +38,10 @@ object TranslationModule {
      * on fragments (`docs/milestones/v2.md`), so the remote route is left
      * unwrapped.
      *
+     * The remote arm is itself a choice of service — a chat endpoint or DeepL —
+     * made by [RemoteTranslator]. `RoutingTranslator` stays a two-way question
+     * because that is the one the privacy gate asks.
+     *
      * The scope outlives any screen: the route follows settings for as long as
      * the process runs, and the coordinator holds this translator for the same
      * span.
@@ -46,12 +52,22 @@ object TranslationModule {
         settingsRepository: SettingsRepository,
         dispatchers: DispatcherProvider,
         logger: BabelLogger,
-    ): Translator = RoutingTranslator(
-        local = FragmentingTranslator(MlKitTranslator(logger = logger)),
-        remote = ChatTranslator(settingsRepository, logger),
-        settingsRepository = settingsRepository,
-        scope = CoroutineScope(SupervisorJob() + dispatchers.default),
-    )
+    ): Translator {
+        // One scope for both followers of settings: they live exactly as long
+        // as each other and as long as the translator they make up.
+        val scope = CoroutineScope(SupervisorJob() + dispatchers.default)
+        return RoutingTranslator(
+            local = FragmentingTranslator(MlKitTranslator(logger = logger)),
+            remote = RemoteTranslator(
+                chat = ChatTranslator(settingsRepository, logger),
+                deepL = DeepLTranslator(settingsRepository, logger),
+                settingsRepository = settingsRepository,
+                scope = scope,
+            ),
+            settingsRepository = settingsRepository,
+            scope = scope,
+        )
+    }
 
     @Provides
     @Singleton

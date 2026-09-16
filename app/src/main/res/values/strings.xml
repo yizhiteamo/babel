@@ -61,6 +61,9 @@
     <string name="remote_field_key">API key</string>
     <string name="remote_field_key_kept">Saved key kept — leave blank to reuse it</string>
     <string name="remote_field_key_optional">Leave blank for a server on your own machine</string>
+    <string name="remote_service_chat">Chat endpoint</string>
+    <string name="remote_service_deepl">DeepL</string>
+    <string name="remote_dialog_hint_deepl">Paste the authentication key from your DeepL account — nothing else. The address follows from the key, and a free-tier key is recognised by its :fx ending.</string>
     <string name="remote_dialog_hint">Any OpenAI-compatible chat endpoint, path included — usually ends in /v1/chat/completions. A hosted service must use https; a server of your own is reached over http on localhost.</string>
     <string name="remote_dialog_save">Save and turn on</string>
     <string name="remote_dialog_cancel">Cancel</string>

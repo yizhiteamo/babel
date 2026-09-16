@@ -25,7 +25,13 @@ which made the ceiling worth offering a way past.
 What holds:
 
 - **It is off by default, and off is two things being false.** A route has to be
-  selected *and* an endpoint configured. Neither alone sends anything.
+  selected *and* the service configured. Neither alone sends anything. What
+  counts as configured depends on which service — an address and a model for a
+  chat endpoint, a key for DeepL — but the shape of the gate does not change.
+- **There is more than one possible destination, and the user names it.** The
+  chat route goes wherever its address points, including a machine on the user's
+  own network; DeepL goes to DeepL. Adding the second did not widen what leaves
+  the device, only where it may go, and only when explicitly chosen (ADR 010).
 - **Frames never travel, under any setting.** Only recognised text does.
 - **The privacy policy runs first, unchanged.** `DefaultSensitiveContentPolicy`
   rejects protected and password-like text before any provider is called, and
@@ -36,7 +42,7 @@ What holds:
 - **The credential cannot print itself.** `ApiKey.toString()` reveals nothing, so
   a settings object reaching a log does not take the key with it. It is stored in
   the app's private DataStore: readable by this app, not hardware-backed, and
-  never sent anywhere but the configured endpoint.
+  never sent anywhere but the service it belongs to.
 - **Failures log a status, never a body.** A rejected request routinely quotes
   the request back, sometimes with the key in it.
 - **Transport is https, except to the user's own machine.** The network security

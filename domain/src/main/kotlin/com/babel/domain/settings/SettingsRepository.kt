@@ -40,26 +40,73 @@ data class BabelSettings(
  * nothing and exclude all of that.
  */
 data class RemoteProviderSettings(
+    val service: RemoteService = RemoteService.CHAT,
     val endpoint: String = "",
     val model: String = "",
     val apiKey: ApiKey = ApiKey(""),
 ) {
     /**
-     * Enough to reach somewhere. Deliberately **not** including the key.
+     * Enough to reach somewhere — which is a different question per service.
      *
-     * A hosted service needs one and will answer 401 without it, which is
-     * visible and fixable. A model running on the user's own machine needs
-     * none — and that is the one configuration where the text never reaches
-     * the internet at all, so requiring a credential for it turned the
-     * privacy-preserving option into the unreachable one (ADR 010).
+     * [RemoteService.CHAT] needs an address and a model name, and deliberately
+     * **not** a key: a hosted service answers 401 without one, which is visible
+     * and fixable, while a model on the user's own machine wants none at all.
+     * Requiring a credential there turned the one configuration where the text
+     * never reaches the internet into the only one the app refused (ADR 010).
+     *
+     * [RemoteService.DEEPL] is the mirror image: the key is all there is. The
+     * address follows from the key and there is no model to choose.
+     *
+     * The UI asks this rather than restating it, so the button a user presses
+     * and the gate that routes their text cannot disagree.
      */
     val isConfigured: Boolean
-        get() = endpoint.isNotBlank() && model.isNotBlank()
+        get() = when (service) {
+            RemoteService.CHAT -> endpoint.isNotBlank() && model.isNotBlank()
+            RemoteService.DEEPL -> apiKey.isPresent
+        }
 
     companion object {
-        /** The id this provider reports, which is also what cache keys carry. */
+        /**
+         * Marks the remote route as selected, whichever service is behind it.
+         *
+         * Not the same thing as the id a translator reports: cache keys carry
+         * the engine that produced a translation, and the two services must
+         * never share one ([RemoteService.providerId]).
+         */
         val PROVIDER: ProviderId = ProviderId("remote-chat")
     }
+}
+
+/**
+ * Which kind of service is behind the remote route.
+ *
+ * Two shapes, because they are genuinely different protocols rather than two
+ * vendors of one. A chat model is told what the text is and asked to translate
+ * it; a translation API is handed the text and a target language. ADR 010
+ * originally carried only the first, on the grounds that one shape covers every
+ * provider — which held right up until the measurements said a narrow
+ * translator is what a comic balloon wants.
+ */
+enum class RemoteService {
+    /** Any OpenAI-compatible chat endpoint, hosted or on the user's machine. */
+    CHAT,
+
+    /** DeepL's translation API, free tier included. */
+    DEEPL,
+    ;
+
+    /**
+     * What a translation made by this service is filed under.
+     *
+     * `TranslationCacheKey` carries the provider, so switching services must
+     * not serve one engine's translation for the other's request.
+     */
+    val providerId: ProviderId
+        get() = when (this) {
+            CHAT -> ProviderId("remote-chat")
+            DEEPL -> ProviderId("deepl")
+        }
 }
 
 interface SettingsRepository {

@@ -1,7 +1,8 @@
 # ADR 010 — Remote Translation, Off By Default
 
 ## Status
-Accepted
+Accepted, amended once — see the first bullet under Shape, where the
+"one request shape covers everything" argument is narrowed by measurement.
 
 ## Decision
 
@@ -45,10 +46,31 @@ guaranteed rather than incidental (ADR 005).
 
 ## Shape
 
-- **An OpenAI-compatible chat endpoint, not a named service.** One request shape
-  covers the hosted model this was asked for, the several providers that copy
-  its API, and anything the user runs on their own machine. Naming a vendor would
-  buy nothing and exclude all of that.
+- **Two request shapes: an OpenAI-compatible chat endpoint, and DeepL.**
+  *Amended.* This originally read "not a named service", on the grounds that one
+  shape covers the hosted model this was asked for, the several providers that
+  copy its API, and anything the user runs on their own machine — so naming a
+  vendor would buy nothing and exclude all of that.
+
+  The first half still holds and the chat route is unchanged. What the argument
+  missed is that a comic balloon is *short*, and short input is where an
+  instruction-following model stops following instructions. Measured on this
+  project's own pages, a chat model answered `…あ` with `哈哈` and replied to
+  `…あんまりわかんないケドッ` with 「我不会翻译日语，也不会参与翻译」
+  (`docs/milestones/v2.md`). That same finding is what chose opus-mt over a local
+  LLM, in its own words: a narrow translator "cannot refuse or ramble".
+
+  DeepL is that reasoning reaching the network. It is not a vendor of the same
+  shape — a translation API takes text and a target language, with no
+  instruction to disobey — so it is a second implementation rather than a second
+  endpoint to configure. It also asks the user for less: one key, no model name,
+  no address, the host derived from the key's `:fx` suffix.
+
+  What it gives up is context: a chat model can be told these are comic
+  balloons, and this cannot. Which wins on a given page is a measurement, so
+  both stay and the user picks. `RemoteTranslator` is the choice;
+  `RoutingTranslator` stays a two-way question because that is the one the
+  privacy gate asks.
 - **Two independent switches, and the key is not one of them.** `provider`
   selects the route and `RemoteProviderSettings` says where to reach it. Both
   are required, so neither a stray selection nor a half-filled form can start
