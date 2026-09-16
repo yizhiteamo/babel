@@ -49,9 +49,15 @@ guaranteed rather than incidental (ADR 005).
   covers the hosted model this was asked for, the several providers that copy
   its API, and anything the user runs on their own machine. Naming a vendor would
   buy nothing and exclude all of that.
-- **Two independent switches.** `provider` selects the route and
-  `RemoteProviderSettings` says where to reach it. Both are required, so neither
-  a stray selection nor a half-filled form can start sending.
+- **Two independent switches, and the key is not one of them.** `provider`
+  selects the route and `RemoteProviderSettings` says where to reach it. Both
+  are required, so neither a stray selection nor a half-filled form can start
+  sending. `isConfigured` asks only for an endpoint and a model: a hosted
+  service answers 401 without a credential, which is visible and fixable, while
+  a model on the user's own machine wants none at all. Requiring one made that
+  second case impossible to save — the save button stayed disabled and this gate
+  stayed shut — so the one configuration where the text never reaches the
+  internet was also the only one the app refused to accept.
 - **The key is a type, not a string.** `ApiKey.toString()` never reveals it, so a
   settings object that reaches a log cannot take the credential with it.
 - **The remote route is not wrapped in `FragmentingTranslator`.** That wrapper

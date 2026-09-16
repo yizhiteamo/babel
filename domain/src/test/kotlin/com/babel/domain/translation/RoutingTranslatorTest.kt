@@ -102,6 +102,46 @@ class RoutingTranslatorTest {
         }
 
     /**
+     * A model running on the user's own machine wants no credential, and that
+     * is the one configuration where the text never reaches the internet.
+     * Requiring a key made the privacy-preserving option the unreachable one:
+     * the dialog would not save it and this gate would not open (ADR 010).
+     */
+    @Test
+    fun `a server that wants no key still routes`() = runTest(UnconfinedTestDispatcher()) {
+        val translator = routing(this)
+
+        settings.setRemoteProvider(
+            RemoteProviderSettings(
+                endpoint = "http://10.0.2.2:1234/v1/chat/completions",
+                model = "some-local-model",
+                apiKey = ApiKey(""),
+            ),
+        )
+        settings.setProvider(RemoteProviderSettings.PROVIDER)
+
+        assertEquals("remote:はい", translator.translate(request).translatedText)
+    }
+
+    /** What the gate is actually for: somewhere to send to. */
+    @Test
+    fun `a blank endpoint stays on-device however else it is filled in`() =
+        runTest(UnconfinedTestDispatcher()) {
+            val translator = routing(this)
+
+            settings.setRemoteProvider(
+                RemoteProviderSettings(
+                    endpoint = "",
+                    model = "some-model",
+                    apiKey = ApiKey("secret"),
+                ),
+            )
+            settings.setProvider(RemoteProviderSettings.PROVIDER)
+
+            assertEquals("local:はい", translator.translate(request).translatedText)
+        }
+
+    /**
      * `TranslationCacheKey` carries the provider, so a translation made by one
      * engine must never be served for the other. Reporting the live route is
      * what makes that hold across a switch.

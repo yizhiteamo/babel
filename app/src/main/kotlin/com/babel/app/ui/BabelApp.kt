@@ -297,7 +297,10 @@ private fun RemoteTranslationDialog(
                     supportingText = if (current.apiKey.isPresent) {
                         { Text(stringResource(R.string.remote_field_key_kept)) }
                     } else {
-                        null
+                        // Says so, because the field reads as required and the
+                        // one configuration that needs no key is also the only
+                        // one where the text never leaves the user's network.
+                        { Text(stringResource(R.string.remote_field_key_optional)) }
                     },
                 )
                 Text(
@@ -311,9 +314,11 @@ private fun RemoteTranslationDialog(
             TextButton(
                 onClick = { onSave(endpoint, model, apiKey) },
                 // Turning it on with nowhere to send to would fail every
-                // request and read as a bug rather than as a blank field.
-                enabled = endpoint.isNotBlank() && model.isNotBlank() &&
-                    (apiKey.isNotBlank() || current.apiKey.isPresent),
+                // request and read as a bug rather than as a blank field. The
+                // key is not part of that: a server on the user's own machine
+                // wants none, and requiring one here made that configuration
+                // impossible to save at all.
+                enabled = endpoint.isNotBlank() && model.isNotBlank(),
             ) {
                 Text(stringResource(R.string.remote_dialog_save))
             }

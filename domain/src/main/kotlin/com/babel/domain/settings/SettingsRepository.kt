@@ -23,7 +23,8 @@ data class BabelSettings(
      *
      * Both halves are required, deliberately: choosing the provider is the user
      * saying yes, and a configured endpoint is what makes that yes actionable.
-     * Neither alone sends anything anywhere.
+     * Neither alone sends anything anywhere. The key is not one of the halves —
+     * see [RemoteProviderSettings.isConfigured].
      */
     val usesRemoteTranslation: Boolean
         get() = provider == RemoteProviderSettings.PROVIDER && remote.isConfigured
@@ -43,8 +44,17 @@ data class RemoteProviderSettings(
     val model: String = "",
     val apiKey: ApiKey = ApiKey(""),
 ) {
+    /**
+     * Enough to reach somewhere. Deliberately **not** including the key.
+     *
+     * A hosted service needs one and will answer 401 without it, which is
+     * visible and fixable. A model running on the user's own machine needs
+     * none — and that is the one configuration where the text never reaches
+     * the internet at all, so requiring a credential for it turned the
+     * privacy-preserving option into the unreachable one (ADR 010).
+     */
     val isConfigured: Boolean
-        get() = endpoint.isNotBlank() && model.isNotBlank() && apiKey.isPresent
+        get() = endpoint.isNotBlank() && model.isNotBlank()
 
     companion object {
         /** The id this provider reports, which is also what cache keys carry. */

@@ -57,6 +57,7 @@
     <string name="remote_field_model">模型</string>
     <string name="remote_field_key">API 密钥</string>
     <string name="remote_field_key_kept">已保存密钥，留空表示沿用</string>
+    <string name="remote_field_key_optional">自建的服务器可以留空</string>
     <string name="remote_dialog_hint">任何兼容 OpenAI 格式的对话接口，要填完整路径——通常以 /v1/chat/completions 结尾。在线服务必须用 https；自建的服务器通过 localhost 用 http 访问。</string>
     <string name="remote_dialog_save">保存并开启</string>
     <string name="remote_dialog_cancel">取消</string>
