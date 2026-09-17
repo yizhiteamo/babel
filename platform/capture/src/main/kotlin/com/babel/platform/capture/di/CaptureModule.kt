@@ -1,9 +1,11 @@
 package com.babel.platform.capture.di
 
 import com.babel.domain.vision.ImageTextScanner
+import com.babel.domain.vision.RecognizerModel
 import com.babel.platform.capture.CaptureTextSource
 import com.babel.platform.capture.DetectingPageReader
 import com.babel.platform.capture.MlKitTextRecognizer
+import com.babel.platform.capture.ModelDownloader
 import com.babel.platform.capture.OnnxBubbleDetector
 import com.babel.platform.capture.PageReader
 import com.babel.platform.capture.TextDetector
@@ -40,6 +42,17 @@ internal abstract class RecognizerModule {
     @Binds
     @Singleton
     abstract fun bindTextRecognizer(impl: MlKitTextRecognizer): TextRecognizer
+
+    /**
+     * The one binding here whose *type* is public: the interface has to show
+     * whether the recogniser's weights are on the device and offer to fetch
+     * them (ADR 011). Declared in this module because the implementation is
+     * internal like everything else that touches an engine — what leaves is a
+     * domain contract with no Android type in it.
+     */
+    @Binds
+    @Singleton
+    abstract fun bindRecognizerModel(impl: ModelDownloader): RecognizerModel
 
     @Binds
     @Singleton

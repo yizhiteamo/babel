@@ -22,13 +22,19 @@ import org.junit.runner.RunWith
  * the only moment a failed load becomes visible, since availability is assumed
  * until a load has been tried.
  *
- * To exercise the bundled copy specifically, move any pushed override aside
- * first — a pushed file wins, by design:
+ * It exercises the **bundled** copy without arranging anything, and for a
+ * reason worth knowing before writing another test here: a library module's
+ * instrumentation runs self-instrumented, so `targetContext` is the test
+ * package — `com.babel.platform.capture.test`, not `com.babel`. Its external
+ * files directory is a different one that nothing pushes to, so the override
+ * branch is never taken here however the real app's directory is arranged.
+ * `docs/testing/push-comic-sample.sh` pushes to that test package for the same
+ * reason.
  *
  * ```
- * adb shell mv /sdcard/Android/data/com.babel/files/models/detector.onnx{,.bak}
- * ./gradlew :platform:capture:connectedDebugAndroidTest --tests "*BundledDetectorTest"
- * adb shell mv /sdcard/Android/data/com.babel/files/models/detector.onnx{.bak,}
+ * ./gradlew :platform:capture:connectedDebugAndroidTest
+ *   -Pandroid.testInstrumentationRunnerArguments.class=
+ *     com.babel.platform.capture.BundledDetectorTest
  * ```
  */
 @RunWith(AndroidJUnit4::class)

@@ -18,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -48,6 +49,7 @@ import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
 import com.babel.domain.vision.CaptureState
+import com.babel.domain.vision.RecognizerModelState
 
 /**
  * Root of the app's own UI.
@@ -148,8 +150,12 @@ fun BabelApp(
 
             CaptureCard(
                 state = state.captureState,
+                model = state.recognizerModel,
+                modelBytes = state.recognizerModelBytes,
+                metered = state.meteredConnection,
                 onStart = viewModel::startMangaMode,
                 onStop = viewModel::stopMangaMode,
+                onDownloadModel = viewModel::downloadRecognizerModel,
             )
 
             RemoteTranslationCard(
@@ -394,6 +400,91 @@ private fun keyHint(service: RemoteService, current: RemoteProviderSettings): In
 }
 
 /**
+ * Says whether the comic recogniser is on the device, and offers to fetch it.
+ *
+ * Deliberately not phrased as a fault. Manga mode works without this: the
+ * balloon detector ships with the app, so balloons are found correctly and
+ * interface text is left alone either way. What the download buys is reading
+ * the lettering accurately instead of approximately (ADR 011) — a better tier,
+ * not a repair.
+ */
+@Composable
+private fun RecognizerModelRow(
+    model: RecognizerModelState,
+    modelBytes: Long,
+    metered: Boolean,
+    onDownload: () -> Unit,
+) {
+    when (model) {
+        RecognizerModelState.Installed -> Text(
+            text = stringResource(R.string.model_state_installed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        is RecognizerModelState.Running -> {
+            val percent = if (model.total > 0) {
+                (model.bytes * 100 / model.total).toInt()
+            } else {
+                0
+            }
+            Text(
+                text = stringResource(R.string.model_state_running, percent),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            LinearProgressIndicator(
+                progress = { percent / 100f },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+
+        RecognizerModelState.Absent -> {
+            Text(
+                text = stringResource(R.string.model_state_absent),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (metered) {
+                // Said before the button, not after: 117MB on a metered
+                // connection is the kind of thing people want to know first.
+                Text(
+                    text = stringResource(R.string.model_metered_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            OutlinedButton(onClick = onDownload) {
+                Text(stringResource(R.string.model_action_download, modelBytes.asMegabytes()))
+            }
+        }
+
+        is RecognizerModelState.Failed -> {
+            Text(
+                text = stringResource(
+                    when (model.cause) {
+                        RecognizerModelState.Failed.Cause.NETWORK -> R.string.model_failed_network
+                        RecognizerModelState.Failed.Cause.CORRUPT -> R.string.model_failed_corrupt
+                        RecognizerModelState.Failed.Cause.UNEXPECTED ->
+                            R.string.model_failed_unexpected
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            // Offered even after a checksum failure. Retrying will not fix that
+            // one, and the message says so — but a button that vanishes leaves
+            // someone stuck with no way to try after fixing their side.
+            OutlinedButton(onClick = onDownload) {
+                Text(stringResource(R.string.model_action_retry))
+            }
+        }
+    }
+}
+
+/** Megabytes, because nobody reads bytes. */
+private fun Long.asMegabytes(): Int = (this / 1_000_000).toInt()
+
+/**
  * Shows the attribution the bundled model obliges Babel to carry.
  *
  * `NOTICE.txt` and the licence text travel in the assets of `:platform:capture`,
@@ -509,8 +600,12 @@ private fun RuntimeCard(
 @Composable
 private fun CaptureCard(
     state: CaptureState,
+    model: RecognizerModelState,
+    modelBytes: Long,
+    metered: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    onDownloadModel: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -543,6 +638,14 @@ private fun CaptureCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (state != CaptureState.UNAVAILABLE) {
+                RecognizerModelRow(
+                    model = model,
+                    modelBytes = modelBytes,
+                    metered = metered,
+                    onDownload = onDownloadModel,
+                )
+            }
             if (state == CaptureState.UNAVAILABLE) {
                 Text(
                     text = stringResource(R.string.capture_unavailable_reason),

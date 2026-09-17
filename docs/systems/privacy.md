@@ -17,10 +17,20 @@ Minimize unnecessary handling and persistence of user-visible screen content.
 
 This used to say that nothing left the device and that the app held no network
 permission. **The second half is no longer true.** Babel declares
-`android.permission.INTERNET`, and it buys exactly one feature: translation
-through a remote endpoint the user configures (ADR 010). On-device translation
-was measured against a hosted model and reaches about half the quality at 579MB,
-which made the ceiling worth offering a way past.
+`android.permission.INTERNET`, and it buys **two** features, neither of which
+happens unless the user asks:
+
+1. **Translation through a remote endpoint the user configures** (ADR 010).
+   On-device translation was measured against a hosted model and reaches about
+   half the quality at 579MB, which made the ceiling worth offering a way past.
+2. **Fetching the comic recogniser's weights** (ADR 011), on a button press.
+   That request carries no screen content — it asks a model host for a file by
+   name, and what comes back is checked against a pinned hash before it is used.
+
+A second permission came with the download: `ACCESS_NETWORK_STATE`, declared in
+`:platform:capture` beside the code that needs it. It answers one question —
+whether this connection is charged by the megabyte — so the app can say so
+before offering to spend 117MB. It reads no traffic and identifies no network.
 
 What holds:
 

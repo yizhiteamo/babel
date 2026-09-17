@@ -69,4 +69,13 @@
     <string name="licences_title">开源许可</string>
     <string name="licences_action_close">关闭</string>
     <string name="licences_unavailable">此版本中读取署名文件失败。</string>
+    <string name="model_state_installed">漫画识别模型已安装——气泡文字可被准确读取。</string>
+    <string name="model_state_running">正在下载漫画识别模型… %1$d%%</string>
+    <string name="model_state_absent">漫画模式现在就能用。下载漫画识别模型后，气泡里的文字会从大致读对变成准确读对。</string>
+    <string name="model_metered_warning">当前网络可能按流量计费。</string>
+    <string name="model_action_download">下载（%1$d MB）</string>
+    <string name="model_action_retry">重试</string>
+    <string name="model_failed_network">下载未完成。已下载的部分会保留，重试将从中断处继续。</string>
+    <string name="model_failed_corrupt">下载到的文件与预期不符。重试大概率无用，可能需要更新此版本的应用。</string>
+    <string name="model_failed_unexpected">下载因意外原因中止。</string>
 </resources>

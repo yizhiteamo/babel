@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+        Declared by the module that needs it rather than by the app, so the
+        reason travels with the code: `ModelDownloader` asks whether the
+        connection is metered before offering to fetch 117MB of recogniser
+        weights (ADR 011).
+
+        Read-only and answers one question — is this connection charged by the
+        megabyte. It reads no traffic and identifies no network. The app holds
+        exactly two permissions now, and `docs/systems/privacy.md` says what
+        each buys.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+</manifest>

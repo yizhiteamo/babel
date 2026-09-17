@@ -14,6 +14,8 @@ import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.vision.CaptureState
+import com.babel.domain.vision.RecognizerModel
+import com.babel.domain.vision.RecognizerModelState
 import com.babel.core.model.TranslationRuntimeState
 import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.vision.ScreenCaptureController
@@ -31,6 +33,11 @@ data class HomeUiState(
     val targetLanguage: LanguageTag? = null,
     val captureState: CaptureState = CaptureState.IDLE,
     val runtimeState: TranslationRuntimeState = TranslationRuntimeState.Disabled,
+    val recognizerModel: RecognizerModelState = RecognizerModelState.Absent,
+    /** What the recogniser download would cost, for saying so up front. */
+    val recognizerModelBytes: Long = 0,
+    /** Whether the user would pay for that by the megabyte. */
+    val meteredConnection: Boolean = false,
 ) {
     /**
      * Whether pausing or resuming makes sense right now.
@@ -70,6 +77,7 @@ class HomeViewModel @Inject constructor(
     private val languageResolver: LanguageResolver,
     private val screenCapture: ScreenCaptureController,
     private val coordinator: TranslationCoordinator,
+    private val recognizerModel: RecognizerModel,
 ) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -77,7 +85,8 @@ class HomeViewModel @Inject constructor(
         settingsRepository.settings,
         screenCapture.state,
         coordinator.runtimeState,
-    ) { capabilities, settings, captureState, runtimeState ->
+        recognizerModel.state,
+    ) { capabilities, settings, captureState, runtimeState, model ->
         HomeUiState(
             capabilities = capabilities,
             settings = settings,
@@ -87,12 +96,28 @@ class HomeViewModel @Inject constructor(
             ).target,
             captureState = captureState,
             runtimeState = runtimeState,
+            recognizerModel = model,
+            recognizerModelBytes = recognizerModel.totalBytes,
+            // Read here rather than in the composable: it is a system query,
+            // and a screen should not be making those while it draws.
+            meteredConnection = recognizerModel.isMetered(),
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
         initialValue = HomeUiState(),
     )
+
+    /**
+     * Fetches the comic recogniser's weights.
+     *
+     * Runs in the ViewModel's scope, so leaving the screen cancels it — which
+     * is safe: the partial download stays on disk and the next attempt
+     * continues from there rather than starting again (ADR 011).
+     */
+    fun downloadRecognizerModel() {
+        viewModelScope.launch { recognizerModel.install() }
+    }
 
     /** Permissions change outside the app, so re-read them on return. */
     fun refreshCapabilities() = capabilityChecker.refresh()

@@ -72,4 +72,13 @@
     <string name="licences_title">Open-source licences</string>
     <string name="licences_action_close">Close</string>
     <string name="licences_unavailable">The attribution file could not be read from this build.</string>
+    <string name="model_state_installed">Comic recogniser installed — lettering is read accurately.</string>
+    <string name="model_state_running">Downloading the comic recogniser… %1$d%%</string>
+    <string name="model_state_absent">Manga mode works now. Downloading the comic recogniser makes it read the lettering accurately instead of approximately.</string>
+    <string name="model_metered_warning">This connection may be charged by the megabyte.</string>
+    <string name="model_action_download">Download (%1$d MB)</string>
+    <string name="model_action_retry">Try again</string>
+    <string name="model_failed_network">The download did not finish. What arrived is kept, so trying again continues from there.</string>
+    <string name="model_failed_corrupt">What arrived was not the expected file. Trying again is unlikely to help; this build may need updating.</string>
+    <string name="model_failed_unexpected">The download stopped for an unexpected reason.</string>
 </resources>

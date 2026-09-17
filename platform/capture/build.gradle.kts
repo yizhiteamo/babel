@@ -50,6 +50,10 @@ dependencies {
     // Real dependency now, not just a test one. Stage 2 kept it out of the app
     // until the numbers justified it; they do (`docs/milestones/v2.md`).
     implementation(libs.onnxruntime.android)
+    // Fetching manga-ocr on demand (ADR 011). Already in the package via
+    // :data:translation, so this costs nothing in size and saves writing
+    // range requests and stream handling by hand.
+    implementation(libs.okhttp)
     androidTestImplementation(kotlin("test"))
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.runner)

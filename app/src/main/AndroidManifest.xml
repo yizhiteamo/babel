@@ -2,10 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-        The only permission Babel holds, and it buys exactly one thing: remote
-        translation, which is off until the user turns it on and configures an
-        endpoint (ADR 010). Everything else — screen reading, recognition,
-        on-device translation, rendering — works without it and always has.
+        One of two permissions Babel holds, and it buys two things, both of
+        which the user has to ask for: remote translation, off until it is
+        turned on and configured (ADR 010), and fetching the comic recogniser's
+        weights, which happens only when someone presses the button (ADR 011).
+        Everything else — screen reading, recognition, on-device translation,
+        rendering — works without it and always has.
+
+        The other is ACCESS_NETWORK_STATE, declared in :platform:capture beside
+        the code that needs it.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
