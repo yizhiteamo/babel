@@ -68,4 +68,8 @@
     <string name="remote_dialog_save">Save and turn on</string>
     <string name="remote_dialog_cancel">Cancel</string>
 
+    <string name="licences_action_open">Open-source licences</string>
+    <string name="licences_title">Open-source licences</string>
+    <string name="licences_action_close">Close</string>
+    <string name="licences_unavailable">The attribution file could not be read from this build.</string>
 </resources>

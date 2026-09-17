@@ -19,8 +19,14 @@ local.properties
 # it is somebody else's copyrighted work (docs/milestones/v2.md).
 /comic-sample/
 
-# Model weights, fetched locally and never committed — same rule as the manga
-# pages: somebody else's artefact, and far too large for a repository.
+# The local model scratch directory: exports, experiments and candidates that
+# were measured and rejected. Fetched locally, never committed — same rule as
+# the manga pages.
+#
+# One weight file *is* committed, deliberately, and lives elsewhere:
+# `platform/capture/src/main/assets/detector.onnx`, 11MB, bundled so that manga
+# mode works on a device nobody has run adb against (ADR 011). Its licence and
+# attribution ship beside it, which redistributing it is what obliges.
 /models/
 
 # JVM crash dumps. This machine runs Gradle beside an emulator and occasionally

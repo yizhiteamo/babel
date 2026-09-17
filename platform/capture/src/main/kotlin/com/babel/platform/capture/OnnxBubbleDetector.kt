@@ -32,15 +32,24 @@ import kotlinx.coroutines.withContext
  *
  * ## Where the model comes from
  *
- * Read from the app's own files directory, and absent is a normal state: weights
- * are somebody else's artefact and are not committed (`.gitignore`), so this
- * reports [isAvailable] false and the caller keeps its existing path. Deciding
- * how the file gets onto a user's device — bundled or fetched — is a separate
- * question, and one worth answering after the numbers rather than before.
+ * **Bundled.** At 11MB against a per-ABI package of roughly seventy, it is the
+ * cheap half of what manga mode needs — correct balloon grouping and no
+ * interface noise — and it buys that with nothing asked of the user. The
+ * expensive half, manga-ocr at 117MB, is fetched on demand instead (ADR 011).
+ *
+ * Redistributing it is what obliges Babel to carry the licence and attribution
+ * in `assets/licenses/`; running it from a pushed file never did.
+ *
+ * A file in the app's own files directory still **wins** over the bundled one,
+ * so a different export can be tried on a device without a rebuild:
  *
  * ```
  * adb push models/detector.onnx /sdcard/Android/data/com.babel/files/models/
  * ```
+ *
+ * [isAvailable] therefore answers true on any normal install — but the false
+ * branch stays, because reading an asset can still fail and `DetectingPageReader`
+ * has a tested path for that.
  *
  * ## The trap
  *
@@ -55,10 +64,11 @@ internal class OnnxBubbleDetector @Inject constructor(
     private val logger: BabelLogger,
 ) : TextDetector {
 
-    private val modelFile: File
+    /** A pushed override, when one is present. See the class comment. */
+    private val pushedFile: File
         get() = File(File(context.getExternalFilesDir(null), MODELS_DIR), MODEL_NAME)
 
-    override val isAvailable: Boolean get() = failed.not() && modelFile.exists()
+    override val isAvailable: Boolean get() = failed.not()
 
     @Volatile
     private var failed = false
@@ -93,14 +103,31 @@ internal class OnnxBubbleDetector @Inject constructor(
 
     private suspend fun session(): OrtSession? {
         session?.let { return it }
-        if (failed || !modelFile.exists()) return null
+        if (failed) return null
 
         return loading.withLock {
             session ?: try {
                 val started = System.currentTimeMillis()
-                val created = OrtEnvironment.getEnvironment()
-                    .createSession(modelFile.absolutePath, OrtSession.SessionOptions())
-                logger.info(TAG, "detector loaded in ${System.currentTimeMillis() - started}ms")
+                val environment = OrtEnvironment.getEnvironment()
+                val options = OrtSession.SessionOptions()
+                // A pushed file wins, so an experiment does not need a rebuild.
+                // Otherwise the bundled copy, read into memory rather than
+                // copied to disk first: 11MB once at load beats carrying a
+                // second copy of the same bytes on the device forever.
+                val pushed = pushedFile
+                val created = if (pushed.exists()) {
+                    environment.createSession(pushed.absolutePath, options)
+                } else {
+                    environment.createSession(
+                        context.assets.open(MODEL_NAME).use { it.readBytes() },
+                        options,
+                    )
+                }
+                logger.info(
+                    TAG,
+                    "detector loaded in ${System.currentTimeMillis() - started}ms" +
+                        if (pushed.exists()) " (pushed override)" else " (bundled)",
+                )
                 created.also { session = it }
             } catch (failure: Throwable) {
                 // Latched, so a broken or truncated file is reported once rather

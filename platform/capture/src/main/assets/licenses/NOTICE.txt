@@ -1,0 +1,41 @@
+Third-party components used by Babel
+====================================
+
+Bundled with the application
+----------------------------
+
+comic-text-and-bubble-detector
+  Author:  ogkalu
+  Source:  https://huggingface.co/ogkalu/comic-text-and-bubble-detector
+  Licence: Apache License 2.0 (see apache-2.0.txt)
+  File:    detector.onnx
+
+  An RT-DETR-v2 detector trained on comic pages. Babel uses it to find speech
+  balloons so each one can be read on its own. This file is redistributed
+  inside the application package, unmodified apart from quantisation to int8.
+
+
+Downloaded on request, not redistributed
+----------------------------------------
+
+The application can fetch these from their original host when the user asks for
+them. They are not part of the application package; the copies a user obtains
+come from the address below, and this notice is provided for attribution.
+
+manga-ocr (ONNX export)
+  Author:  kha-white (original model), ogkalu (ONNX export)
+  Source:  https://huggingface.co/ogkalu/manga-ocr-onnx
+           https://github.com/kha-white/manga-ocr
+  Licence: Apache License 2.0 (see apache-2.0.txt)
+  Files:   encoder_model_int8.onnx, decoder_model_int8.onnx, vocab.txt
+
+  A vision transformer and text decoder trained to read Japanese comic
+  lettering. Babel uses it to recognise the text inside a detected balloon.
+
+
+Libraries
+---------
+
+Babel also builds on ML Kit, ONNX Runtime, AndroidX, Jetpack Compose, OkHttp
+and kotlinx, each under its own licence. Their terms travel with their own
+distributions rather than being restated here.

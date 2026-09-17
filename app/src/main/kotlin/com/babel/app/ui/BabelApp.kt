@@ -69,6 +69,7 @@ fun BabelApp(
 
     var showLanguagePicker by remember { mutableStateOf(false) }
     var showRemoteSetup by remember { mutableStateOf(false) }
+    var showLicences by remember { mutableStateOf(false) }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
@@ -156,6 +157,13 @@ fun BabelApp(
                 onConfigure = { showRemoteSetup = true },
                 onDisable = viewModel::disableRemoteTranslation,
             )
+
+            // Last, and quiet. It exists because the app redistributes somebody
+            // else's model and owes them attribution where a user can find it,
+            // not because anyone opens it.
+            TextButton(onClick = { showLicences = true }) {
+                Text(stringResource(R.string.licences_action_open))
+            }
         }
     }
 
@@ -168,6 +176,10 @@ fun BabelApp(
             },
             onDismiss = { showLanguagePicker = false },
         )
+    }
+
+    if (showLicences) {
+        LicencesDialog(onDismiss = { showLicences = false })
     }
 
     if (showRemoteSetup) {
@@ -379,6 +391,44 @@ private fun keyHint(service: RemoteService, current: RemoteProviderSettings): In
     current.apiKey.isPresent -> R.string.remote_field_key_kept
     service == RemoteService.CHAT -> R.string.remote_field_key_optional
     else -> null
+}
+
+/**
+ * Shows the attribution the bundled model obliges Babel to carry.
+ *
+ * `NOTICE.txt` and the licence text travel in the assets of `:platform:capture`,
+ * beside the model they describe, and a library module's assets merge into the
+ * package — so reading them from here needs no copy and cannot drift from the
+ * file that ships.
+ */
+@Composable
+private fun LicencesDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val notice = remember {
+        runCatching {
+            context.assets.open("licenses/NOTICE.txt").use { it.readBytes().decodeToString() }
+        }.getOrElse {
+            // Not fatal, and not silent either: the obligation is to make the
+            // attribution reachable, so a failure to read it should say so
+            // rather than show an empty box.
+            context.getString(R.string.licences_unavailable)
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.licences_title)) },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(text = notice, style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.licences_action_close))
+            }
+        },
+    )
 }
 
 /**

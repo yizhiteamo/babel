@@ -65,4 +65,8 @@
     <string name="remote_dialog_save">保存并开启</string>
     <string name="remote_dialog_cancel">取消</string>
 
+    <string name="licences_action_open">开源许可</string>
+    <string name="licences_title">开源许可</string>
+    <string name="licences_action_close">关闭</string>
+    <string name="licences_unavailable">此版本中读取署名文件失败。</string>
 </resources>

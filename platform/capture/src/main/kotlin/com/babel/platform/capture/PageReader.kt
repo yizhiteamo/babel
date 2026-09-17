@@ -70,14 +70,22 @@ internal class DetectingPageReader @Inject constructor(
     private val grouper = TextRegionGrouper()
 
     override suspend fun read(frame: Bitmap): List<TextRegion> {
-        // Unavailable is a normal state — the model is not committed — and the
-        // older path still works. Finding *zero* balloons is different: a page
-        // with no dialogue genuinely has none, and falling back there would put
-        // the sound effects and the chrome straight back.
+        // Unavailable used to be the normal state and is now the broken one:
+        // the detector ships with the app (ADR 011), so this is false only when
+        // a load has failed. The older path still works, which is what makes
+        // that survivable. Finding *zero* balloons remains a different thing: a
+        // page with no dialogue genuinely has none, and falling back there
+        // would put the sound effects and the chrome straight back.
         if (!detector.isAvailable) return fallback.read(frame)
 
         val bubbles = detector.detect(frame)
         logger.debug(TAG, "detector found ${bubbles.size} bubbles")
+
+        // Asked again, because availability is only fully known after trying:
+        // the model ships with the app now, so the answer above is yes until a
+        // load actually fails. Without this the first page after such a failure
+        // renders nothing at all before the check above starts catching it.
+        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame)
 
         // One at a time, and that is a measured choice rather than the obvious
         // one. Reading two balloons concurrently is genuinely faster — 3.3s to
