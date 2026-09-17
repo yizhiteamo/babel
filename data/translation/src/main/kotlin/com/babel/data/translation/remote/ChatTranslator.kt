@@ -73,7 +73,12 @@ class ChatTranslator(
         }
 
         return try {
+            val started = System.currentTimeMillis()
             val translated = send(settings, request)
+            // Same reason as the other remote route: the leg that changes with
+            // the engine is the one worth timing. Timing only — never the text
+            // and never the body.
+            logger.debug(TAG, "translated in ${System.currentTimeMillis() - started}ms")
             when {
                 translated.isBlank() ->
                     request.failed(TranslationError.ProviderRejected(id, "empty response"))
@@ -89,6 +94,13 @@ class ChatTranslator(
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (rejected: HttpStatus) {
+            // The status, and only the status. It is the difference
+            // between a bad key (403), a spent quota (456) and a
+            // malformed request (400) — worth knowing, and knowable
+            // without the body, which echoes the text back.
+            logger.warn(TAG, "remote translation rejected: HTTP ${rejected.code}")
+            request.failed(TranslationError.Network("HTTP ${rejected.code}"))
         } catch (failure: IOException) {
             // Logged without the text and without the response body: what went
             // over the wire stays out of diagnostics exactly as screen content
@@ -140,7 +152,7 @@ class ChatTranslator(
                         if (!it.isSuccessful) {
                             // Status only. The body of a rejection routinely
                             // quotes the request back, and sometimes the key.
-                            continuation.resumeWithException(IOException("HTTP ${it.code}"))
+                            continuation.resumeWithException(HttpStatus(it.code))
                         } else {
                             continuation.resume(it.body?.string().orEmpty())
                         }
@@ -194,6 +206,14 @@ class ChatTranslator(
         provider = this@ChatTranslator.id,
         status = TranslationStatus.Failed(error),
     )
+
+    /**
+     * Carries the HTTP status to the log, which the class name of a
+     * plain [IOException] cannot. A general network failure keeps the
+     * class-name treatment: its message can name a host or a URL the
+     * user typed, and that is not something to print unasked.
+     */
+    private class HttpStatus(val code: Int) : IOException("HTTP $code")
 
     @Serializable
     private data class ChatRequest(

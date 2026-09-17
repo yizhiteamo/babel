@@ -88,7 +88,13 @@ class DeepLTranslator(
             )
 
         return try {
+            val started = System.currentTimeMillis()
             val translated = send(settings, request, target)
+            // How long the remote leg takes is the one figure that moves when
+            // the engine changes, and the page-latency budget is tracked to the
+            // hundred milliseconds (`docs/milestones/v2.md`). Timing only: no
+            // source text, no translation, no response body.
+            logger.debug(TAG, "translated in ${System.currentTimeMillis() - started}ms")
             when {
                 translated.isBlank() ->
                     request.failed(TranslationError.ProviderRejected(id, "empty response"))
@@ -104,6 +110,13 @@ class DeepLTranslator(
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (rejected: HttpStatus) {
+            // The status, and only the status. It is the difference
+            // between a bad key (403), a spent quota (456) and a
+            // malformed request (400) — worth knowing, and knowable
+            // without the body, which echoes the text back.
+            logger.warn(TAG, "DeepL translation rejected: HTTP ${rejected.code}")
+            request.failed(TranslationError.Network("HTTP ${rejected.code}"))
         } catch (failure: IOException) {
             // Status only, never the body: a DeepL rejection echoes the text it
             // was given, which is screen content and stays out of diagnostics.
@@ -152,7 +165,7 @@ class DeepLTranslator(
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
                         if (!it.isSuccessful) {
-                            continuation.resumeWithException(IOException("HTTP ${it.code}"))
+                            continuation.resumeWithException(HttpStatus(it.code))
                         } else {
                             continuation.resume(it.body?.string().orEmpty())
                         }
@@ -190,6 +203,14 @@ class DeepLTranslator(
         provider = this@DeepLTranslator.id,
         status = TranslationStatus.Failed(error),
     )
+
+    /**
+     * Carries the HTTP status to the log, which the class name of a
+     * plain [IOException] cannot. A general network failure keeps the
+     * class-name treatment: its message can name a host or a URL the
+     * user typed, and that is not something to print unasked.
+     */
+    private class HttpStatus(val code: Int) : IOException("HTTP $code")
 
     @Serializable
     private data class DeepLRequest(
