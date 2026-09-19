@@ -59,11 +59,30 @@ class OnDeviceModelBenchmarkTest {
             ?.sortedBy { it.name }
             .orEmpty()
 
-        val detectorFile = File(models, "detector.onnx")
-        if (!detectorFile.exists() || pages.isEmpty()) {
-            println("BENCH skipped: push models to ${models.absolutePath} and pages beside them")
+        // Every file it goes on to open, not just the first one. Guarding on the
+        // detector alone turned a partial push into a crash inside ONNX Runtime
+        // rather than the skip this is supposed to produce — and a partial push
+        // is the normal case here, because the test package is uninstalled after
+        // each run and the large weights do not survive being staged into an
+        // uninstalled package's directory.
+        val required = listOf(
+            "detector.onnx",
+            "encoder_model_int8.onnx",
+            "decoder_model_int8.onnx",
+            "vocab.txt",
+        ).map { File(models, it) }
+        val missing = required.filterNot { it.exists() }
+
+        if (missing.isNotEmpty() || pages.isEmpty()) {
+            println(
+                "BENCH skipped: ${models.absolutePath} needs " +
+                    missing.joinToString { it.name }.ifEmpty { "nothing" } +
+                    ", and ${pages.size} pages are present",
+            )
             return
         }
+
+        val detectorFile = required.first()
 
         val env = OrtEnvironment.getEnvironment()
         val loadStart = System.currentTimeMillis()
