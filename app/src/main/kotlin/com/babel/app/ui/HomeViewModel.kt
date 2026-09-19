@@ -59,6 +59,31 @@ data class HomeUiState(
         get() = capabilities[Capability.OVERLAY_WINDOW] == CapabilityStatus.AVAILABLE
 
     val readyToTranslate: Boolean get() = accessibilityGranted && overlayGranted
+
+    /**
+     * Whether a translation, once made, would actually appear on screen.
+     *
+     * Asked because the app once said otherwise: without the overlay
+     * permission the pipeline still reads the screen and still translates —
+     * `OverlayRenderer` logs "nothing can be drawn" and the work is thrown
+     * away — so a card reporting the coordinator's own state said "running"
+     * while the user saw nothing at all.
+     *
+     * Lives here rather than in each card so the two cannot drift apart, which
+     * is how the accessibility status went wrong in the first place.
+     */
+    val translationsCanBeSeen: Boolean get() = overlayGranted
+
+    /**
+     * Running, but invisible. The distinction the interface was missing: not
+     * "off" and not "working", but working with nowhere to put the result.
+     */
+    val translatingButUnseen: Boolean
+        get() = canTogglePause && !translationsCanBeSeen
+
+    /** The same question for manga mode, which shares the one renderer. */
+    val capturingButUnseen: Boolean
+        get() = captureState == CaptureState.ACTIVE && !translationsCanBeSeen
 }
 
 /**

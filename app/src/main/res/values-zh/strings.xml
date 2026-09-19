@@ -81,4 +81,8 @@
     <string name="capture_state_unsupported">不支持</string>
     <string name="capture_unsupported_reason">漫画模式需要 Android 11 及以上，此设备低于该版本。</string>
     <string name="capture_action_open_settings">打开无障碍设置</string>
+    <string name="runtime_state_unseen">看不见</string>
+    <string name="capture_state_unseen">看不见</string>
+    <string name="overlay_missing_explanation">文字正在被读取和翻译，但没法画到屏幕上：Babel 没有「显示在其他应用上层」的权限，译文都被丢掉了。</string>
+    <string name="overlay_missing_action">授予权限</string>
 </resources>

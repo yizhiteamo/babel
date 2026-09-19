@@ -84,4 +84,8 @@
     <string name="capture_state_unsupported">Not supported</string>
     <string name="capture_unsupported_reason">Manga mode needs Android 11 or later. This device is below that.</string>
     <string name="capture_action_open_settings">Open accessibility settings</string>
+    <string name="runtime_state_unseen">Not visible</string>
+    <string name="capture_state_unseen">Not visible</string>
+    <string name="overlay_missing_explanation">Text is being read and translated, but nothing can be drawn on top of it: Babel does not have permission to appear over other apps. The translations are being discarded.</string>
+    <string name="overlay_missing_action">Grant the permission</string>
 </resources>

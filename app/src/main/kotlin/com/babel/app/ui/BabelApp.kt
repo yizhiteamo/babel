@@ -146,10 +146,12 @@ fun BabelApp(
                 state = state,
                 onPause = viewModel::pauseTranslation,
                 onResume = viewModel::resumeTranslation,
+                onOpenOverlaySettings = { context.openOverlaySettings() },
             )
 
             CaptureCard(
                 state = state.captureState,
+                unseen = state.capturingButUnseen,
                 model = state.recognizerModel,
                 modelBytes = state.recognizerModelBytes,
                 metered = state.meteredConnection,
@@ -157,6 +159,7 @@ fun BabelApp(
                 onStop = viewModel::stopMangaMode,
                 onDownloadModel = viewModel::downloadRecognizerModel,
                 onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
+                onOpenOverlaySettings = { context.openOverlaySettings() },
             )
 
             RemoteTranslationCard(
@@ -539,6 +542,7 @@ private fun RuntimeCard(
     state: HomeUiState,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onOpenOverlaySettings: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -557,6 +561,10 @@ private fun RuntimeCard(
                 Text(
                     text = stringResource(
                         when {
+                            // Asked before the others: a paused or running
+                            // coordinator that cannot draw is neither, from
+                            // where the user is sitting.
+                            state.translatingButUnseen -> R.string.runtime_state_unseen
                             state.translationPaused -> R.string.runtime_state_paused
                             state.canTogglePause -> R.string.runtime_state_running
                             else -> R.string.runtime_state_off
@@ -570,6 +578,19 @@ private fun RuntimeCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (state.translatingButUnseen) {
+                // Says that the work is happening and being discarded, rather
+                // than the vaguer "not ready" — which reads as "not running"
+                // and sends people looking in the wrong place.
+                Text(
+                    text = stringResource(R.string.overlay_missing_explanation),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                OutlinedButton(onClick = onOpenOverlaySettings) {
+                    Text(stringResource(R.string.overlay_missing_action))
+                }
+            }
             // No button unless there is a running pipeline to act on: resuming
             // a stopped coordinator would start it with no text source.
             if (state.canTogglePause) {
@@ -601,6 +622,7 @@ private fun RuntimeCard(
 @Composable
 private fun CaptureCard(
     state: CaptureState,
+    unseen: Boolean,
     model: RecognizerModelState,
     modelBytes: Long,
     metered: Boolean,
@@ -608,6 +630,7 @@ private fun CaptureCard(
     onStop: () -> Unit,
     onDownloadModel: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
+    onOpenOverlaySettings: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -625,12 +648,17 @@ private fun CaptureCard(
                 )
                 Text(
                     text = stringResource(
-                        when (state) {
-                            CaptureState.IDLE -> R.string.capture_state_idle
-                            CaptureState.ACTIVE -> R.string.capture_state_active
-                            CaptureState.UNAVAILABLE -> R.string.capture_state_unavailable
-                            CaptureState.UNSUPPORTED -> R.string.capture_state_unsupported
-                            CaptureState.FAILED -> R.string.capture_state_failed
+                        when {
+                            // Same reason as the text card: reading a page and
+                            // translating it is not "on" if none of it lands.
+                            unseen -> R.string.capture_state_unseen
+                            state == CaptureState.IDLE -> R.string.capture_state_idle
+                            state == CaptureState.ACTIVE -> R.string.capture_state_active
+                            state == CaptureState.UNAVAILABLE ->
+                                R.string.capture_state_unavailable
+                            state == CaptureState.UNSUPPORTED ->
+                                R.string.capture_state_unsupported
+                            else -> R.string.capture_state_failed
                         },
                     ),
                     style = MaterialTheme.typography.labelLarge,
@@ -672,6 +700,16 @@ private fun CaptureCard(
                     }
                 }
             } else if (state == CaptureState.ACTIVE) {
+                if (unseen) {
+                    Text(
+                        text = stringResource(R.string.overlay_missing_explanation),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    OutlinedButton(onClick = onOpenOverlaySettings) {
+                        Text(stringResource(R.string.overlay_missing_action))
+                    }
+                }
                 OutlinedButton(onClick = onStop) {
                     Text(stringResource(R.string.capture_action_stop))
                 }
