@@ -446,9 +446,6 @@ class DefaultTranslationCoordinator(
             elementId = element.id,
             revision = element.revision,
             text = text,
-            // Straight off the element this tracks — the words that were on the
-            // screen. No plumbing from the result needed; they were here first.
-            originalText = element.text,
             bounds = element.bounds,
             // Carried straight through: the domain decides *what* to show, the
             // acquisition layer is the only one that ever saw the pixels.

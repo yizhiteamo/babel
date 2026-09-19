@@ -113,12 +113,13 @@ internal class OverlayWindow(private val context: Context) {
                 newHeld(vertical, ownWindow).also { views[translation.elementId] = it }
             }
 
-            // A fresh render is a fresh balloon: whatever the reader toggled or
-            // dismissed belongs to the page that was on screen then.
-            held.bound = translation
+            // A fresh render is a fresh balloon: whatever the reader revealed or
+            // dismissed belongs to the page that was on screen then. The
+            // touchability a dismissal removed comes back with it, because
+            // `place` builds the parameters from scratch.
             held.showingOriginal = false
-            held.dismissed = false
-            held.rebind()
+            held.view.view.alpha = 1f
+            held.view.bind(translation)
             place(held, bounds.left, bounds.top, bounds.width, bounds.height)
             held.view.view.visibility = View.VISIBLE
         }
@@ -140,29 +141,15 @@ internal class OverlayWindow(private val context: Context) {
     /**
      * A translation plus how it is being shown.
      *
-     * [showingOriginal] and [dismissed] are **view state, not domain state**: a
-     * page turn or a re-scan should bring the translation back, so [show]
-     * resets both rather than the coordinator remembering them.
+     * [showingOriginal] is **view state, not domain state**: a page turn or a
+     * re-scan should bring the translation back, so [show] resets it rather
+     * than the coordinator remembering it.
      */
     private class Held(val view: TranslationView, val ownWindow: Boolean) {
-        var bound: RenderedTranslation? = null
         var showingOriginal = false
-        var dismissed = false
 
         fun matches(vertical: Boolean, ownWindow: Boolean): Boolean =
             this.ownWindow == ownWindow && (view is VerticalTranslationView) == vertical
-
-        /**
-         * Rebinds with whichever text is wanted now.
-         *
-         * Swapping the text on the model rather than teaching the views about
-         * two strings: both already lay out whatever they are given, so
-         * vertical Japanese re-flows into its columns and the horizontal view
-         * re-fits, for free.
-         */
-        fun rebind() {
-            view.bind(bound?.showing(showingOriginal) ?: return)
-        }
     }
 
     private fun newHeld(vertical: Boolean, ownWindow: Boolean): Held {
@@ -182,7 +169,16 @@ internal class OverlayWindow(private val context: Context) {
             // reporting the same page and skipping.
             view.view.setOnClickListener {
                 held.showingOriginal = !held.showingOriginal
-                held.rebind()
+                // Stepping aside rather than redrawing what OCR read. What a
+                // reader wants from "show me the original" is usually to check
+                // the translation against it, and a redraw cannot serve that:
+                // it shows the recogniser's reading, so a misread original and
+                // its translation agree with each other while both are wrong.
+                // Going transparent shows the page itself, whatever read it.
+                //
+                // Alpha rather than visibility, because an INVISIBLE view stops
+                // being a touch target and there would be no way back.
+                it.alpha = if (held.showingOriginal) 0f else 1f
             }
 
             // The other half of what hiding used to cover: getting out of the
@@ -191,7 +187,6 @@ internal class OverlayWindow(private val context: Context) {
             // that neither answered taps nor let them reach the page. Going
             // away has to mean going away.
             view.view.setOnLongClickListener {
-                held.dismissed = true
                 it.visibility = View.INVISIBLE
                 repositionDismissed(held)
                 true
@@ -287,7 +282,12 @@ internal class OverlayWindow(private val context: Context) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.OPAQUE,
+            // Translucent so the view can step aside and let the artwork show.
+            // Not a weakening of the cover: the view still paints an opaque
+            // sampled background, and the window's own alpha stays 1.0 — that
+            // is a function of taking touches, not of the pixel format
+            // (ADR 008's amendment, and measured again here).
+            PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = left

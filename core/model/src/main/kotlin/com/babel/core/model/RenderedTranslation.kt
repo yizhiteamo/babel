@@ -23,21 +23,6 @@ data class RenderedTranslation(
     val elementId: TextElementId,
     val revision: Revision,
     val text: String,
-    /**
-     * The text this replaces, so a reader can ask to see it.
-     *
-     * Carried for the renderer's benefit rather than the pipeline's: tapping a
-     * translated speech balloon swaps to this and back, which needs the words
-     * at the moment of the tap — long after the result that produced them has
-     * gone.
-     *
-     * Not a new exposure. Protected text never becomes a `RenderedTranslation`
-     * at all: the privacy policy rejects it before any provider is called
-     * (`docs/systems/privacy.md`). It is still screen content, so it follows the
-     * same rule as the rest — **never pass it to a logger**, with or without
-     * `Redact`.
-     */
-    val originalText: String = "",
     val bounds: TextBounds,
     val style: StyleHints = StyleHints(),
     /**

@@ -91,26 +91,6 @@ class DefaultTranslationCoordinatorTest {
         coordinator.stop()
     }
 
-    /**
-     * The renderer lets a reader tap a translated speech balloon to see what it
-     * replaced, which needs the source text at the moment of the tap — long
-     * after the result that produced it has gone. Carrying it is therefore a
-     * contract, not a convenience: drop it in a refactor and the balloon
-     * toggles into nothing.
-     */
-    @Test
-    fun `a rendered translation carries the text it replaced`() = runTest {
-        val coordinator = start()
-
-        coordinator.submit(TextSourceEvent.Upserted(listOf(TestElements.element(text = "Hello"))))
-        advanceUntilIdle()
-
-        val rendered = renderer.visible.values.single()
-        assertEquals("<Hello>", rendered.text)
-        assertEquals("Hello", rendered.originalText)
-        coordinator.stop()
-    }
-
     @Test
     fun `old result never overwrites newer visible content`() = runTest {
         translator.delayMillis = 1_000
