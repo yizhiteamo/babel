@@ -74,7 +74,7 @@
     <string name="licences_unavailable">The attribution file could not be read from this build.</string>
     <string name="model_state_installed">Comic recogniser installed — lettering is read accurately.</string>
     <string name="model_state_running">Downloading the comic recogniser… %1$d%%</string>
-    <string name="model_state_absent">Manga mode works now. Downloading the comic recogniser makes it read the lettering accurately instead of approximately.</string>
+    <string name="model_state_absent">Manga mode works without this, but the general recogniser breaks vertical Japanese into the wrong columns and reads them out of order. The translation that comes back is fluent and unrelated to the original. The comic recogniser reads the lettering as written.</string>
     <string name="model_metered_warning">This connection may be charged by the megabyte.</string>
     <string name="model_action_download">Download (%1$d MB)</string>
     <string name="model_action_retry">Try again</string>

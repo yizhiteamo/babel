@@ -67,7 +67,7 @@ fun BabelApp(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    RefreshOnResume(viewModel::refreshCapabilities)
+    RefreshOnResume(viewModel::refreshOnReturn)
 
     var showLanguagePicker by remember { mutableStateOf(false) }
     var showRemoteSetup by remember { mutableStateOf(false) }

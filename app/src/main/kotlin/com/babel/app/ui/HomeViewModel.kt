@@ -119,8 +119,19 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { recognizerModel.install() }
     }
 
-    /** Permissions change outside the app, so re-read them on return. */
-    fun refreshCapabilities() = capabilityChecker.refresh()
+    /**
+     * Re-reads everything that can change while the app is not looking.
+     *
+     * Both halves qualify: permissions are granted in system settings, and the
+     * recogniser's files can appear or vanish without this app touching them.
+     * Named for what it does rather than for the half it started as — it was
+     * `refreshCapabilities`, and the model state went stale because nothing
+     * called it.
+     */
+    fun refreshOnReturn() {
+        capabilityChecker.refresh()
+        recognizerModel.refresh()
+    }
 
     /**
      * No consent dialog stands in front of this any more, so it is a direct

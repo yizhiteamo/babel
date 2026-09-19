@@ -35,6 +35,18 @@ interface RecognizerModel {
      * continues rather than restarts.
      */
     suspend fun install()
+
+    /**
+     * Looks again at what is actually on the device.
+     *
+     * Needed for the same reason the permissions are re-read when the user
+     * comes back to the app: this can change without the app doing it. A
+     * download that landed after the process was killed, files removed by
+     * clearing app data, a developer pushing them by hand — none of that goes
+     * through [install], and a state decided once at startup then advertises a
+     * download for something already present.
+     */
+    fun refresh()
 }
 
 sealed interface RecognizerModelState {

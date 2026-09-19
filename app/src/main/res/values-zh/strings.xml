@@ -71,7 +71,7 @@
     <string name="licences_unavailable">此版本中读取署名文件失败。</string>
     <string name="model_state_installed">漫画识别模型已安装——气泡文字可被准确读取。</string>
     <string name="model_state_running">正在下载漫画识别模型… %1$d%%</string>
-    <string name="model_state_absent">漫画模式现在就能用。下载漫画识别模型后，气泡里的文字会从大致读对变成准确读对。</string>
+    <string name="model_state_absent">不下载也能用漫画模式，但通用识别器会把竖排日文切错列、读乱顺序，翻回来的是一句通顺却与原文无关的话。漫画识别模型能按原样读出气泡里的文字。</string>
     <string name="model_metered_warning">当前网络可能按流量计费。</string>
     <string name="model_action_download">下载（%1$d MB）</string>
     <string name="model_action_retry">重试</string>

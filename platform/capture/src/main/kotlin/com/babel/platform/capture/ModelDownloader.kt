@@ -114,6 +114,24 @@ internal class ModelDownloader @Inject constructor(
         context.getSystemService(ConnectivityManager::class.java)?.isActiveNetworkMetered ?: false
 
     /**
+     * Re-reads the disk, without disturbing anything in flight.
+     *
+     * A running download owns the state — overwriting its progress with a
+     * snapshot would make the bar jump backwards — and a [RecognizerModelState.Failed]
+     * survives a refresh that finds nothing new, because the reason it failed
+     * is still the last thing that happened and is worth more to the reader
+     * than a bare "absent".
+     */
+    override fun refresh() {
+        if (running.isLocked) return
+        _state.value = when {
+            isInstalled() -> RecognizerModelState.Installed
+            _state.value is RecognizerModelState.Failed -> _state.value
+            else -> RecognizerModelState.Absent
+        }
+    }
+
+    /**
      * Fetches whatever is missing. Safe to call when everything is present.
      *
      * Cancelling leaves the `.part` files in place, which is the point: the

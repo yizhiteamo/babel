@@ -96,6 +96,64 @@ class ModelDownloaderTest {
         }
     }
 
+    /**
+     * The state used to be decided once, at construction, and never again —
+     * so a model that arrived by any route other than [ModelDownloader.install]
+     * left the interface advertising a download for something already present.
+     */
+    @Test
+    fun itNoticesFilesThatAppearedWithoutIt() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val models = File(context.getExternalFilesDir(null), "models")
+        models.mkdirs()
+        val names = listOf("encoder_model_int8.onnx", "decoder_model_int8.onnx", "vocab.txt")
+        val files = names.map { File(models, it) }
+        files.forEach { it.delete() }
+
+        try {
+            val downloader = ModelDownloader(context, dispatchers, BabelLogger.NoOp)
+            assertEquals(RecognizerModelState.Absent, downloader.state.value)
+
+            // Put there by something that is not this class: a push, a restored
+            // backup, a download that finished after the process was killed.
+            files.forEach { it.createNewFile() }
+            assertEquals(
+                RecognizerModelState.Absent,
+                downloader.state.value,
+                "nothing should change until it is asked to look again",
+            )
+
+            downloader.refresh()
+
+            assertEquals(RecognizerModelState.Installed, downloader.state.value)
+        } finally {
+            files.forEach { it.delete() }
+        }
+    }
+
+    /** And the other direction: cleared app data, a deleted file. */
+    @Test
+    fun itNoticesFilesThatWentAway() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val models = File(context.getExternalFilesDir(null), "models")
+        models.mkdirs()
+        val names = listOf("encoder_model_int8.onnx", "decoder_model_int8.onnx", "vocab.txt")
+        val files = names.map { File(models, it) }
+
+        try {
+            files.forEach { it.createNewFile() }
+            val downloader = ModelDownloader(context, dispatchers, BabelLogger.NoOp)
+            assertEquals(RecognizerModelState.Installed, downloader.state.value)
+
+            files.first().delete()
+            downloader.refresh()
+
+            assertEquals(RecognizerModelState.Absent, downloader.state.value)
+        } finally {
+            files.forEach { it.delete() }
+        }
+    }
+
     private fun File.sha256(): String {
         val digest = MessageDigest.getInstance("SHA-256")
         inputStream().use { stream ->
