@@ -52,25 +52,40 @@ class AndroidCapabilityChecker @Inject constructor(
     )
 
     /**
-     * Read from the enabled-services list rather than tracking whether our own
-     * service object is alive: the user can disable it in system settings at
-     * any moment, and the setting is the authority.
+     * Read from the settings rather than from whether our own service object is
+     * alive: the user can disable it outside the app at any moment, and the
+     * setting is the authority.
+     *
+     * **Two settings, not one.** The services list says who the user has
+     * permitted; `ACCESSIBILITY_ENABLED` says whether accessibility is running
+     * at all. They come apart — a device that failed to bind the service at
+     * boot keeps the name in the list with the master switch at zero, and this
+     * once reported the service as granted while nothing was bound. The app
+     * then contradicted itself on one screen: a permission card saying yes, and
+     * manga mode saying it could not start.
      */
-    private fun accessibilityStatus(): CapabilityStatus {
-        val expected = ComponentName(context, BabelAccessibilityService::class.java)
-        val enabled = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ) ?: return CapabilityStatus.NOT_GRANTED
-
-        val splitter = TextUtils.SimpleStringSplitter(SERVICE_SEPARATOR)
-        splitter.setString(enabled)
-        for (entry in splitter) {
-            val component = ComponentName.unflattenFromString(entry) ?: continue
-            if (component == expected) return CapabilityStatus.AVAILABLE
+    private fun accessibilityStatus(): CapabilityStatus =
+        if (
+            isAccessibilityServiceRunning(
+                masterSwitch = Settings.Secure.getInt(
+                    context.contentResolver,
+                    Settings.Secure.ACCESSIBILITY_ENABLED,
+                    0,
+                ),
+                enabledServices = Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                ),
+                expected = ComponentName(
+                    context,
+                    BabelAccessibilityService::class.java,
+                ).flattenToString(),
+            )
+        ) {
+            CapabilityStatus.AVAILABLE
+        } else {
+            CapabilityStatus.NOT_GRANTED
         }
-        return CapabilityStatus.NOT_GRANTED
-    }
 
     private fun overlayStatus(): CapabilityStatus =
         if (Settings.canDrawOverlays(context)) {
@@ -79,7 +94,36 @@ class AndroidCapabilityChecker @Inject constructor(
             CapabilityStatus.NOT_GRANTED
         }
 
-    private companion object {
-        const val SERVICE_SEPARATOR = ':'
+    internal companion object {
+        private const val SERVICE_SEPARATOR = ':'
+
+        /**
+         * The decision on its own, with no `Context` in it, because this is the
+         * part that was wrong and the part worth testing.
+         *
+         * Not airtight, and deliberately not pretending to be: if another
+         * accessibility service is running, the master switch is one even when
+         * Babel's own binding failed, and this would say yes. Rare, and the
+         * side that actually needs a live service catches it — manga mode asks
+         * whether the service object attached, not whether a setting says so.
+         */
+        fun isAccessibilityServiceRunning(
+            masterSwitch: Int,
+            enabledServices: String?,
+            expected: String,
+        ): Boolean {
+            if (masterSwitch != 1) return false
+            if (enabledServices.isNullOrEmpty()) return false
+
+            val wanted = ComponentName.unflattenFromString(expected) ?: return false
+            val splitter = TextUtils.SimpleStringSplitter(SERVICE_SEPARATOR)
+            splitter.setString(enabledServices)
+            for (entry in splitter) {
+                // Compared as components rather than as strings: the same
+                // service can be written with a short class name or a long one.
+                if (ComponentName.unflattenFromString(entry) == wanted) return true
+            }
+            return false
+        }
     }
 }

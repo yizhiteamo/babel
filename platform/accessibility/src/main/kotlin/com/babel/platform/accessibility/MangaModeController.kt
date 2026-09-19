@@ -28,8 +28,16 @@ class MangaModeController @Inject constructor(
     override val state: StateFlow<CaptureState> = _state.asStateFlow()
 
     override fun start() {
+        // Which of the two, because the interface says different things about
+        // them: one is the end of the road on this device, the other is a
+        // switch the user has not turned on yet.
+        if (!frames.isSupported) {
+            logger.info(TAG, "manga mode needs a newer Android than this device has")
+            _state.value = CaptureState.UNSUPPORTED
+            return
+        }
         if (!frames.isAvailable) {
-            logger.info(TAG, "manga mode unavailable on this device or service state")
+            logger.info(TAG, "manga mode needs the accessibility service to be running")
             _state.value = CaptureState.UNAVAILABLE
             return
         }
@@ -49,6 +57,9 @@ class MangaModeController @Inject constructor(
      * to stop something that is no longer running.
      */
     internal fun onServiceAvailabilityChanged() {
+        // UNSUPPORTED is deliberately not recovered from: no service connecting
+        // makes an old device new, and a state that flickered back to idle
+        // would offer a button that cannot work.
         when {
             frames.isAvailable && _state.value == CaptureState.UNAVAILABLE ->
                 _state.value = CaptureState.IDLE

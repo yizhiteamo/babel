@@ -18,6 +18,9 @@ class CaptureTextSourceTest {
 
     /** Screenshots fail for ordinary reasons: throttling, a secure window. */
     private class NoFrames : com.babel.platform.screen.ScreenFrameSource {
+        // Supported and connected: what fails here is the individual capture,
+        // not the capability, which is the case this fake exists to cover.
+        override val isSupported = true
         override val isAvailable = true
         var calls = 0
         override suspend fun latestFrame(): Bitmap? {

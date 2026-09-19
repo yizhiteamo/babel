@@ -10,12 +10,18 @@ import kotlinx.coroutines.test.runTest
 
 class MangaModeControllerTest {
 
-    private class FakeFrames(override var isAvailable: Boolean) : ScreenFrameSource {
+    private class FakeFrames(
+        override var isAvailable: Boolean,
+        override var isSupported: Boolean = true,
+    ) : ScreenFrameSource {
         override suspend fun latestFrame(): Bitmap? = null
     }
 
-    private fun controller(available: Boolean = true): Pair<MangaModeController, FakeFrames> {
-        val frames = FakeFrames(available)
+    private fun controller(
+        available: Boolean = true,
+        supported: Boolean = true,
+    ): Pair<MangaModeController, FakeFrames> {
+        val frames = FakeFrames(available, supported)
         return MangaModeController(frames, RecordingLogger()) to frames
     }
 
@@ -29,8 +35,9 @@ class MangaModeControllerTest {
     }
 
     /**
-     * Below Android 11, or with the accessibility service switched off, there is
-     * nothing to take pictures with. Saying so beats failing silently.
+     * With the accessibility service switched off there is nothing to take
+     * pictures with. Saying so beats failing silently — and saying *this*
+     * rather than the other one is what tells the user it is fixable.
      */
     @Test
     fun `reports unavailable rather than pretending to start`() = runTest {
@@ -39,6 +46,33 @@ class MangaModeControllerTest {
         mode.start()
 
         assertEquals(CaptureState.UNAVAILABLE, mode.state.value)
+    }
+
+    /**
+     * A device below Android 11 gets a different answer, because no amount of
+     * switching services on will help. One message covering both used to name
+     * the version requirement first on devices that always satisfied it.
+     */
+    @Test
+    fun `an old device is unsupported, not merely unavailable`() = runTest {
+        val (mode, _) = controller(available = false, supported = false)
+
+        mode.start()
+
+        assertEquals(CaptureState.UNSUPPORTED, mode.state.value)
+    }
+
+    /** And it stays that way: a service connecting cannot make a device newer. */
+    @Test
+    fun `an unsupported device is not rescued by the service connecting`() = runTest {
+        val (mode, frames) = controller(available = false, supported = false)
+        mode.start()
+
+        // What a connection would look like on a device that cannot use it.
+        frames.isAvailable = false
+        mode.onServiceAvailabilityChanged()
+
+        assertEquals(CaptureState.UNSUPPORTED, mode.state.value)
     }
 
     /**

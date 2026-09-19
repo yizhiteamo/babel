@@ -156,6 +156,7 @@ fun BabelApp(
                 onStart = viewModel::startMangaMode,
                 onStop = viewModel::stopMangaMode,
                 onDownloadModel = viewModel::downloadRecognizerModel,
+                onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
             )
 
             RemoteTranslationCard(
@@ -606,6 +607,7 @@ private fun CaptureCard(
     onStart: () -> Unit,
     onStop: () -> Unit,
     onDownloadModel: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -627,6 +629,7 @@ private fun CaptureCard(
                             CaptureState.IDLE -> R.string.capture_state_idle
                             CaptureState.ACTIVE -> R.string.capture_state_active
                             CaptureState.UNAVAILABLE -> R.string.capture_state_unavailable
+                            CaptureState.UNSUPPORTED -> R.string.capture_state_unsupported
                             CaptureState.FAILED -> R.string.capture_state_failed
                         },
                     ),
@@ -638,7 +641,8 @@ private fun CaptureCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (state != CaptureState.UNAVAILABLE) {
+            val blocked = state == CaptureState.UNAVAILABLE || state == CaptureState.UNSUPPORTED
+            if (!blocked) {
                 RecognizerModelRow(
                     model = model,
                     modelBytes = modelBytes,
@@ -646,12 +650,27 @@ private fun CaptureCard(
                     onDownload = onDownloadModel,
                 )
             }
-            if (state == CaptureState.UNAVAILABLE) {
+            if (blocked) {
+                // Named separately: one of these is fixed by a visit to system
+                // settings and the other cannot be fixed at all, and a single
+                // sentence covering both put a version requirement first on
+                // every device that already satisfies it.
                 Text(
-                    text = stringResource(R.string.capture_unavailable_reason),
+                    text = stringResource(
+                        if (state == CaptureState.UNSUPPORTED) {
+                            R.string.capture_unsupported_reason
+                        } else {
+                            R.string.capture_unavailable_reason
+                        },
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+                if (state == CaptureState.UNAVAILABLE) {
+                    OutlinedButton(onClick = onOpenAccessibilitySettings) {
+                        Text(stringResource(R.string.capture_action_open_settings))
+                    }
+                }
             } else if (state == CaptureState.ACTIVE) {
                 OutlinedButton(onClick = onStop) {
                     Text(stringResource(R.string.capture_action_stop))

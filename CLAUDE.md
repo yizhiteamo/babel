@@ -282,7 +282,8 @@ Behavioral invariants that must survive any change:
 - `TextSourceEvent.Removed`/`Cleared` are how stale overlays get cleaned up during scrolling and app switches.
 - Pass `Redact.text(...)` to loggers, never raw screen text.
 - `LanguageResolver` owns locale policy, including narrowing a device tag to what a provider accepts. ML Kit rejects `zh-Hans-CN` outright, so nothing downstream may assume a regional tag survives.
-- Manga mode needs API 30 (`AccessibilityService.takeScreenshot`) and reports `CaptureState.UNAVAILABLE` below it. V1 still runs down to minSdk 26 — only manga mode is gated (ADR 009).
+- Manga mode needs API 30 (`AccessibilityService.takeScreenshot`) and reports `CaptureState.UNSUPPORTED` below it; `UNAVAILABLE` is the separate, fixable case where the accessibility service is not running. V1 still runs down to minSdk 26 — only manga mode is gated (ADR 009).
+- Whether the accessibility service is running takes **two** settings, not one: `ACCESSIBILITY_ENABLED` and the enabled-services list. They come apart after a failed bind at boot, and reading only the list once had the app reporting the service as granted while nothing was bound.
 - A frame includes Babel's own overlays, so `FrameChangeDetector` is what stops the OCR path from reading its own output. `FLAG_SECURE` is not an alternative: measured on device, it blanks the entire mirror and the user's screenshots with it.
 - Scope and privacy are separate policies and must stay that way: scope asks whether an app is worth translating, privacy whether text may leave the screen. Adding an app to one does not belong in the other.
 

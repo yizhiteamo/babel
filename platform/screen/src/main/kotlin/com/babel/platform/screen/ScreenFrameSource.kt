@@ -16,7 +16,18 @@ import android.graphics.Bitmap
  */
 interface ScreenFrameSource {
 
-    /** False when this device or this configuration cannot produce frames. */
+    /**
+     * Whether this **device** could ever produce frames.
+     *
+     * Separate from [isAvailable] because the two failures are not alike: a
+     * device below the required version can never do this, while a service that
+     * is not running is one visit to system settings away. Collapsing them left
+     * the interface unable to say which had happened, and saying both is worse
+     * than useless on a device where the first is impossible.
+     */
+    val isSupported: Boolean
+
+    /** Whether frames can be taken **right now**: supported, and connected. */
     val isAvailable: Boolean
 
     /**

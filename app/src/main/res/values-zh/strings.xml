@@ -39,7 +39,7 @@
     <string name="capture_action_stop">停止</string>
     <string name="capture_state_idle">未开启</string>
     <string name="capture_state_unavailable">不可用</string>
-    <string name="capture_unavailable_reason">漫画模式需要 Android 11 及以上，并且已开启 Babel 无障碍服务。</string>
+    <string name="capture_unavailable_reason">Babel 无障碍服务没有在运行。漫画模式要通过它读取屏幕。</string>
     <string name="capture_state_active">正在读取屏幕</string>
     <string name="capture_state_failed">无法开启</string>
 
@@ -78,4 +78,7 @@
     <string name="model_failed_network">下载未完成。已下载的部分会保留，重试将从中断处继续。</string>
     <string name="model_failed_corrupt">下载到的文件与预期不符。重试大概率无用，可能需要更新此版本的应用。</string>
     <string name="model_failed_unexpected">下载因意外原因中止。</string>
+    <string name="capture_state_unsupported">不支持</string>
+    <string name="capture_unsupported_reason">漫画模式需要 Android 11 及以上，此设备低于该版本。</string>
+    <string name="capture_action_open_settings">打开无障碍设置</string>
 </resources>

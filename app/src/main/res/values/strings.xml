@@ -42,7 +42,7 @@
     <string name="capture_action_stop">Stop</string>
     <string name="capture_state_idle">Off</string>
     <string name="capture_state_unavailable">Unavailable</string>
-    <string name="capture_unavailable_reason">Manga mode needs Android 11 or later and the Babel accessibility service switched on.</string>
+    <string name="capture_unavailable_reason">The Babel accessibility service is not running. Manga mode reads the screen through it.</string>
     <string name="capture_state_active">Reading the screen</string>
     <string name="capture_state_failed">Could not start</string>
 
@@ -81,4 +81,7 @@
     <string name="model_failed_network">The download did not finish. What arrived is kept, so trying again continues from there.</string>
     <string name="model_failed_corrupt">What arrived was not the expected file. Trying again is unlikely to help; this build may need updating.</string>
     <string name="model_failed_unexpected">The download stopped for an unexpected reason.</string>
+    <string name="capture_state_unsupported">Not supported</string>
+    <string name="capture_unsupported_reason">Manga mode needs Android 11 or later. This device is below that.</string>
+    <string name="capture_action_open_settings">Open accessibility settings</string>
 </resources>

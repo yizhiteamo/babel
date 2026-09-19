@@ -27,8 +27,15 @@ than re-asked every session.
 
 Take frames with `AccessibilityService.takeScreenshot()`. Delete MediaProjection.
 
-Manga mode requires Android 11 and reports itself **unavailable** below it. V1's
+Manga mode requires Android 11 and reports itself **unsupported** below it. V1's
 text translation still works down to minSdk 26; only manga mode is gated.
+
+That state is distinct from **unavailable**, which means the accessibility
+service is not running. Both block manga mode and they were once the same
+answer, which turned out to be a bad one: the version requirement is permanent
+and the service is one visit to system settings away, and a message naming both
+led with the version on every device that already satisfied it. `isSupported`
+asks about the device, `isAvailable` asks about the device *and* the connection.
 
 No fallback to MediaProjection on Android 8–10. Two acquisition backends would
 have to be maintained forever, and the one being kept for old devices is

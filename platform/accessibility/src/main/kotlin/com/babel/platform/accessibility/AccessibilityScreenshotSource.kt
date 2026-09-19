@@ -42,8 +42,11 @@ class AccessibilityScreenshotSource @Inject constructor(
     private val pacing = Mutex()
     private var lastCaptureAt = 0L
 
+    override val isSupported: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
     override val isAvailable: Boolean
-        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && service != null
+        get() = isSupported && service != null
 
     internal fun attach(service: AccessibilityService) {
         this.service = service

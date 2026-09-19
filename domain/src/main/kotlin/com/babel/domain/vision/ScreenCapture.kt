@@ -19,10 +19,22 @@ enum class CaptureState {
     ACTIVE,
 
     /**
-     * Cannot be turned on here: the device is below Android 11, or the
-     * accessibility service that takes the pictures is not running.
+     * Not now: the accessibility service that takes the pictures is not
+     * running. Switching it on in system settings is all this needs, which is
+     * why it is not the same answer as [UNSUPPORTED].
      */
     UNAVAILABLE,
+
+    /**
+     * Not ever, on this device: manga mode needs Android 11 for
+     * `AccessibilityService.takeScreenshot` (ADR 009).
+     *
+     * Told apart from [UNAVAILABLE] because one is permanent and the other is a
+     * single tap. One message covering both named a version requirement first
+     * on devices that always satisfy it, and left the reader no way to tell
+     * what to do.
+     */
+    UNSUPPORTED,
 
     /** The last attempt failed; see logs. */
     FAILED,
