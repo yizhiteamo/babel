@@ -113,7 +113,12 @@ internal class OverlayWindow(private val context: Context) {
                 newHeld(vertical, ownWindow).also { views[translation.elementId] = it }
             }
 
-            held.view.bind(translation)
+            // A fresh render is a fresh balloon: whatever the reader toggled or
+            // dismissed belongs to the page that was on screen then.
+            held.bound = translation
+            held.showingOriginal = false
+            held.dismissed = false
+            held.rebind()
             place(held, bounds.left, bounds.top, bounds.width, bounds.height)
             held.view.view.visibility = View.VISIBLE
         }
@@ -132,23 +137,76 @@ internal class OverlayWindow(private val context: Context) {
 
     // ------------------------------------------------------------- internals
 
-    /** A translation plus how it is being shown. */
+    /**
+     * A translation plus how it is being shown.
+     *
+     * [showingOriginal] and [dismissed] are **view state, not domain state**: a
+     * page turn or a re-scan should bring the translation back, so [show]
+     * resets both rather than the coordinator remembering them.
+     */
     private class Held(val view: TranslationView, val ownWindow: Boolean) {
+        var bound: RenderedTranslation? = null
+        var showingOriginal = false
+        var dismissed = false
+
         fun matches(vertical: Boolean, ownWindow: Boolean): Boolean =
             this.ownWindow == ownWindow && (view is VerticalTranslationView) == vertical
+
+        /**
+         * Rebinds with whichever text is wanted now.
+         *
+         * Swapping the text on the model rather than teaching the views about
+         * two strings: both already lay out whatever they are given, so
+         * vertical Japanese re-flows into its columns and the horizontal view
+         * re-fits, for free.
+         */
+        fun rebind() {
+            view.bind(bound?.showing(showingOriginal) ?: return)
+        }
     }
 
     private fun newHeld(vertical: Boolean, ownWindow: Boolean): Held {
         val view: TranslationView =
             if (vertical) VerticalTranslationView(context) else TranslationTextView(context)
+        val held = Held(view, ownWindow)
 
         if (ownWindow) {
             // A translation that swallows the touch landing on it has to offer
             // something back, and "show me the original" is what a reader wants
             // from it anyway.
-            view.view.setOnClickListener { it.visibility = View.INVISIBLE }
+            //
+            // A *toggle* rather than the hide this used to do. Hiding was
+            // one-way in practice: the view stops receiving touches once it is
+            // INVISIBLE, and the re-render that would have restored it never
+            // comes on a page that is not changing — `CaptureTextSource` keeps
+            // reporting the same page and skipping.
+            view.view.setOnClickListener {
+                held.showingOriginal = !held.showingOriginal
+                held.rebind()
+            }
+
+            // The other half of what hiding used to cover: getting out of the
+            // way. Measured before changing it — the window stays touchable
+            // with an invisible child, so the balloon's area became a dead spot
+            // that neither answered taps nor let them reach the page. Going
+            // away has to mean going away.
+            view.view.setOnLongClickListener {
+                held.dismissed = true
+                it.visibility = View.INVISIBLE
+                repositionDismissed(held)
+                true
+            }
         }
-        return Held(view, ownWindow)
+        return held
+    }
+
+    /** Re-lays the window as a passthrough, so a dismissed balloon is not a hole. */
+    private fun repositionDismissed(held: Held) {
+        val view = held.view.view
+        if (!view.isAttachedToWindow) return
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        runCatching { windowManager.updateViewLayout(view, params) }
     }
 
     private fun place(held: Held, left: Int, top: Int, width: Int, height: Int) {
