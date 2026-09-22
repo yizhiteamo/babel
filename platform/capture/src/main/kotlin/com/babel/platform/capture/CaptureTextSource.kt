@@ -194,52 +194,72 @@ class CaptureTextSource @Inject internal constructor(
         val dy = crop?.top ?: 0
         val exclusionsInPage = if (crop == null) exclusions else exclusions.map { it.movedBy(-dx, -dy) }
 
-        val elements = try {
-            val recognizeStarted = System.currentTimeMillis()
-            val all = pages.read(page)
-            val recognizeMs = System.currentTimeMillis() - recognizeStarted
+        // Published as each balloon is read, not when the page is done.
+        //
+        // Measured across eight real pages: reading costs 1.1s to 4.9s, and the
+        // slowest had only three balloons — the decoder has no key/value cache,
+        // so one long balloon can outweigh five short ones. Waiting for the
+        // whole page meant every translation waited for the worst balloon on
+        // it. The first one now reaches the screen in about a second and a half.
+        //
+        // The identity bookkeeping has to move with it. `occurrences` numbers
+        // repeated text within a page, so it spans the whole read rather than
+        // one region, and `generation` is bumped once for the page.
+        val readStarted = System.currentTimeMillis()
+        val occurrences = mutableMapOf<String, Int>()
+        val currentIds = LinkedHashSet<TextElementId>()
+        var read = 0
+        var onInterface = 0
+        var abandoned = false
+        generation += 1
 
-            if (all.isEmpty()) {
-                emptyList()
-            } else {
-                val placeStarted = System.currentTimeMillis()
-                val regions = all
-                    // Already guaranteed when the frame was cropped to it.
-                    .filter { crop != null || within == null || it.bounds.centreIsIn(within) }
-                    .filterNot { it.bounds.isExcludedBy(exclusionsInPage) }
+        try {
+            pages.read(page) { region ->
+                read += 1
+                // Cleared while this page was being read — the user has moved
+                // on. Stop publishing; the rest of the reading is already paid
+                // for but none of it belongs on the screen.
+                if (abandoned) return@read
+
+                // Already guaranteed when the frame was cropped to it.
+                val outside = crop == null && within != null && !region.bounds.centreIsIn(within)
+                if (outside || region.bounds.isExcludedBy(exclusionsInPage)) {
+                    onInterface += 1
+                    return@read
+                }
 
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                val placed = toElements(regions, packageName) { bounds, set, enclosure ->
+                val element = toElement(region, packageName, occurrences) { bounds, set, enclosure ->
                     val placement = placeIn(page, bounds, set, enclosure)
                     // Back to screen coordinates, which is the only space
                     // anything downstream knows about.
                     placement.copy(bounds = placement.bounds.movedBy(dx, dy))
                 }
-
-                // Counts and durations only — recognised text is screen content
-                // and stays out of diagnostics (`docs/systems/privacy.md`).
-                //
-                // Timed because a user called manga mode slow and there was no
-                // figure to answer with. Reading them: capture and recognise are
-                // what the work costs, and the gap between this line and the
-                // page appearing is what the *waiting* costs.
-                logger.debug(
-                    TAG,
-                    "read ${all.size} regions, " +
-                        "${all.size - regions.size} on interface " +
-                        "(capture ${captureMs}ms, recognise ${recognizeMs}ms, " +
-                        "place ${System.currentTimeMillis() - placeStarted}ms)",
-                )
-                placed
+                currentIds += element.id
+                if (!publishOne(element, startedAfter)) abandoned = true
             }
         } finally {
             if (page !== frame) page.recycle()
             frame.recycle()
         }
 
-        publish(elements, startedAfter, signature)
+        // Counts and durations only — recognised text is screen content and
+        // stays out of diagnostics (`docs/systems/privacy.md`).
+        //
+        // Timed because a user called manga mode slow and there was no figure to
+        // answer with. Reading is no longer separable from placing now that they
+        // interleave, so they are reported together.
+        logger.debug(
+            TAG,
+            "read $read regions, $onInterface on interface" +
+                (if (abandoned) ", abandoned part way" else "") +
+                " (capture ${captureMs}ms, read and place " +
+                "${System.currentTimeMillis() - readStarted}ms)",
+        )
+
+        if (!abandoned) finishPublishing(currentIds, startedAfter, signature)
     }
 
     override suspend fun release() {
@@ -328,76 +348,98 @@ class CaptureTextSource @Inject internal constructor(
 
     private data class Placement(val bounds: TextBounds, val style: SourceStyle)
 
-    private fun toElements(
-        regions: List<TextRegion>,
+    /**
+     * One region, numbered against the page it belongs to.
+     *
+     * [occurrences] is the caller's, and spans the whole page: two balloons
+     * saying the same thing have to get different ids, and that is only
+     * decidable across the page rather than within one region.
+     */
+    private fun toElement(
+        region: TextRegion,
         packageName: String?,
+        occurrences: MutableMap<String, Int>,
         place: (TextBounds, TextOrientation, TextBounds?) -> Placement,
-    ): List<TextElement> {
-        val occurrences = mutableMapOf<String, Int>()
-        generation += 1
+    ): TextElement {
+        // Repaired here, once, where the recogniser's mistakes are made:
+        // `......` is not how anybody writes `……`, and a provider given the
+        // raw form returns the dots without the words. Doing it before the
+        // id is derived also keeps the id stable across the repair
+        // (`docs/systems/text-model.md`).
+        val text = OcrPunctuation.normalize(region.text)
+        val index = occurrences.getOrDefault(text, 0)
+        occurrences[text] = index + 1
+        val placement = place(region.bounds, region.orientation, region.enclosure)
 
-        return regions.map { region ->
-            // Repaired here, once, where the recogniser's mistakes are made:
-            // `......` is not how anybody writes `……`, and a provider given the
-            // raw form returns the dots without the words. Doing it before the
-            // id is derived also keeps the id stable across the repair
-            // (`docs/systems/text-model.md`).
-            val text = OcrPunctuation.normalize(region.text)
-            val index = occurrences.getOrDefault(text, 0)
-            occurrences[text] = index + 1
-            val placement = place(region.bounds, region.orientation, region.enclosure)
-
-            TextElement(
-                id = TextElementIds.forContent(
-                    // OCR has no window to scope by; the source is the screen
-                    // itself, so a constant keeps ids stable across frames
-                    // while content decides identity.
-                    scope = SCOPE,
-                    text = text,
-                    occurrence = index,
-                ),
+        return TextElement(
+            id = TextElementIds.forContent(
+                // OCR has no window to scope by; the source is the screen
+                // itself, so a constant keeps ids stable across frames
+                // while content decides identity.
+                scope = SCOPE,
                 text = text,
-                bounds = placement.bounds,
-                sourceType = TextSourceType.OCR,
-                // Carried so the privacy policy's per-app exclusions apply
-                // here as they do on the node path. There is no window id: a
-                // capture is of the screen, not of a window.
-                source = SourceIdentity(packageName = packageName),
-                revision = Revision(generation),
-                style = placement.style,
-                // Told rather than guessed where the recogniser can vouch for
-                // it, and left to detection where it cannot.
-                sourceLanguage = recognizer.languageOf(text),
-            )
-        }
+                occurrence = index,
+            ),
+            text = text,
+            bounds = placement.bounds,
+            sourceType = TextSourceType.OCR,
+            // Carried so the privacy policy's per-app exclusions apply
+            // here as they do on the node path. There is no window id: a
+            // capture is of the screen, not of a window.
+            source = SourceIdentity(packageName = packageName),
+            revision = Revision(generation),
+            style = placement.style,
+            // Told rather than guessed where the recogniser can vouch for
+            // it, and left to detection where it cannot.
+            sourceLanguage = recognizer.languageOf(text),
+        )
     }
 
-    /** Same diffing as the accessibility source: only changes go downstream. */
-    private suspend fun publish(
-        elements: List<TextElement>,
+    /**
+     * Puts one balloon on screen, unless the screen it came from is gone.
+     *
+     * @return false when the page was cleared mid-read, which is the caller's
+     *   signal to stop publishing the rest of it.
+     */
+    private suspend fun publishOne(element: TextElement, startedAfter: Long): Boolean {
+        val stillHere = lock.withLock { clears == startedAfter }
+        if (!stillHere) {
+            // Cleared while this scan ran, so it is a reading of a screen the
+            // user has already left. Publishing it would undo the clear.
+            logger.debug(TAG, "dropped a scan of a screen that is gone")
+            return false
+        }
+        events.emit(TextSourceEvent.Upserted(listOf(element)))
+        return true
+    }
+
+    /**
+     * Closes the page: what went away, and the fact that it was read.
+     *
+     * Both have to wait for the whole page. Removals need the complete set of
+     * ids to diff against, and [lastRecognized] is deliberately recorded here
+     * rather than before the reading — marking the page read and *then*
+     * throwing the reading away left the page looking done, so it was never
+     * read again. Measured as a comic that stayed untranslated until it was
+     * scrolled.
+     */
+    private suspend fun finishPublishing(
+        currentIds: Set<TextElementId>,
         startedAfter: Long,
         signature: IntArray,
     ) {
-        val (removed, upserted) = lock.withLock {
+        val removed = lock.withLock {
             if (clears != startedAfter) {
-                // Cleared while this scan ran, so it is a reading of a screen
-                // the user has already left. Publishing it would undo the clear.
                 logger.debug(TAG, "dropped a scan of a screen that is gone")
                 return
             }
-            // Recorded here rather than before the reading, and that matters:
-            // marking the page read and *then* throwing the reading away left
-            // the page looking done, so it was never read again. Measured as a
-            // comic that stayed untranslated until it was scrolled.
             lastRecognized = signature
-            val currentIds = elements.mapTo(LinkedHashSet()) { it.id }
             val gone = previousIds - currentIds
             previousIds = currentIds
-            gone to elements
+            gone
         }
 
         if (removed.isNotEmpty()) events.emit(TextSourceEvent.Removed(removed.toList()))
-        if (upserted.isNotEmpty()) events.emit(TextSourceEvent.Upserted(upserted))
     }
 
     private companion object {

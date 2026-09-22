@@ -41,9 +41,8 @@ class CaptureTextSourceTest {
     /** Records whether a page was read at all; there is nothing to read here. */
     private class UnusedPageReader : PageReader {
         var called = false
-        override suspend fun read(frame: Bitmap): List<TextRegion> {
+        override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
             called = true
-            return emptyList()
         }
     }
 

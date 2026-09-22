@@ -17,7 +17,20 @@ import javax.inject.Singleton
  * and only one of them needs a model on the device.
  */
 internal interface PageReader {
-    suspend fun read(frame: Bitmap): List<TextRegion>
+
+    /**
+     * Hands each region over as it is read, rather than the page at the end.
+     *
+     * Reading a page costs seconds — measured across eight real pages, 1.1s to
+     * 4.9s, and the slowest had only three balloons because the decoder has no
+     * key/value cache and its cost grows with the square of the text. Returning
+     * a list made every translation wait for the worst balloon on the page. A
+     * caller that publishes as it goes can put the first one on screen in about
+     * a second and a half instead.
+     *
+     * [onRegion] is called on the reading coroutine, in reading order.
+     */
+    suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit)
 
     /** Lets go of loaded models. Reading again afterwards reloads them. */
     suspend fun release() = Unit
@@ -38,9 +51,16 @@ internal class GroupingPageReader @Inject constructor(
 
     private val grouper = TextRegionGrouper()
 
-    override suspend fun read(frame: Bitmap): List<TextRegion> {
+    /**
+     * Emits at the end regardless: this path recognises the whole page in one
+     * call and only then knows where anything is, so there is nothing to hand
+     * over early. The streaming shape belongs to the caller, not to every
+     * reader.
+     */
+    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
         val lines = recognizer.recognize(frame)
-        return if (lines.isEmpty()) emptyList() else grouper.group(lines)
+        if (lines.isEmpty()) return
+        grouper.group(lines).forEach { onRegion(it) }
     }
 }
 
@@ -69,14 +89,14 @@ internal class DetectingPageReader @Inject constructor(
 
     private val grouper = TextRegionGrouper()
 
-    override suspend fun read(frame: Bitmap): List<TextRegion> {
+    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
         // Unavailable used to be the normal state and is now the broken one:
         // the detector ships with the app (ADR 011), so this is false only when
         // a load has failed. The older path still works, which is what makes
         // that survivable. Finding *zero* balloons remains a different thing: a
         // page with no dialogue genuinely has none, and falling back there
         // would put the sound effects and the chrome straight back.
-        if (!detector.isAvailable) return fallback.read(frame)
+        if (!detector.isAvailable) return fallback.read(frame, onRegion)
 
         val bubbles = detector.detect(frame)
         logger.debug(TAG, "detector found ${bubbles.size} bubbles")
@@ -85,7 +105,7 @@ internal class DetectingPageReader @Inject constructor(
         // the model ships with the app now, so the answer above is yes until a
         // load actually fails. Without this the first page after such a failure
         // renders nothing at all before the check above starts catching it.
-        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame)
+        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, onRegion)
 
         // One at a time, and that is a measured choice rather than the obvious
         // one. Reading two balloons concurrently is genuinely faster — 3.3s to
@@ -97,7 +117,13 @@ internal class DetectingPageReader @Inject constructor(
         // 150–230MB for 0.3–0.9s is a bad trade in a pipeline already large
         // enough to be worth killing. The decoder has no key/value cache, and
         // an export carrying one is the lever that costs no memory.
-        return bubbles.mapNotNull { bubble -> read(frame, bubble) }
+        //
+        // Handed over one at a time as well, which is what makes the serial
+        // read bearable: the reader waits for every balloon, but the *screen*
+        // no longer does.
+        for (bubble in bubbles) {
+            read(frame, bubble)?.let { onRegion(it) }
+        }
     }
 
     override suspend fun release() {
