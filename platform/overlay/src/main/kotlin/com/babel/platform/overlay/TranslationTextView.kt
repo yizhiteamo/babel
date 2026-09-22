@@ -3,6 +3,7 @@ package com.babel.platform.overlay
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -79,7 +80,16 @@ internal class TranslationTextView(context: Context) : TextView(context), Transl
             return
         }
 
-        setBackgroundColor(sampled)
+        // A sampled background means the OCR path, which means a balloon —
+        // so the corners come in ([BalloonShape]). The V1 path has no sample
+        // and keeps its square box: its bounds are a node's, not an oval's.
+        background = GradientDrawable().apply {
+            setColor(sampled)
+            cornerRadius = BalloonShape.cornerRadius(
+                translation.bounds.width,
+                translation.bounds.height,
+            )
+        }
         // The sampled ink is preferred, but only as a colour — not as a
         // guarantee of contrast. Where it is missing, brightness of the
         // background decides, which is always readable even if less faithful.

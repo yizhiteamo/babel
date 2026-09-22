@@ -33,6 +33,7 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
 
     private var layout: VerticalTextLayout.Result? = null
     private var background = LIGHT_SURFACE
+    private val backgroundPaint = Paint().apply { isAntiAlias = true }
 
     override fun bind(translation: RenderedTranslation) {
         val style = translation.style.sourceStyle
@@ -54,7 +55,19 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
     }
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(background)
+        // Rounded rather than filled to the corners: a balloon is an oval, and
+        // a rectangle's corners sit outside it ([BalloonShape]).
+        backgroundPaint.color = background
+        val radius = BalloonShape.cornerRadius(width, height)
+        canvas.drawRoundRect(
+            0f,
+            0f,
+            width.toFloat(),
+            height.toFloat(),
+            radius,
+            radius,
+            backgroundPaint,
+        )
 
         val result = layout ?: return
         paint.textSize = result.glyphSizePx.toFloat()
