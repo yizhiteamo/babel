@@ -85,7 +85,7 @@ class CaptureTextSource @Inject internal constructor(
         exclusions: List<TextBounds>,
         within: TextBounds?,
     ) {
-        val startedAfter = lock.withLock { clears }
+        var startedAfter = lock.withLock { clears }
         val captureStarted = System.currentTimeMillis()
 
         // Wait for the screen to stop moving, checking often.
@@ -134,6 +134,44 @@ class CaptureTextSource @Inject internal constructor(
             logger.debug(TAG, "skipped: the same page as last read")
             frame.recycle()
             return
+        }
+
+        // Take our own translations off the screen before reading it.
+        //
+        // The frame comes from the live display, so it contains whatever Babel
+        // has already drawn — and a translation is a light rounded box with
+        // lettering in it, which is exactly the shape a comic balloon detector
+        // is trained to find. Measured: drawing two translations on a page
+        // takes the detector from eight balloons to nine
+        // (`DetectorReadsOwnOverlaysTest`). On a device that put the previous
+        // page's Chinese back onto the new page, where no later scan could
+        // remove it — the page was not changing any more.
+        //
+        // [FrameChangeDetector] cannot cover this. It stops an *unchanged* page
+        // being read twice, and this is the one frame where the page has
+        // changed, which is the only kind of frame that ever gets read.
+        //
+        // The cost is one screenshot interval per page turn. The alternative
+        // considered was excluding the regions our translations occupy, which
+        // costs nothing — but a real balloon landing where an old translation
+        // was would be dropped silently, and with the page now static nothing
+        // would come back for it.
+        if (lock.withLock { previousIds.isNotEmpty() }) {
+            clear()
+            // The renderer takes the windows down on the main thread, and a
+            // capture asked for sooner than this simply fails anyway: the
+            // platform allows roughly one screenshot per 333ms.
+            delay(SETTLE_RECHECK_MS)
+
+            frame.recycle()
+            frame = frames.latestFrame()
+            signature = frame?.let { FrameSignature.of(it) }
+            if (frame == null || signature == null) {
+                logger.debug(TAG, "skipped: no frame after taking our own translations down")
+                return
+            }
+            // Our own clear moved the counter the drop guard compares against.
+            startedAfter = lock.withLock { clears }
         }
 
         // Read only the app's content area.
