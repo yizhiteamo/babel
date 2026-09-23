@@ -212,15 +212,37 @@ internal class OnnxBubbleDetector @Inject constructor(
      * asking is whether the text is *inside* the balloon.
      */
     internal fun pair(detections: List<RawDetection>): List<DetectedBubble> {
-        val texts = detections.filter { it.label == LABEL_TEXT_IN_BUBBLE }.map { it.box }
         val balloons = detections.filter { it.label == LABEL_BALLOON }.map { it.box }
 
-        return texts.map { text ->
+        val inBubbles = detections.filter { it.label == LABEL_TEXT_IN_BUBBLE }.map { detection ->
             DetectedBubble(
-                text = text,
-                balloon = balloons.firstOrNull { text.mostlyInside(it) },
+                text = detection.box,
+                balloon = balloons.firstOrNull { detection.box.mostlyInside(it) },
             )
         }
+
+        // Lettering on the art comes through as well. It was dropped here once,
+        // and counting it on real pages showed that this cost two whole pages —
+        // one of them laid out without balloons at all — to spare two sound
+        // effects. The sound effects are separated after reading instead, where
+        // the text itself can be looked at (`SoundEffect`).
+        //
+        // Minus what is already accounted for. The model will label one region
+        // twice, and on `jap-mag-05` it returns the same 231x474 box as both
+        // class 1 and class 2 — which `BubbleSignatureTest` caught as two
+        // balloons sharing a signature, and which would otherwise be read,
+        // translated and drawn twice. Free means free: not inside a balloon and
+        // not another name for lettering already found in one.
+        val onArt = detections.asSequence()
+            .filter { it.label == LABEL_TEXT_FREE }
+            .filterNot { free -> balloons.any { free.box.mostlyInside(it) } }
+            .filterNot { free ->
+                inBubbles.any { free.box.mostlyInside(it.text) || it.text.mostlyInside(free.box) }
+            }
+            .map { DetectedBubble(text = it.box, balloon = null, onArt = true) }
+            .toList()
+
+        return inBubbles + onArt
     }
 
     private fun FloatArray.toBounds(frame: Bitmap): TextBounds? {

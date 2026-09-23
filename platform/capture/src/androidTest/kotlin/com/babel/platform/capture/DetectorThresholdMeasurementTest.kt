@@ -19,24 +19,28 @@ import org.junit.runner.RunWith
  * What the detector's two open questions actually cost, in numbers and pictures.
  *
  * Eight pages were run end to end on a device and seven were good. The eighth,
- * `jap-mag-07`, is a dark rain scene, and on it the detector boxes bright
- * streaks — rain, highlights, panel edges — as balloons. manga-ocr reads short
- * kana out of the noise, DeepL translates them faithfully, and the page gains
- * white blocks it should not have. The boxes are **not** empty, so none of the
- * existing suppression applies: the fault is at the detection end.
+ * `jap-mag-07`, is a dark rain scene, and it was written down as a detector
+ * fault: the model was supposed to be boxing bright streaks — rain, highlights,
+ * panel edges — as balloons. Two levers were proposed, raising `SCORE_FLOOR`
+ * and demanding an enclosing balloon, and both could do real harm, so both were
+ * left alone until they could be measured.
  *
- * Two levers could fix it, and both can do harm:
+ * **This measured them, and the diagnosis was wrong.** Page 07's five boxes
+ * score 0.89 to 0.91 and every one is paired with a balloon; across all eight
+ * pages not a single class-1 box is unenclosed. No floor removes them without
+ * removing nearly every balloon in the sample, and the enclosure rule removes
+ * nothing anywhere. They are five real balloons holding one sentence split five
+ * ways, which is the unit-of-translation problem wearing a dark page.
  *
- * - raise `SCORE_FLOOR` (0.5) — too far and genuinely faint balloons go with it
- * - require `balloon != null` — drops legitimate unboxed dialogue, which today
- *   is translated and rendered (`CaptureTextSource` grows a region with no
- *   enclosure against the whole frame)
+ * So it stays an instrument rather than becoming a fix. Run it again before
+ * touching either constant.
  *
- * Separately, `LABEL_TEXT_FREE` is read out of the model and dropped, so that
- * sound effects are not translated under an opaque box. The cost is visible on
- * two pages: page 05's large hand-lettered dialogue and the whole of page 06, a
- * character sheet with no balloons at all. How much of that class is really
- * sound effects has never been counted.
+ * Separately, `LABEL_TEXT_FREE` used to be read out of the model and dropped,
+ * so that sound effects would not be translated under an opaque box. The cost
+ * was visible on two pages: page 05's hand-lettered dialogue and the whole of
+ * page 06, a character sheet with no balloons at all. This is what counted it —
+ * seven of nine boxes were real text — and the class is now kept, with the
+ * sound effects separated after reading by `SoundEffect`.
  *
  * Both questions need the same thing — **per-box human judgement on all eight
  * pages** — so this produces it once. It prints tables and writes an annotated
@@ -102,7 +106,8 @@ class DetectorThresholdMeasurementTest {
 
         println(
             "SWEEP production today: SCORE_FLOOR=${OnnxBubbleDetector.SCORE_FLOOR}, " +
-                "open regions allowed, class ${OnnxBubbleDetector.LABEL_TEXT_FREE} ignored",
+                "open regions allowed, class ${OnnxBubbleDetector.LABEL_TEXT_FREE} kept " +
+                "and filtered after reading",
         )
         println("SWEEP collected at floor $collectionFloor and filtered afterwards")
 
@@ -143,9 +148,9 @@ class DetectorThresholdMeasurementTest {
         )
 
         for ((name, raw) in perPage) {
-            val open = floors.map { floor -> detector.pair(above(raw, floor)).size }
+            val open = floors.map { floor -> inBalloons(raw, floor).size }
             val enclosed = floors.map { floor ->
-                detector.pair(above(raw, floor)).count { it.balloon != null }
+                inBalloons(raw, floor).count { it.balloon != null }
             }
             println(
                 "SWEEP   %-12s %s  |%s".format(
@@ -163,23 +168,30 @@ class DetectorThresholdMeasurementTest {
     /** The table the free-text decision comes from. */
     private fun reportFreeText(perPage: List<Pair<String, List<RawDetection>>>) {
         println("SWEEP")
-        println(
-            "SWEEP === class ${OnnxBubbleDetector.LABEL_TEXT_FREE} (free text), ignored today ===",
-        )
-        println("SWEEP   page         count  scores / sizes")
+        println("SWEEP === class ${OnnxBubbleDetector.LABEL_TEXT_FREE} (free text) ===")
+        println("SWEEP   page         raw  kept  scores / sizes")
         for ((name, raw) in perPage) {
             val free = raw.filter {
                 it.label == OnnxBubbleDetector.LABEL_TEXT_FREE &&
                     it.score >= OnnxBubbleDetector.SCORE_FLOOR
             }
+            // Raw and kept differ where the model labelled one region twice.
+            val kept = detector.pair(above(raw, OnnxBubbleDetector.SCORE_FLOOR)).count { it.onArt }
             val detail = free.joinToString("  ") {
                 "%.2f@%dx%d".format(it.score, it.box.width, it.box.height)
             }
-            println("SWEEP   %-12s %3d    %s".format(name.removeSuffix(".jpg"), free.size, detail))
+            println(
+                "SWEEP   %-12s %3d %5d  %s".format(
+                    name.removeSuffix(".jpg"),
+                    free.size,
+                    kept,
+                    detail,
+                ),
+            )
         }
         println("SWEEP")
-        println("SWEEP   size is the separator worth looking at: a sound effect is drawn large")
-        println("SWEEP   and says little; a page of unboxed dialogue is the opposite")
+        println("SWEEP   size does not separate noise from speech — the script does, after")
+        println("SWEEP   reading. raw minus kept is the model labelling one region twice.")
     }
 
     /**
@@ -190,7 +202,7 @@ class DetectorThresholdMeasurementTest {
         println("SWEEP")
         println("SWEEP === class 1 boxes above %.2f, with scores ===".format(collectionFloor))
         for ((name, raw) in perPage) {
-            val enclosed = detector.pair(above(raw, collectionFloor))
+            val enclosed = inBalloons(raw, collectionFloor)
                 .filter { it.balloon != null }
                 .map { it.text }
                 .toSet()
@@ -205,6 +217,15 @@ class DetectorThresholdMeasurementTest {
     }
 
     private fun above(raw: List<RawDetection>, floor: Float) = raw.filter { it.score >= floor }
+
+    /**
+     * The class-1 half of the pairing.
+     *
+     * `pair` returns free text as well now, which is the change this test
+     * measured the case for. The balloon table stays about balloons.
+     */
+    private fun inBalloons(raw: List<RawDetection>, floor: Float) =
+        detector.pair(above(raw, floor)).filterNot { it.onArt }
 
     /**
      * The page with every box drawn on it, labelled with class and score.

@@ -14,8 +14,11 @@ import com.babel.core.model.TextBounds
  *
  * - **grouping** — one balloon becomes one unit of translation, which is what a
  *   capable translator needs and what splitting it denies
- * - **filtering** — sound effects and cover lettering are not balloons, so they
- *   stop being offered for translation
+ * - **filtering** — cover lettering and browser chrome are not balloons, so
+ *   they stop being offered for translation. Text drawn on the art is reported
+ *   separately rather than discarded: counted on real pages, most of it turned
+ *   out to be speech, and only the sound effects among it are dropped
+ *   (`SoundEffect`)
  * - **placement** — the balloon's own outline beats growing a rectangle out of
  *   the text until the pixels stop matching
  */
@@ -52,4 +55,14 @@ internal data class DetectedBubble(
     val text: TextBounds,
     /** The balloon around it, when the detector found one to match. */
     val balloon: TextBounds?,
+    /**
+     * Lettering drawn straight onto the art, with no balloon of its own.
+     *
+     * Not the same as `balloon == null`, which only says no balloon was
+     * *matched*. This says the model put it in a different class, and that is
+     * what decides whether a short katakana read is a noise or a word: inside
+     * a balloon `データ` is somebody speaking, and on the art it is a sound
+     * effect (`SoundEffect`).
+     */
+    val onArt: Boolean = false,
 )

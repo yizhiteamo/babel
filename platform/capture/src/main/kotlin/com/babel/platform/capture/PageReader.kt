@@ -5,6 +5,7 @@ import com.babel.core.common.BabelLogger
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextOrientation
 import com.babel.domain.vision.RecognizedLine
+import com.babel.domain.vision.SoundEffect
 import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
 import javax.inject.Inject
@@ -139,6 +140,15 @@ internal class DetectingPageReader @Inject constructor(
             crop.recycle()
         }
         if (lines.isEmpty()) return null
+
+        // The one place free text is told apart from speech, and it has to be
+        // here because the test is on the words rather than on the box. A
+        // short katakana read inside a balloon is somebody speaking; the same
+        // read on the artwork is a noise drawn into the picture.
+        if (bubble.onArt && SoundEffect.isDrawnNoise(lines.joinToString("") { it.text })) {
+            logger.debug(TAG, "dropped a sound effect")
+            return null
+        }
 
         // The grouper still answers two questions here — which way the text is
         // set, and what order the columns read in. Both are tested, and vertical
