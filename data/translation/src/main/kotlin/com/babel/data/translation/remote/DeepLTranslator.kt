@@ -46,9 +46,15 @@ import okhttp3.Response
  *
  * ## What it does not do
  *
- * No context. A chat model can be told these are comic balloons; this cannot,
- * and will read a line of dialogue as a standalone sentence. Which of the two
- * wins on a given page is a measurement rather than a principle, so both stay.
+ * No instruction. A chat model can be told these are comic balloons; this
+ * cannot, and will read a line of dialogue as a standalone sentence. Which of
+ * the two wins on a given page is a measurement rather than a principle, so
+ * both stay.
+ *
+ * It does take a `context` — surrounding text it reads but does not translate,
+ * and does not bill for. The payload carries it whenever a request has one.
+ * Nothing in the pipeline sets one yet; whether anything should is what
+ * `BalloonContextExperimentTest` is measuring.
  *
  * Text reaching this class has already passed the privacy policy — that is what
  * the coordinator checks before any provider is called
@@ -137,6 +143,12 @@ class DeepLTranslator(
             text = listOf(request.sourceText),
             targetLang = target,
             sourceLang = request.languages.source?.let(::sourceCodeFor),
+            // Surrounding text the engine may read and must not translate.
+            // Nothing populates `TranslationRequest.context` in the pipeline
+            // yet — this exists so the experiment that decides whether anything
+            // should can be run against the real service
+            // (`BalloonContextExperimentTest`). DeepL does not bill for it.
+            context = request.context?.takeIf { it.isNotBlank() },
         )
 
         val call = client.newCall(
@@ -217,6 +229,7 @@ class DeepLTranslator(
         val text: List<String>,
         @SerialName("target_lang") val targetLang: String,
         @SerialName("source_lang") val sourceLang: String? = null,
+        val context: String? = null,
     )
 
     @Serializable
