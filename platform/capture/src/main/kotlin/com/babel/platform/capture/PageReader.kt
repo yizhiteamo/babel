@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextOrientation
+import com.babel.domain.vision.MangaReadingOrder
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.SoundEffect
 import com.babel.domain.vision.TextRegion
@@ -122,7 +123,14 @@ internal class DetectingPageReader @Inject constructor(
         // Handed over one at a time as well, which is what makes the serial
         // read bearable: the reader waits for every balloon, but the *screen*
         // no longer does.
-        for (bubble in bubbles) {
+        //
+        // In reading order, which the detector does not give: it returns
+        // balloons in whatever order the model emits them. That was invisible
+        // while each balloon was its own sentence, and is what "join this
+        // balloon to the next" needs to mean anything (`MangaReadingOrder`).
+        // It also puts the incremental publishing in the order the page is
+        // read, which is the order a reader wants it to appear in.
+        for (bubble in bubbles.sortedWith(readingOrder(frame))) {
             read(frame, bubble)?.let { onRegion(it) }
         }
     }
@@ -200,6 +208,12 @@ internal class DetectingPageReader @Inject constructor(
             bottom = (lines.maxOf { it.bounds.bottom }) + dy,
             space = bubble.text.space,
         )
+    }
+
+    /** Balloons across the page, as opposed to columns within one. */
+    private fun readingOrder(frame: Bitmap): Comparator<DetectedBubble> {
+        val across = MangaReadingOrder.of(frame.height)
+        return Comparator { first, second -> across.compare(first.text, second.text) }
     }
 
     /** Vertical Japanese reads right to left; anything else reads downwards. */

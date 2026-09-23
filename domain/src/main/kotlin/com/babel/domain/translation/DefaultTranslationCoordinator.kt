@@ -442,10 +442,17 @@ class DefaultTranslationCoordinator(
         @Volatile
         var job: Job? = null
 
+        /**
+         * @param text the translation of [element]'s whole source text, which
+         *   for a shared group is the joined line rather than this balloon's
+         *   own words. What this balloon shows is its part of it.
+         */
         fun render(text: String) = RenderedTranslation(
             elementId = element.id,
             revision = element.revision,
-            text = text,
+            text = element.share?.let {
+                SharedTranslation.partOf(text, it.weights, it.index)
+            } ?: text,
             bounds = element.bounds,
             // Carried straight through: the domain decides *what* to show, the
             // acquisition layer is the only one that ever saw the pixels.

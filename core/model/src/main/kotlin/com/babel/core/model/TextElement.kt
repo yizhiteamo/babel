@@ -68,5 +68,36 @@ data class TextElement(
      * A manual override by the user still wins; this only replaces guessing.
      */
     val sourceLanguage: LanguageTag? = null,
+    /**
+     * Set when this element shares one translation with its neighbours.
+     *
+     * A sentence cut across several balloons has to be translated whole or it
+     * is destroyed, so the acquisition layer gives every balloon in such a
+     * group the **same** [text] — the joined line — and marks each with its
+     * place in the group. The domain then shows each one its own part
+     * (`SharedTranslation`).
+     *
+     * Same text means the cache answers every balloon after the first, so a
+     * group of three still costs one call to the provider.
+     *
+     * Null everywhere else, including the whole accessibility path: a label is
+     * never half of its neighbour.
+     */
+    val share: TextShare? = null,
     val metadata: Map<String, String> = emptyMap(),
 )
+
+/**
+ * One element's place in a group that shares a translation.
+ *
+ * Carries the group's weights rather than a group id so that nothing has to
+ * hold the group together: an element knows its own share, and the division is
+ * a pure function of what it already has. The weights are the balloons' areas
+ * in reading order, which is what decides how much of the line each one takes.
+ */
+data class TextShare(
+    val index: Int,
+    val weights: List<Int>,
+) {
+    val count: Int get() = weights.size
+}

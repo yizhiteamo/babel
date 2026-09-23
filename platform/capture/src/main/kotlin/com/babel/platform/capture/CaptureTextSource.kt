@@ -8,6 +8,7 @@ import com.babel.core.model.SourceStyle
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextShare
 import com.babel.core.model.TextOrientation
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextElementIds
@@ -15,6 +16,7 @@ import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.vision.BubbleBounds
 import com.babel.domain.vision.FrameChangeDetector
 import com.babel.domain.vision.ImageTextScanner
+import com.babel.domain.vision.JapaneseClause
 import com.babel.domain.vision.OcrPunctuation
 import com.babel.domain.vision.TextRegion
 import com.babel.platform.screen.ScreenFrameSource
@@ -213,6 +215,45 @@ class CaptureTextSource @Inject internal constructor(
         var abandoned = false
         generation += 1
 
+        // A sentence cut across balloons has to be translated whole, so a
+        // balloon that cannot stand on its own waits for the one after it
+        // (`JapaneseClause`). Everything else still goes out the moment it is
+        // read — which is nearly every balloon on nearly every page, so the
+        // incremental publishing this replaced is kept for all but the groups.
+        val group = mutableListOf<TextRegion>()
+
+        val flush: suspend () -> Boolean = flush@{
+            if (group.isEmpty()) return@flush true
+
+            // Placed first, because the weights that divide the translation are
+            // the drawn boxes' areas rather than the lettering's.
+            val joined = group.joinToString("") { OcrPunctuation.normalize(it.text) }
+            val placed = group.map { region ->
+                toElement(region, joined, packageName, occurrences) { bounds, set, enclosure ->
+                    val placement = placeIn(page, bounds, set, enclosure)
+                    // Back to screen coordinates, which is the only space
+                    // anything downstream knows about.
+                    placement.copy(bounds = placement.bounds.movedBy(dx, dy))
+                }
+            }
+            val weights = placed.map { it.bounds.width * it.bounds.height }
+
+            var published = true
+            for ((index, element) in placed.withIndex()) {
+                // A group of one is the ordinary case and carries no share:
+                // its whole translation is its own.
+                val shared = if (placed.size == 1) element
+                else element.copy(share = TextShare(index = index, weights = weights))
+                currentIds += shared.id
+                if (!publishOne(shared, startedAfter)) {
+                    published = false
+                    break
+                }
+            }
+            group.clear()
+            published
+        }
+
         try {
             pages.read(page) { region ->
                 read += 1
@@ -228,18 +269,26 @@ class CaptureTextSource @Inject internal constructor(
                     return@read
                 }
 
+                group += region
+                // Held only for balloons. Lettering on the artwork is scattered
+                // across panels where reading order is a much weaker claim, and
+                // page 05's `私はたった今から` really does continue — two
+                // regions later, not in the next one.
+                val waits = region.enclosure != null &&
+                    group.size < MAX_GROUP &&
+                    JapaneseClause.isUnfinished(OcrPunctuation.normalize(region.text))
+                if (waits) return@read
+
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
-                val element = toElement(region, packageName, occurrences) { bounds, set, enclosure ->
-                    val placement = placeIn(page, bounds, set, enclosure)
-                    // Back to screen coordinates, which is the only space
-                    // anything downstream knows about.
-                    placement.copy(bounds = placement.bounds.movedBy(dx, dy))
-                }
-                currentIds += element.id
-                if (!publishOne(element, startedAfter)) abandoned = true
+                if (!flush()) abandoned = true
             }
+
+            // A page can end on an unfinished balloon — the sentence carries
+            // into the next page, which this pipeline never sees. It goes out
+            // on its own rather than being lost.
+            if (!abandoned && !flush()) abandoned = true
         } finally {
             if (page !== frame) page.recycle()
             frame.recycle()
@@ -355,18 +404,24 @@ class CaptureTextSource @Inject internal constructor(
      * saying the same thing have to get different ids, and that is only
      * decidable across the page rather than within one region.
      */
+    /**
+     * @param text what this element is translated as, already repaired. It is
+     *   the region's own words for a lone balloon and the group's joined line
+     *   for a shared one — which is what makes every balloon in a group agree
+     *   on a cache key, so the group costs one call rather than several.
+     */
     private fun toElement(
         region: TextRegion,
+        text: String,
         packageName: String?,
         occurrences: MutableMap<String, Int>,
         place: (TextBounds, TextOrientation, TextBounds?) -> Placement,
     ): TextElement {
-        // Repaired here, once, where the recogniser's mistakes are made:
-        // `......` is not how anybody writes `……`, and a provider given the
-        // raw form returns the dots without the words. Doing it before the
-        // id is derived also keeps the id stable across the repair
+        // Repair happens in the caller, once, where the recogniser's mistakes
+        // are made: `......` is not how anybody writes `……`, and a provider
+        // given the raw form returns the dots without the words. Doing it
+        // before the id is derived also keeps the id stable across the repair
         // (`docs/systems/text-model.md`).
-        val text = OcrPunctuation.normalize(region.text)
         val index = occurrences.getOrDefault(text, 0)
         occurrences[text] = index + 1
         val placement = place(region.bounds, region.orientation, region.enclosure)
@@ -444,6 +499,16 @@ class CaptureTextSource @Inject internal constructor(
 
     private companion object {
         const val TAG = "CaptureTextSource"
+
+        /**
+         * The most balloons one sentence may be joined across.
+         *
+         * Three, because a chain has to end somewhere and a misread ending in a
+         * particle would otherwise swallow the rest of the page. The measured
+         * splits were all two; three leaves room for one more without letting a
+         * mistake run.
+         */
+        const val MAX_GROUP = 3
 
         /**
          * How long to wait before asking again whether the screen has stopped
