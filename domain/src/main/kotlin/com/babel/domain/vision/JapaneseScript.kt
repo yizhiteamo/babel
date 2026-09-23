@@ -29,8 +29,28 @@ object JapaneseScript {
 
     private val HIRAGANA = '぀'..'ゟ'
     private val KATAKANA = '゠'..'ヿ'
+    private val HAN = '一'..'鿿'
 
     /** True when [text] contains at least one kana character. */
     fun isPresentIn(text: String): Boolean =
         text.any { it in HIRAGANA || it in KATAKANA }
+
+    /**
+     * Whether [text] could be Japanese **writing** at all — kana or Han.
+     *
+     * A different question from [isPresentIn], deliberately, and the difference
+     * is the whole point of having both. That one asks "is this line Japanese",
+     * where a Han-only line is genuinely ambiguous and claiming `ja` for it
+     * would be a confident mistake. This one asks "did a Japanese recogniser
+     * produce Japanese script", where a Han-only answer is obviously yes.
+     *
+     * It exists because manga-ocr does not fail on text it was not built for.
+     * Given English balloons it returns fluent-looking nonsense —
+     * `WindrisntthatSamantha2Thebig.hatThettbooksting...` off a real page — and
+     * that nonsense was translated and drawn over readable English
+     * (`docs/milestones/v2.md`). Empty output already had a fallback; wrong
+     * output did not, because nothing was asking this question.
+     */
+    fun couldBeJapanese(text: String): Boolean =
+        text.any { it in HIRAGANA || it in KATAKANA || it in HAN }
 }

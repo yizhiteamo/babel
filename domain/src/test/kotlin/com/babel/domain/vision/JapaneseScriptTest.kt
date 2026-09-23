@@ -45,4 +45,42 @@ class JapaneseScriptTest {
     fun `empty text is not japanese`() {
         assertFalse(JapaneseScript.isPresentIn(""))
     }
+
+    /**
+     * The three real strings manga-ocr produced from `jap-mag-08`, an English
+     * page. It does not fail on a language it was not built for — it invents
+     * one — and those inventions were translated and drawn over the English
+     * (`docs/milestones/v2.md`). Recognition falls back to ML Kit when this
+     * says no, so these are what decides it.
+     */
+    @Test
+    fun `manga-ocr output that is not japanese script at all`() {
+        val invented = listOf(
+            "Andoote:goingobeaGeatWittiParentyAstrerdpswinosantrigadarontosarigin",
+            "WindrisntthatSamantha2Thebig.hatThettbookstingoksheshestiooksHicabrdAw",
+            "Shame,relly,Shes.gotacuxelittterfiaceontLertingrolddyinapleOfbooks.",
+        )
+        for (text in invented) {
+            assertFalse(JapaneseScript.couldBeJapanese(text), text)
+        }
+    }
+
+    @Test
+    fun `anything written in kana or han could be japanese`() {
+        assertTrue(JapaneseScript.couldBeJapanese("わたしの"))
+        assertTrue(JapaneseScript.couldBeJapanese("データは集まった"))
+        assertTrue(JapaneseScript.couldBeJapanese("先生も汗拭きシート使いますか?"))
+        // Han alone is ambiguous as a *language* claim and is not one here: the
+        // question is only whether a Japanese recogniser produced Japanese
+        // script, and 懺悔室 plainly is.
+        assertTrue(JapaneseScript.couldBeJapanese("懺悔室"))
+    }
+
+    @Test
+    fun `nothing but punctuation is not japanese script`() {
+        // A balloon read as dots is a failed read, and falling back to ML Kit
+        // is the right answer for it too.
+        assertFalse(JapaneseScript.couldBeJapanese("......!?"))
+        assertFalse(JapaneseScript.couldBeJapanese(""))
+    }
 }
