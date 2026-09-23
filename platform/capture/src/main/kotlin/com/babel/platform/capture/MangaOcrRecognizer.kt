@@ -56,13 +56,13 @@ internal class MangaOcrRecognizer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dispatchers: DispatcherProvider,
     private val logger: BabelLogger,
-) : TextRecognizer {
+) : BalloonEngine {
 
     private val modelsDir: File
         get() = File(context.getExternalFilesDir(null), MODELS_DIR)
 
     /** Every piece has to be present; a half-downloaded model is unavailable. */
-    val isAvailable: Boolean
+    override val isAvailable: Boolean
         get() = !failed && FILES.all { File(modelsDir, it).exists() }
 
     @Volatile
@@ -122,7 +122,7 @@ internal class MangaOcrRecognizer @Inject constructor(
      * ~900ms — a price worth paying once per session rather than carrying for
      * the life of the process.
      */
-    suspend fun release() {
+    override suspend fun release() {
         loading.withLock {
             loaded?.let {
                 it.encoder.close()

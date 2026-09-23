@@ -35,3 +35,21 @@ internal interface TextRecognizer {
      */
     suspend fun recognize(frame: Bitmap): List<RecognizedLine>
 }
+
+/**
+ * A recogniser built for one balloon at a time, and able to say whether it can
+ * run at all.
+ *
+ * Exists so [BubbleRecognizer] depends on the capability rather than on
+ * manga-ocr specifically — which is what lets the fallback it performs be
+ * tested with both engines under control. The weights arrive by download
+ * (ADR 011), so "not available" is an ordinary state rather than a failure.
+ */
+internal interface BalloonEngine : TextRecognizer {
+
+    /** Whether every piece of the model is on the device. */
+    val isAvailable: Boolean
+
+    /** Lets go of the loaded model. Recognising again reloads it. */
+    suspend fun release()
+}

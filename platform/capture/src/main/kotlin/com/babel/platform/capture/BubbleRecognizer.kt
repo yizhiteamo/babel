@@ -24,8 +24,8 @@ import javax.inject.Singleton
  */
 @Singleton
 internal class BubbleRecognizer @Inject constructor(
-    private val manga: MangaOcrRecognizer,
-    private val general: MlKitTextRecognizer,
+    private val manga: BalloonEngine,
+    private val general: TextRecognizer,
 ) : TextRecognizer {
 
     private val current: TextRecognizer get() = if (manga.isAvailable) manga else general

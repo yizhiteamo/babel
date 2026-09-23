@@ -4,6 +4,8 @@ import com.babel.domain.vision.ImageTextScanner
 import com.babel.domain.vision.RecognizerModel
 import com.babel.platform.capture.CaptureTextSource
 import com.babel.platform.capture.DetectingPageReader
+import com.babel.platform.capture.BalloonEngine
+import com.babel.platform.capture.MangaOcrRecognizer
 import com.babel.platform.capture.MlKitTextRecognizer
 import com.babel.platform.capture.ModelDownloader
 import com.babel.platform.capture.OnnxBubbleDetector
@@ -42,6 +44,17 @@ internal abstract class RecognizerModule {
     @Binds
     @Singleton
     abstract fun bindTextRecognizer(impl: MlKitTextRecognizer): TextRecognizer
+
+    /**
+     * The balloon engine as a capability rather than as manga-ocr.
+     *
+     * `BubbleRecognizer` decides between two engines and has to be testable on
+     * that decision, which means neither of them may be a concrete class it
+     * cannot stand in for.
+     */
+    @Binds
+    @Singleton
+    abstract fun bindBalloonEngine(impl: MangaOcrRecognizer): BalloonEngine
 
     /**
      * The one binding here whose *type* is public: the interface has to show

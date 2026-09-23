@@ -5,6 +5,7 @@ import com.babel.core.model.ProviderId
 import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextShare
 import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationError
 import com.babel.core.model.TranslationRuntimeState
@@ -508,6 +509,54 @@ class DefaultTranslationCoordinatorTest {
             "peak concurrency was ${translator.peakConcurrency}",
         )
         assertEquals(12, renderer.visible.size)
+        coordinator.stop()
+    }
+
+    /**
+     * A sentence split across balloons is translated whole and shown in parts.
+     *
+     * The acquisition layer gives every balloon in the group the same joined
+     * text, so this also pins the reason that is affordable: one provider call
+     * for the group, the rest answered from the cache.
+     */
+    @Test
+    fun `a shared translation is divided among the balloons that share it`() = runTest {
+        val joined = "わたしのめを見て"
+        val weights = listOf(6000, 4000)
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(id = "b1", text = joined)
+                        .copy(share = TextShare(index = 0, weights = weights)),
+                    TestElements.element(id = "b2", text = joined)
+                        .copy(share = TextShare(index = 1, weights = weights)),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        // Each balloon shows its own part, and the parts are the whole line.
+        val shown = renderer.visibleText
+        assertEquals(2, shown.size, "got $shown")
+        assertEquals("<$joined>", shown.joinToString(""))
+        assertTrue(shown.none { it.isEmpty() }, "got $shown")
+
+        // One call, not two: same text, same provider, so the cache answers.
+        assertEquals(1, translator.callCount)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `an element with no share still shows the whole translation`() = runTest {
+        val coordinator = start()
+
+        coordinator.submit(TextSourceEvent.Upserted(listOf(TestElements.element(text = "Hello"))))
+        advanceUntilIdle()
+
+        // The ordinary case, guarded because dividing is now on the same path.
+        assertEquals(listOf("<Hello>"), renderer.visibleText)
         coordinator.stop()
     }
 
