@@ -76,11 +76,34 @@ internal class OnnxBubbleDetector @Inject constructor(
     private val loading = Mutex()
     private var session: OrtSession? = null
 
-    override suspend fun detect(frame: Bitmap): List<DetectedBubble> {
+    override suspend fun detect(frame: Bitmap): List<DetectedBubble> =
+        pair(detectRaw(frame, SCORE_FLOOR))
+
+    /**
+     * Every box the model reported, with its label and score, before any of the
+     * decisions [detect] makes on top of them.
+     *
+     * Exists so those decisions can be *measured* rather than guessed at.
+     * `SCORE_FLOOR` and the choice to ignore free text were both set from a
+     * six-page desktop run, and a later eight-page run on the device found a
+     * dark page where the detector boxes rain and panel edges as balloons
+     * (`docs/milestones/v2.md`). Choosing between a higher floor and demanding
+     * an enclosing balloon needs the raw scores of the boxes each would drop.
+     *
+     * A harness could not reimplement this: the input tensor is channel-first,
+     * `orig_target_sizes` is (width, height), and getting either wrong produces
+     * plausible boxes that are wrong. A second copy of that would measure
+     * itself. Mirroring a private `Int`, as `FrameSignatureMeasurementTest`
+     * does, is a different and much smaller thing.
+     *
+     * Not part of [TextDetector]: the labels are this model's, and nothing in
+     * the pipeline should learn them.
+     */
+    internal suspend fun detectRaw(frame: Bitmap, floor: Float): List<RawDetection> {
         val active = session() ?: return emptyList()
 
         return try {
-            withContext(dispatchers.default) { run(active, frame) }
+            withContext(dispatchers.default) { run(active, frame, floor) }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (failure: Throwable) {
@@ -139,7 +162,7 @@ internal class OnnxBubbleDetector @Inject constructor(
         }
     }
 
-    private fun run(session: OrtSession, frame: Bitmap): List<DetectedBubble> {
+    private fun run(session: OrtSession, frame: Bitmap, floor: Float): List<RawDetection> {
         val environment = OrtEnvironment.getEnvironment()
         val image = frame.asInputTensor(environment)
         // (width, height). See the class comment.
@@ -160,12 +183,25 @@ internal class OnnxBubbleDetector @Inject constructor(
                 @Suppress("UNCHECKED_CAST")
                 val scores = (result[2].value as Array<FloatArray>)[0]
 
-                return pair(labels, boxes, scores, frame)
+                return collect(labels, boxes, scores, frame, floor)
             }
         } finally {
             image.close()
             sizes.close()
         }
+    }
+
+    /** Drops what scores too low or is too small to be lettering. */
+    private fun collect(
+        labels: LongArray,
+        boxes: Array<FloatArray>,
+        scores: FloatArray,
+        frame: Bitmap,
+        floor: Float,
+    ): List<RawDetection> = labels.indices.mapNotNull { index ->
+        if (scores[index] < floor) return@mapNotNull null
+        val box = boxes[index].toBounds(frame) ?: return@mapNotNull null
+        RawDetection(labels[index].toInt(), scores[index], box)
     }
 
     /**
@@ -175,23 +211,9 @@ internal class OnnxBubbleDetector @Inject constructor(
      * than its text, so IoU scores a correct pairing low. The question worth
      * asking is whether the text is *inside* the balloon.
      */
-    private fun pair(
-        labels: LongArray,
-        boxes: Array<FloatArray>,
-        scores: FloatArray,
-        frame: Bitmap,
-    ): List<DetectedBubble> {
-        val texts = mutableListOf<TextBounds>()
-        val balloons = mutableListOf<TextBounds>()
-
-        for (index in labels.indices) {
-            if (scores[index] < SCORE_FLOOR) continue
-            val box = boxes[index].toBounds(frame) ?: continue
-            when (labels[index].toInt()) {
-                LABEL_TEXT_IN_BUBBLE -> texts += box
-                LABEL_BALLOON -> balloons += box
-            }
-        }
+    internal fun pair(detections: List<RawDetection>): List<DetectedBubble> {
+        val texts = detections.filter { it.label == LABEL_TEXT_IN_BUBBLE }.map { it.box }
+        val balloons = detections.filter { it.label == LABEL_BALLOON }.map { it.box }
 
         return texts.map { text ->
             DetectedBubble(
@@ -248,7 +270,7 @@ internal class OnnxBubbleDetector @Inject constructor(
         )
     }
 
-    private companion object {
+    internal companion object {
         const val TAG = "BubbleDetector"
         const val MODELS_DIR = "models"
         const val MODEL_NAME = "detector.onnx"
@@ -259,6 +281,17 @@ internal class OnnxBubbleDetector @Inject constructor(
         const val LABEL_BALLOON = 0
         const val LABEL_TEXT_IN_BUBBLE = 1
 
+        /**
+         * Lettering drawn straight onto the art — sound effects, but also
+         * unboxed dialogue and whole pages set without balloons.
+         *
+         * Read out of the model and then deliberately dropped by [pair], so
+         * `ドドド` does not become 咚咚咚 under an opaque box on the artwork.
+         * How much of this class is really sound effects has never been
+         * counted, which is what [detectRaw] is there to make countable.
+         */
+        const val LABEL_TEXT_FREE = 2
+
         /** Below this a box is a misdetection, not lettering. */
         const val MIN_SIDE = 8
 
@@ -266,3 +299,17 @@ internal class OnnxBubbleDetector @Inject constructor(
         const val CONTAINED_PERCENT = 80
     }
 }
+
+/**
+ * One box exactly as the model reported it.
+ *
+ * Deliberately not [DetectedBubble]: that type is the pipeline's, and says
+ * "lettering, and the balloon around it". This one is the model's, and says
+ * "a box, this class, this confidence" — including the classes the pipeline
+ * throws away. Only measurement should ever see it.
+ */
+internal data class RawDetection(
+    val label: Int,
+    val score: Float,
+    val box: TextBounds,
+)
