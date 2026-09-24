@@ -127,7 +127,7 @@ class DeepLTranslatorTest {
         settings.setRemoteProvider(
             RemoteProviderSettings(
                 service = RemoteService.DEEPL,
-                apiKey = ApiKey("abc:fx"),
+                deepLKey = ApiKey("abc:fx"),
             ),
         )
 

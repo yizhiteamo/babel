@@ -122,7 +122,7 @@ class DeepLTranslator(
             // malformed request (400) — worth knowing, and knowable
             // without the body, which echoes the text back.
             logger.warn(TAG, "DeepL translation rejected: HTTP ${rejected.code}")
-            request.failed(TranslationError.Network("HTTP ${rejected.code}"))
+            request.failed(rejected.asError())
         } catch (failure: IOException) {
             // Status only, never the body: a DeepL rejection echoes the text it
             // was given, which is screen content and stays out of diagnostics.
@@ -205,6 +205,20 @@ class DeepLTranslator(
             provider = this@DeepLTranslator.id,
             status = status,
         )
+
+    /**
+     * A status turned into the error it actually is.
+     *
+     * The old mapping called every rejection `Network`, which is **retryable** —
+     * so a wrong key was retried to the configured limit on every balloon, and
+     * a page of eight balloons spent twenty-four requests learning the same
+     * thing. Only a server-side failure is worth trying again.
+     */
+    private fun HttpStatus.asError(): TranslationError = when (code) {
+        in 500..599 -> TranslationError.Network("HTTP $code")
+        429 -> TranslationError.RateLimited
+        else -> TranslationError.ProviderRejected(id, "HTTP $code", status = code)
+    }
 
     private fun TranslationRequest.failed(error: TranslationError) = TranslationResult(
         requestId = requestId,

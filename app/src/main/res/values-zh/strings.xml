@@ -62,6 +62,19 @@
     <string name="remote_service_deepl">DeepL</string>
     <string name="remote_dialog_hint_deepl">粘贴 DeepL 账号页的 Authentication Key，其余都不用填。地址由 key 推出，免费档的 key 以 :fx 结尾。</string>
     <string name="remote_dialog_hint">任何兼容 OpenAI 格式的对话接口，要填完整路径——通常以 /v1/chat/completions 结尾。在线服务必须用 https；自建的服务器通过 localhost 用 http 访问。</string>
+    <string name="remote_action_check">测试</string>
+    <string name="probe_checking">正在测试…</string>
+    <string name="probe_ok">可用，服务已应答。</string>
+    <string name="probe_key_rejected">密钥被拒绝，请检查 API 密钥。</string>
+    <string name="probe_endpoint_not_found">该地址上没有东西，请检查接口地址（含路径）。</string>
+    <string name="probe_request_rejected">服务拒绝了请求，通常是模型名不对。</string>
+    <string name="probe_quota">密钥可用，但额度已用完。</string>
+    <string name="probe_unreachable">连不上，请检查地址与网络。</string>
+    <string name="probe_unexpected">服务返回了意料之外的结果。</string>
+    <string name="probe_not_configured">请先填好上面的字段。</string>
+    <string name="route_active_local">当前生效：本机翻译</string>
+    <string name="route_active_chat">当前生效：联网翻译（聊天端点）</string>
+    <string name="route_active_deepl">当前生效：联网翻译（DeepL）</string>
     <string name="remote_dialog_save">保存并开启</string>
     <string name="remote_dialog_cancel">取消</string>
 

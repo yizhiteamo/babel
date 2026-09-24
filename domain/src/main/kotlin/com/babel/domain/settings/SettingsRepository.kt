@@ -43,8 +43,32 @@ data class RemoteProviderSettings(
     val service: RemoteService = RemoteService.CHAT,
     val endpoint: String = "",
     val model: String = "",
-    val apiKey: ApiKey = ApiKey(""),
+    /**
+     * The chat endpoint's credential, kept apart from DeepL's.
+     *
+     * One field used to serve both, and switching service overwrote whichever
+     * key was already there: entering a DeepL key destroyed the chat one, and
+     * switching back sent the DeepL key to the chat endpoint, which answers
+     * 401. Two services cannot be configured at once if they share one box.
+     */
+    val chatKey: ApiKey = ApiKey(""),
+    /** DeepL's credential. See [chatKey] for why it is its own field. */
+    val deepLKey: ApiKey = ApiKey(""),
 ) {
+
+    /** Whichever credential the selected service uses. */
+    val apiKey: ApiKey
+        get() = when (service) {
+            RemoteService.CHAT -> chatKey
+            RemoteService.DEEPL -> deepLKey
+        }
+
+    /** The same settings with [key] stored against [service]. */
+    fun withKeyFor(service: RemoteService, key: ApiKey): RemoteProviderSettings = when (service) {
+        RemoteService.CHAT -> copy(chatKey = key)
+        RemoteService.DEEPL -> copy(deepLKey = key)
+    }
+
     /**
      * Enough to reach somewhere — which is a different question per service.
      *
@@ -63,7 +87,7 @@ data class RemoteProviderSettings(
     val isConfigured: Boolean
         get() = when (service) {
             RemoteService.CHAT -> endpoint.isNotBlank() && model.isNotBlank()
-            RemoteService.DEEPL -> apiKey.isPresent
+            RemoteService.DEEPL -> deepLKey.isPresent
         }
 
     companion object {

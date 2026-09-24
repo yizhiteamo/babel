@@ -16,6 +16,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.babel.core.model.ApiKey
+import com.babel.domain.settings.RemoteProviderSettings
+import com.babel.domain.settings.RemoteService
 import org.junit.rules.TemporaryFolder
 
 /**
@@ -112,5 +117,51 @@ class DataStoreSettingsRepositoryTest {
         val settings = repo.settings.first()
         assertEquals(true, settings.autoStart)
         assertEquals(TargetLanguageMode.Manual(LanguageTag("de")), settings.targetLanguageMode)
+    }
+
+    @Test
+    fun `each service keeps its own key`() = withRepository { repo ->
+        repo.setRemoteProvider(
+            RemoteProviderSettings(
+                endpoint = "https://example.invalid/v1/chat/completions",
+                model = "some-model",
+                chatKey = ApiKey("chat-secret"),
+            ),
+        )
+        // Configuring the other service used to overwrite the first one's key,
+        // and switching back sent a DeepL credential to a chat endpoint.
+        repo.setRemoteProvider(
+            repo.settings.first().remote
+                .copy(service = RemoteService.DEEPL)
+                .withKeyFor(RemoteService.DEEPL, ApiKey("deepl-secret:fx")),
+        )
+
+        val stored = repo.settings.first().remote
+        assertEquals("chat-secret", stored.chatKey.value)
+        assertEquals("deepl-secret:fx", stored.deepLKey.value)
+    }
+
+    @Test
+    fun `a key stored before the split belongs to the service it was stored for`() {
+        val file = File(temporaryFolder.root, "legacy.preferences_pb")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val store = PreferenceDataStoreFactory.create(scope = scope, produceFile = { file })
+            runBlocking {
+                // What an older build wrote: one key, no service of its own.
+                store.edit { prefs ->
+                    prefs[stringPreferencesKey("remote_service")] = "DEEPL"
+                    prefs[stringPreferencesKey("remote_api_key")] = "old-deepl:fx"
+                }
+
+                val remote = DataStoreSettingsRepository(store).settings.first().remote
+                assertEquals("old-deepl:fx", remote.deepLKey.value)
+                // And emphatically not to the other one, which is the whole
+                // point: a DeepL key sent to a chat endpoint answers 401.
+                assertEquals("", remote.chatKey.value)
+            }
+        } finally {
+            scope.cancel()
+        }
     }
 }

@@ -177,7 +177,7 @@ class BalloonContextExperimentTest {
             BabelSettings(
                 remote = RemoteProviderSettings(
                     service = RemoteService.DEEPL,
-                    apiKey = ApiKey(key),
+                    deepLKey = ApiKey(key),
                 ),
             ),
         )

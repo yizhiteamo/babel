@@ -29,6 +29,15 @@ sealed interface TranslationError {
     data class ProviderRejected(
         val provider: ProviderId,
         val reason: String? = null,
+        /**
+         * The HTTP status, where the rejection came over HTTP and was one.
+         *
+         * Typed rather than folded into [reason] because it is the difference
+         * between "your key is wrong" and "that model does not exist", and
+         * something has to tell the user which — a string nobody parses cannot
+         * (`RemoteProbe`).
+         */
+        val status: Int? = null,
     ) : TranslationError {
         override val retryable: Boolean get() = false
     }

@@ -65,6 +65,19 @@
     <string name="remote_service_deepl">DeepL</string>
     <string name="remote_dialog_hint_deepl">Paste the authentication key from your DeepL account — nothing else. The address follows from the key, and a free-tier key is recognised by its :fx ending.</string>
     <string name="remote_dialog_hint">Any OpenAI-compatible chat endpoint, path included — usually ends in /v1/chat/completions. A hosted service must use https; a server of your own is reached over http on localhost.</string>
+    <string name="remote_action_check">Test</string>
+    <string name="probe_checking">Checking…</string>
+    <string name="probe_ok">Works — the service answered.</string>
+    <string name="probe_key_rejected">The key was rejected. Check the API key.</string>
+    <string name="probe_endpoint_not_found">Nothing at that address. Check the endpoint, path included.</string>
+    <string name="probe_request_rejected">The service refused the request — usually the model name.</string>
+    <string name="probe_quota">The key works but has no quota left.</string>
+    <string name="probe_unreachable">Could not reach it. Check the address and your connection.</string>
+    <string name="probe_unexpected">The service answered with something unexpected.</string>
+    <string name="probe_not_configured">Fill in the fields above first.</string>
+    <string name="route_active_local">In effect: on-device translation</string>
+    <string name="route_active_chat">In effect: online translation (chat endpoint)</string>
+    <string name="route_active_deepl">In effect: online translation (DeepL)</string>
     <string name="remote_dialog_save">Save and turn on</string>
     <string name="remote_dialog_cancel">Cancel</string>
 

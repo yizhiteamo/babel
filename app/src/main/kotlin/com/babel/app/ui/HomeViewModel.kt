@@ -13,6 +13,8 @@ import com.babel.core.model.ApiKey
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.translation.ProbeResult
+import com.babel.domain.translation.RemoteProbe
 import com.babel.domain.vision.CaptureState
 import com.babel.domain.vision.RecognizerModel
 import com.babel.domain.vision.RecognizerModelState
@@ -21,7 +23,9 @@ import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.vision.ScreenCaptureController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -103,7 +107,30 @@ class HomeViewModel @Inject constructor(
     private val screenCapture: ScreenCaptureController,
     private val coordinator: TranslationCoordinator,
     private val recognizerModel: RecognizerModel,
+    private val remoteProbe: RemoteProbe,
 ) : ViewModel() {
+
+    /**
+     * The last check the online-translation dialog ran, or null before one.
+     *
+     * Kept here rather than in the dialog so that rotating the screen does
+     * not throw away a result the user just paid a request for.
+     */
+    private val _probe = MutableStateFlow<ProbeState>(ProbeState.Idle)
+    val probe: StateFlow<ProbeState> = _probe.asStateFlow()
+
+    /** Checks a draft the user has not saved, which is the point of it. */
+    fun checkRemote(settings: RemoteProviderSettings) {
+        _probe.value = ProbeState.Checking
+        viewModelScope.launch {
+            _probe.value = ProbeState.Done(remoteProbe.check(settings))
+        }
+    }
+
+    /** Forgets the last result, e.g. when the dialog opens or a field changes. */
+    fun clearProbe() {
+        _probe.value = ProbeState.Idle
+    }
 
     val uiState: StateFlow<HomeUiState> = combine(
         capabilityChecker.state,
@@ -223,4 +250,19 @@ class HomeViewModel @Inject constructor(
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
     }
+}
+
+/**
+ * Where the settings check has got to.
+ *
+ * Three states rather than a nullable result, because "not checked yet" and
+ * "checking" have to look different on the button — a check costs a real
+ * request and a user who cannot see it running will press it again.
+ */
+sealed interface ProbeState {
+    data object Idle : ProbeState
+
+    data object Checking : ProbeState
+
+    data class Done(val result: ProbeResult) : ProbeState
 }

@@ -1,8 +1,9 @@
 # ADR 010 — Remote Translation, Off By Default
 
 ## Status
-Accepted, amended once — see the first bullet under Shape, where the
-"one request shape covers everything" argument is narrowed by measurement.
+Accepted, amended twice — see the first bullet under Shape, where the
+"one request shape covers everything" argument is narrowed by measurement, and
+**Named services, as presets** below.
 
 ## Decision
 
@@ -105,3 +106,69 @@ guaranteed rather than incidental (ADR 005).
 - **A Babel-operated relay.** It would centralise everybody's screen text on
   infrastructure this project does not have, in exchange for convenience. Not
   worth it at any scale this is at.
+
+## Named services, as presets
+
+*Amendment.* "Not a named service" was about the **protocol**, and that still
+holds: one OpenAI-compatible shape covers every hosted provider and anything the
+user runs themselves. What it was read as, and became in the interface, is that
+the user should type the address.
+
+That does not survive contact with use. A service's own documentation gives a
+base URL, and `https://api.deepseek.com` alone answers 404 — the path is the
+part nobody publishes and everybody gets wrong. Setting this up for real took
+being told the exact string.
+
+So `ChatPreset` names a few services and fills in the whole address and a
+starting model. The vendor names are a convenience, not a constraint:
+
+- **`Custom` is always in the list**, and picking a preset still leaves both
+  fields editable. Pointing Babel at something of your own is what the original
+  rule was protecting, and it stays a first-class configuration rather than a
+  fallback.
+- **A local server is one of the presets**, not an afterthought — it is the only
+  configuration where recognised text never reaches the internet, so it should
+  be the easiest one to reach, not the one you have to know a URL for.
+- **The model stays a text field.** Model names change faster than an app ships,
+  and a picker that cannot name this month's model is worse than a box. The
+  preset fills one in; the user changes it.
+- The list is deliberately short. Every entry is an address that can be wrong,
+  and a wrong preset is worse than none.
+
+## Two services, two credentials
+
+One `apiKey` served both routes, so configuring the second destroyed the first
+one's credential: entering a DeepL key wiped the chat key, and switching back
+sent the DeepL key to the chat endpoint, which answers 401. Two services cannot
+be configured at once if they share one box.
+
+`chatKey` and `deepLKey` are now separate, and `apiKey` reads whichever the
+selected service uses. Settings written before the split hold one key, and it is
+migrated to the service that was selected when it was written — never to the
+other one, which is precisely the failure being fixed.
+
+Only one service is in force at a time; `service` says which. Nothing falls back
+from one to the other, and the home screen now says which is in effect, because
+the only other way to find out was to read a translation and guess at its style.
+
+## Checking the configuration
+
+A wrong key was invisible twice over: nothing on save said so, and nothing at
+use time did either — translations simply did not appear, which looks the same
+as every other failure. `TranslationRuntimeState.Error` existed and was never
+set.
+
+`RemoteProbe` makes **one real request** with the draft settings and reports
+what the service said. Real, because an address can parse and still 404, a key
+can be well-formed and still be revoked, and a model name can be spelled
+perfectly and not exist on that account — only the status separates those, which
+is why `ProbeResult` is shaped like the statuses rather than like a boolean.
+
+It uses the actual translator rather than a hand-written request: a second
+implementation of the auth header, the payload and the path would be three
+things that have each been wrong here at least once, and a copy that passes
+while the real one fails is worse than no check.
+
+Advisory, never a gate — somebody configuring this on a train should still be
+able to save. Surfacing failures at *use* time is a separate piece of work and
+is not done yet.

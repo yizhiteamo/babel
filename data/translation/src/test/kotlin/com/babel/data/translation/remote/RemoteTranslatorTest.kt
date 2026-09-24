@@ -66,7 +66,7 @@ class RemoteTranslatorTest {
         val translator = dispatcher(this)
 
         settings.setRemoteProvider(
-            RemoteProviderSettings(service = RemoteService.DEEPL, apiKey = ApiKey("abc:fx")),
+            RemoteProviderSettings(service = RemoteService.DEEPL, deepLKey = ApiKey("abc:fx")),
         )
 
         assertEquals("deepl:はい", translator.translate(request).translatedText)
@@ -84,7 +84,7 @@ class RemoteTranslatorTest {
         assertEquals(ProviderId("chat"), translator.id)
 
         settings.setRemoteProvider(
-            RemoteProviderSettings(service = RemoteService.DEEPL, apiKey = ApiKey("abc:fx")),
+            RemoteProviderSettings(service = RemoteService.DEEPL, deepLKey = ApiKey("abc:fx")),
         )
         assertEquals(ProviderId("deepl"), translator.id)
 

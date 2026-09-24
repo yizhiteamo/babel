@@ -44,8 +44,10 @@ import com.babel.app.R
 import com.babel.core.model.ApiKey
 import com.babel.core.model.LanguageTag
 import com.babel.domain.settings.BabelSettings
+import com.babel.domain.settings.ChatPreset
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
+import com.babel.domain.translation.ProbeResult
 import com.babel.domain.vision.CaptureState
 import com.babel.domain.vision.RecognizerModelState
 
@@ -191,13 +193,20 @@ fun BabelApp(
     }
 
     if (showRemoteSetup) {
+        val probe by viewModel.probe.collectAsStateWithLifecycle()
         RemoteTranslationDialog(
             current = state.settings.remote,
+            probe = probe,
+            onCheck = viewModel::checkRemote,
+            onProbeChanged = viewModel::clearProbe,
             onSave = {
                 viewModel.enableRemoteTranslation(it)
                 showRemoteSetup = false
             },
-            onDismiss = { showRemoteSetup = false },
+            onDismiss = {
+                viewModel.clearProbe()
+                showRemoteSetup = false
+            },
         )
     }
 }
@@ -288,15 +297,22 @@ private fun RemoteTranslationCard(
 @Composable
 private fun RemoteTranslationDialog(
     current: RemoteProviderSettings,
+    probe: ProbeState,
+    onCheck: (RemoteProviderSettings) -> Unit,
+    onProbeChanged: () -> Unit,
     onSave: (RemoteProviderSettings) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var service by remember { mutableStateOf(current.service) }
+    var service: RemoteService by remember { mutableStateOf(current.service) }
     var endpoint by remember { mutableStateOf(current.endpoint) }
     var model by remember { mutableStateOf(current.model) }
+    var preset: ChatPreset by remember { mutableStateOf(ChatPreset.matching(current)) }
     // Deliberately not seeded from the stored key: showing a credential back in
-    // a text field is how it ends up in a screenshot. Blank means "keep it".
-    var apiKey by remember { mutableStateOf("") }
+    // a text field is how it ends up in a screenshot. Blank means "keep it",
+    // and the two services keep their own, so switching cannot overwrite one
+    // with the other.
+    var chatKey by remember { mutableStateOf("") }
+    var deepLKey by remember { mutableStateOf("") }
 
     // Exactly what pressing save would store, which is also what decides whether
     // save can be pressed. Asking the model rather than restating its rule is
@@ -305,7 +321,8 @@ private fun RemoteTranslationDialog(
         service = service,
         endpoint = endpoint.trim(),
         model = model.trim(),
-        apiKey = apiKey.trim().takeIf { it.isNotEmpty() }?.let(::ApiKey) ?: current.apiKey,
+        chatKey = chatKey.trim().takeIf { it.isNotEmpty() }?.let(::ApiKey) ?: current.chatKey,
+        deepLKey = deepLKey.trim().takeIf { it.isNotEmpty() }?.let(::ApiKey) ?: current.deepLKey,
     )
 
     AlertDialog(
@@ -317,7 +334,10 @@ private fun RemoteTranslationDialog(
                     RemoteService.entries.forEach { option ->
                         FilterChip(
                             selected = service == option,
-                            onClick = { service = option },
+                            onClick = {
+                                service = option
+                                onProbeChanged()
+                            },
                             label = { Text(stringResource(option.labelRes())) },
                         )
                     }
@@ -333,28 +353,65 @@ private fun RemoteTranslationDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (service == RemoteService.CHAT) {
+                    // The address is the part users get wrong: a service's own
+                    // documentation gives a base URL, and a base URL alone
+                    // answers 404. Picking the service fills in the full path.
+                    // It stays editable, and `Custom` stays in the list, so a
+                    // server of one's own is still a first-class configuration
+                    // (ADR 010).
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChatPreset.ALL.forEach { option ->
+                            FilterChip(
+                                selected = preset == option,
+                                onClick = {
+                                    preset = option
+                                    if (option != ChatPreset.CUSTOM) {
+                                        endpoint = option.endpoint
+                                        model = option.defaultModel
+                                    }
+                                    onProbeChanged()
+                                },
+                                label = { Text(option.label) },
+                            )
+                        }
+                    }
                     OutlinedTextField(
                         value = endpoint,
-                        onValueChange = { endpoint = it },
+                        onValueChange = {
+                            endpoint = it
+                            preset = ChatPreset.matching(draft.copy(endpoint = it.trim()))
+                            onProbeChanged()
+                        },
                         singleLine = true,
                         label = { Text(stringResource(R.string.remote_field_endpoint)) },
                     )
                     OutlinedTextField(
                         value = model,
-                        onValueChange = { model = it },
+                        onValueChange = {
+                            model = it
+                            onProbeChanged()
+                        },
                         singleLine = true,
                         label = { Text(stringResource(R.string.remote_field_model)) },
                     )
                 }
                 OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
+                    value = if (service == RemoteService.CHAT) chatKey else deepLKey,
+                    onValueChange = {
+                        if (service == RemoteService.CHAT) chatKey = it else deepLKey = it
+                        onProbeChanged()
+                    },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     label = { Text(stringResource(R.string.remote_field_key)) },
                     supportingText = keyHint(service, current)?.let { hint ->
                         { Text(stringResource(hint)) }
                     },
+                )
+                ProbeRow(
+                    state = probe,
+                    enabled = draft.isConfigured,
+                    onCheck = { onCheck(draft) },
                 )
                 Text(
                     text = stringResource(R.string.remote_warning),
@@ -381,6 +438,62 @@ private fun RemoteTranslationDialog(
             }
         },
     )
+}
+
+/**
+ * The check, and what it found.
+ *
+ * Advisory rather than a gate: saving stays possible whatever this says,
+ * because somebody configuring an endpoint on a train should not be stopped by
+ * having no network. What it buys is that a wrong key stops being invisible —
+ * without it the only symptom is that translations never appear, which looks
+ * the same as every other failure.
+ */
+@Composable
+private fun ProbeRow(state: ProbeState, enabled: Boolean, onCheck: () -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedButton(onClick = onCheck, enabled = enabled && state != ProbeState.Checking) {
+            Text(stringResource(R.string.remote_action_check))
+        }
+        val message = when (state) {
+            ProbeState.Idle -> null
+            ProbeState.Checking -> R.string.probe_checking
+            is ProbeState.Done -> state.result.messageRes()
+        }
+        message?.let {
+            Text(
+                text = stringResource(it),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (state is ProbeState.Done && state.result is ProbeResult.Ok) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Each outcome says what to change, not that something went wrong.
+ *
+ * "It failed" sends a user back to the same four fields with no idea which one
+ * is at fault; a status tells them which, and the statuses are the only thing
+ * that distinguishes a wrong key from a wrong address from a model that does
+ * not exist on that account.
+ */
+private fun ProbeResult.messageRes(): Int = when (this) {
+    ProbeResult.Ok -> R.string.probe_ok
+    ProbeResult.KeyRejected -> R.string.probe_key_rejected
+    ProbeResult.EndpointNotFound -> R.string.probe_endpoint_not_found
+    ProbeResult.RequestRejected -> R.string.probe_request_rejected
+    ProbeResult.QuotaExhausted -> R.string.probe_quota
+    is ProbeResult.Unreachable -> R.string.probe_unreachable
+    is ProbeResult.Unexpected -> R.string.probe_unexpected
+    ProbeResult.NotConfigured -> R.string.probe_not_configured
 }
 
 private fun RemoteService.labelRes(): Int = when (this) {
@@ -483,6 +596,19 @@ private fun RecognizerModelRow(
     }
 }
 
+/**
+ * The route a translation would take right now.
+ *
+ * Derived rather than stored: `usesRemoteTranslation` is the same question the
+ * privacy gate asks, and answering it twice is how a screen comes to claim one
+ * thing while the pipeline does another.
+ */
+private fun BabelSettings.activeRouteRes(): Int = when {
+    !usesRemoteTranslation -> R.string.route_active_local
+    remote.service == RemoteService.DEEPL -> R.string.route_active_deepl
+    else -> R.string.route_active_chat
+}
+
 /** Megabytes, because nobody reads bytes. */
 private fun Long.asMegabytes(): Int = (this / 1_000_000).toInt()
 
@@ -573,6 +699,15 @@ private fun RuntimeCard(
             }
             Text(
                 text = stringResource(R.string.runtime_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // Which engine is actually answering. Two services can now both be
+            // configured, and `service` alone decides which one runs — without
+            // saying so, the only way to find out is to read a translation and
+            // guess at its style.
+            Text(
+                text = stringResource(state.settings.activeRouteRes()),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

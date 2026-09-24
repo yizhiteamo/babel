@@ -214,7 +214,7 @@ class ChatAnswerExperimentTest {
                     service = RemoteService.CHAT,
                     endpoint = endpoint,
                     model = model,
-                    apiKey = ApiKey(key),
+                    chatKey = ApiKey(key),
                 ),
             ),
         )

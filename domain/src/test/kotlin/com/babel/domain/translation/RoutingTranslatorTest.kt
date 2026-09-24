@@ -55,7 +55,7 @@ class RoutingTranslatorTest {
     private val configured = RemoteProviderSettings(
         endpoint = "https://example.invalid/v1/chat/completions",
         model = "some-model",
-        apiKey = ApiKey("secret"),
+        chatKey = ApiKey("secret"),
     )
 
     /** The whole point of the default: nothing leaves the device unasked. */
@@ -116,7 +116,7 @@ class RoutingTranslatorTest {
             RemoteProviderSettings(
                 endpoint = "http://10.0.2.2:1234/v1/chat/completions",
                 model = "some-local-model",
-                apiKey = ApiKey(""),
+                chatKey = ApiKey(""),
             ),
         )
         settings.setProvider(RemoteProviderSettings.PROVIDER)
@@ -135,7 +135,7 @@ class RoutingTranslatorTest {
         settings.setRemoteProvider(
             RemoteProviderSettings(
                 service = RemoteService.DEEPL,
-                apiKey = ApiKey("abc:fx"),
+                deepLKey = ApiKey("abc:fx"),
             ),
         )
         settings.setProvider(RemoteProviderSettings.PROVIDER)
@@ -155,7 +155,7 @@ class RoutingTranslatorTest {
                 // the point that these do not count for this service.
                 endpoint = "https://example.invalid/v1/chat/completions",
                 model = "some-model",
-                apiKey = ApiKey(""),
+                deepLKey = ApiKey(""),
             ),
         )
         settings.setProvider(RemoteProviderSettings.PROVIDER)
@@ -173,7 +173,7 @@ class RoutingTranslatorTest {
                 RemoteProviderSettings(
                     endpoint = "",
                     model = "some-model",
-                    apiKey = ApiKey("secret"),
+                    chatKey = ApiKey("secret"),
                 ),
             )
             settings.setProvider(RemoteProviderSettings.PROVIDER)

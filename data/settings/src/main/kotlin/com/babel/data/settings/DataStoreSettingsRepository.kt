@@ -92,7 +92,12 @@ class DataStoreSettingsRepository(
             prefs[Keys.REMOTE_SERVICE] = settings.service.name
             prefs[Keys.REMOTE_ENDPOINT] = settings.endpoint
             prefs[Keys.REMOTE_MODEL] = settings.model
-            prefs[Keys.REMOTE_KEY] = settings.apiKey.value
+            prefs[Keys.REMOTE_CHAT_KEY] = settings.chatKey.value
+            prefs[Keys.REMOTE_DEEPL_KEY] = settings.deepLKey.value
+            // The single shared key this replaced. Cleared so that a build
+            // which still reads it cannot serve one service's credential to
+            // the other, which is the defect the split exists to fix.
+            prefs.remove(Keys.REMOTE_KEY)
         }
     }
 
@@ -108,10 +113,33 @@ class DataStoreSettingsRepository(
             service = readRemoteService(prefs),
             endpoint = prefs[Keys.REMOTE_ENDPOINT].orEmpty(),
             model = prefs[Keys.REMOTE_MODEL].orEmpty(),
-            apiKey = ApiKey(prefs[Keys.REMOTE_KEY].orEmpty()),
+            chatKey = readKey(prefs, Keys.REMOTE_CHAT_KEY, RemoteService.CHAT),
+            deepLKey = readKey(prefs, Keys.REMOTE_DEEPL_KEY, RemoteService.DEEPL),
         ),
         autoStart = prefs[Keys.AUTO_START] ?: false,
     )
+
+    /**
+     * A service's own key, or the shared one it used to have.
+     *
+     * Settings written before the split hold one key under [Keys.REMOTE_KEY],
+     * and it belongs to whichever service was selected at the time. Handing it
+     * to the other one would send a DeepL key to a chat endpoint, which is
+     * exactly the failure the split was made to stop.
+     */
+    private fun readKey(
+        prefs: Preferences,
+        key: Preferences.Key<String>,
+        owner: RemoteService,
+    ): ApiKey {
+        prefs[key]?.takeIf { it.isNotBlank() }?.let { return ApiKey(it) }
+        val shared = prefs[Keys.REMOTE_KEY].orEmpty()
+        return if (shared.isNotBlank() && readRemoteService(prefs) == owner) {
+            ApiKey(shared)
+        } else {
+            ApiKey("")
+        }
+    }
 
     /**
      * Falls back to the chat service, which is what every stored configuration
@@ -146,7 +174,10 @@ class DataStoreSettingsRepository(
         val REMOTE_SERVICE = stringPreferencesKey("remote_service")
         val REMOTE_ENDPOINT = stringPreferencesKey("remote_endpoint")
         val REMOTE_MODEL = stringPreferencesKey("remote_model")
+        /** Superseded by the per-service keys; still read once, for migration. */
         val REMOTE_KEY = stringPreferencesKey("remote_api_key")
+        val REMOTE_CHAT_KEY = stringPreferencesKey("remote_chat_key")
+        val REMOTE_DEEPL_KEY = stringPreferencesKey("remote_deepl_key")
         val AUTO_START = booleanPreferencesKey("auto_start")
     }
 

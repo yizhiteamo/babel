@@ -11,7 +11,9 @@ import com.babel.data.translation.remote.ChatTranslator
 import com.babel.data.translation.remote.DeepLTranslator
 import com.babel.data.translation.remote.RemoteTranslator
 import com.babel.domain.settings.SettingsRepository
+import com.babel.data.translation.remote.TranslatingRemoteProbe
 import com.babel.domain.translation.FragmentingTranslator
+import com.babel.domain.translation.RemoteProbe
 import com.babel.domain.translation.RoutingTranslator
 import com.babel.domain.translation.TranslationCache
 import kotlinx.coroutines.CoroutineScope
@@ -68,6 +70,18 @@ object TranslationModule {
             scope = scope,
         )
     }
+
+    /**
+     * The settings check the online-translation dialog offers.
+     *
+     * Provided rather than bound because it takes the logger, and because the
+     * UI must reach it as a domain contract: `:app` should be able to ask
+     * whether a configuration works without knowing that DeepL and a chat
+     * endpoint are two different classes.
+     */
+    @Provides
+    @Singleton
+    fun provideRemoteProbe(logger: BabelLogger): RemoteProbe = TranslatingRemoteProbe(logger)
 
     @Provides
     @Singleton
