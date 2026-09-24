@@ -292,6 +292,11 @@ Testing on a device: `uiautomator dump` disconnects the accessibility service wh
 Two more device-testing traps, found the hard way:
 
 - **`:app:connectedDebugAndroidTest` uninstalls `com.babel`** when it finishes, taking the DataStore (including a configured API key) and `getExternalFilesDir` (including downloaded models) with it. Run the app's instrumentation by hand instead — `adb install -r` both APKs, then `adb shell am instrument -w com.babel.test/androidx.test.runner.AndroidJUnitRunner`. Library modules are safe: they uninstall only their own test package.
+- **Running the app's instrumentation leaves `accessibility_enabled` at 0.** An
+  `am instrument` against `com.babel.test` runs in the app's own process and the
+  service comes back unbound with the enabled-services list still naming it —
+  the exact split state the capability check exists for. Rebind before judging
+  any V1 result, or a working build reads as a dead one.
 - **`adb install -r` unbinds the accessibility service.** Re-enabling it takes `am force-stop`, deleting `enabled_accessibility_services`, writing it again, and then **about fifteen seconds** before `dumpsys accessibility` reports it bound. Eight seconds reads as a failure to bind and invites a wrong diagnosis.
 
 Testing the pipeline: a collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.

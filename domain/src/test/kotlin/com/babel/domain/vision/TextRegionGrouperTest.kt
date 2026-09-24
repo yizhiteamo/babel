@@ -117,7 +117,10 @@ class TextRegionGrouperTest {
         val regions = grouper.group(lines)
 
         assertEquals(1, regions.size)
-        assertEquals("first linesecond line", regions.single().text)
+        // With a space: horizontal lines break at word boundaries, so running
+        // them together is what made `who` + `can't` into `whocan't` on a real
+        // page (`LineJoin`).
+        assertEquals("first line second line", regions.single().text)
     }
 
     @Test
@@ -145,16 +148,19 @@ class TextRegionGrouperTest {
      */
     @Test
     fun `a chain of adjacent columns forms a single region`() {
+        // Japanese rather than placeholder letters, because the assertion is
+        // about columns of a Japanese balloon and the join now asks what script
+        // meets at the seam: kana run together, Latin takes a space.
         val lines = listOf(
-            line("A", 300, 100, 340, 300),
-            line("B", 360, 100, 400, 300),
-            line("C", 420, 100, 460, 300),
+            line("あ", 300, 100, 340, 300),
+            line("い", 360, 100, 400, 300),
+            line("う", 420, 100, 460, 300),
         )
 
         val regions = grouper.group(lines)
 
         assertEquals(1, regions.size)
-        assertEquals("CBA", regions.single().text)
+        assertEquals("ういあ", regions.single().text)
     }
 
     // --- orientation ---

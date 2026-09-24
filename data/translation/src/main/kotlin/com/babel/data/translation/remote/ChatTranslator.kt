@@ -12,6 +12,7 @@ import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.Translator
 import java.io.IOException
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -200,14 +201,34 @@ class ChatTranslator(
     private fun instruction(request: TranslationRequest): String = buildString {
         append("Translate the comic speech balloon the user sends")
         request.languages.source?.let { append(" from ${it.value}") }
-        append(" into ${request.languages.target.value}.")
+        append(" into ${nameOf(request.languages.target)}.")
         append(" Reply with the translation only: no explanation, no romanisation,")
         append(" no quotation marks that the original did not have.")
         append(" If the text cannot be translated — an address, a file path, code,")
         append(" or nonsense — reply with it exactly as given and nothing else;")
         append(" never address the user and never explain what you cannot do.")
-        append(" Write the whole reply in ${request.languages.target.value}:")
+        append(" Write the whole reply in ${nameOf(request.languages.target)}:")
         append(" leave no word of the source language standing in it.")
+    }
+
+    /**
+     * A language written the way a person would name it.
+     *
+     * The instruction is prose and a BCP-47 code is not, and the difference is
+     * not cosmetic: asked for `zh` this model left `apparently` sitting in the
+     * middle of its Chinese, and asked for `zh-Hans-CN` it translated the same
+     * sentence correctly. `zh` is ambiguous — Chinese, script and region
+     * unsaid — and the user reaches it by picking Chinese by hand, while
+     * following the system gives the fuller tag. So the defect appeared only
+     * for people who chose their language deliberately (`docs/milestones/v2.md`).
+     *
+     * Falls back to the tag itself for anything `Locale` cannot name, which is
+     * no worse than what this did before.
+     */
+    private fun nameOf(tag: LanguageTag): String {
+        val locale = Locale.forLanguageTag(tag.value)
+        val name = locale.getDisplayName(Locale.ENGLISH)
+        return name.ifBlank { tag.value }
     }
 
     private fun TranslationRequest.completed(text: String, status: TranslationStatus) =

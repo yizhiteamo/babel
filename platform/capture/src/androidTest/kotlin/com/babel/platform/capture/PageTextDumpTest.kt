@@ -62,6 +62,9 @@ class PageTextDumpTest {
         override val io = Dispatchers.IO
     }
 
+    /** What the emulator shows a page at, so the recogniser sees what it sees. */
+    private val SCREEN_WIDTH = 1080
+
     /** Two balloons within this fraction of the page's height are one row. */
     private val rowTolerance = 0.08f
 
@@ -95,8 +98,22 @@ class PageTextDumpTest {
         )
 
         for (file in pages) {
-            val page = BitmapFactory.decodeFile(file.absolutePath)
+            val full = BitmapFactory.decodeFile(file.absolutePath)
                 ?.copy(Bitmap.Config.ARGB_8888, false) ?: continue
+
+            // At the size the device actually reads it. A page is shown in a
+            // browser on a 1080-wide screen, so what reaches the recogniser is
+            // a **scaled-down** picture, and a recogniser reading smaller type
+            // breaks lines differently. Reading the file at its own size
+            // measures something the pipeline never sees, which is how a fix
+            // came to look right in the harness and wrong on the device.
+            val page = if (full.width > SCREEN_WIDTH) {
+                val height = full.height * SCREEN_WIDTH / full.width
+                Bitmap.createScaledBitmap(full, SCREEN_WIDTH, height, true)
+                    .also { if (it !== full) full.recycle() }
+            } else {
+                full
+            }
 
             val regions = mutableListOf<TextRegion>()
             reader.read(page) { regions += it }
@@ -114,6 +131,17 @@ class PageTextDumpTest {
                         region.text,
                     ),
                 )
+                // The lines before they are joined. `TextRegion.text` runs them
+                // together with no separator, which is right for a vertical
+                // Japanese column and glues words together in a horizontal
+                // Latin one — `who` + `can't` becoming `whocan't`. Whether the
+                // seams in a page's text really are line boundaries is only
+                // visible here.
+                if (region.lines.size > 1) {
+                    region.lines.forEachIndexed { line, recognised ->
+                        println("PAGETEXT        line ${line + 1}: ${recognised.text}")
+                    }
+                }
             }
             page.recycle()
         }

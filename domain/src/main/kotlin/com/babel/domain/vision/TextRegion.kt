@@ -41,8 +41,11 @@ data class TextRegion(
     val enclosure: TextBounds? = null,
 ) {
     /**
-     * Joined without separators: Japanese columns continue one sentence, so a
-     * space between them would be wrong.
+     * The lines as one string, with whatever the script wants between them.
+     *
+     * This used to join with nothing, on the grounds that Japanese columns
+     * continue one sentence — true, and wrong for every other script. See
+     * [LineJoin] for what the seam is actually asked.
      */
-    val text: String get() = lines.joinToString(separator = "") { it.text }
+    val text: String get() = LineJoin.join(lines.map { it.text })
 }

@@ -89,10 +89,39 @@ class ChatAnswerExperimentTest {
         // and on the real string it does not. Measuring the clean version would
         // have reported a fix that the device does not have.
         Triple(
-            "balloon-en",
+            "en-glued",
             "Ấnd she's goingYto be a Great Witch,apparently.A succubus who" +
                 "can't read a roomto save her lifeyou say hi and shestarts " +
                 "lecturing youVabout magical theor",
+            null,
+        ),
+        // The same balloon with the seams repaired — what `LineJoin` now
+        // produces from the very same recognised lines. The pair is the
+        // measurement: if `apparently` survives the first and not the second,
+        // the defect was ours rather than the model's.
+        Triple(
+            "en-joined",
+            "Ấnd she's going Yto be a Great Witch, apparently. A succubus who " +
+                "can't read a room to save her life you say hi and she " +
+                "starts lecturing you Vabout magical theor",
+            null,
+        ),
+        // Byte for byte what the device sends, read at the size the browser
+        // shows the page — a smaller picture, so the recogniser's stray marks
+        // differ from the full-size read. The device keeps `apparently`; this
+        // is the string that has to be asked, not a near-enough one.
+        Triple(
+            "en-device",
+            "|And she's going Yto be a Great Witch, apparently. A succubus who " +
+                "can't read a room to save her life- you say hi and she " +
+                "starts lecturing you Wabout magical theor",
+            null,
+        ),
+        Triple(
+            "en-device-zh",
+            "|And she's going Yto be a Great Witch, apparently. A succubus who " +
+                "can't read a room to save her life- you say hi and she " +
+                "starts lecturing you Wabout magical theor",
             null,
         ),
 
@@ -148,7 +177,15 @@ class ChatAnswerExperimentTest {
                     elementId = TextElementId("ratio-$id"),
                     revision = Revision(0),
                     sourceText = text,
-                    languages = LanguagePair(source = source, target = ZH),
+                    // The tag the device actually carries for some of these:
+                    // a user who picks Chinese by hand gets `zh`, while
+                    // following the system gives `zh-Hans-CN`. Whether that
+                    // changes the answer is worth knowing, because the harness
+                    // had been asking with a tag the device does not use.
+                    languages = LanguagePair(
+                        source = source,
+                        target = if (kind.endsWith("-zh")) BARE_ZH else ZH,
+                    ),
                 ),
             )
             val out = result.translatedText
@@ -192,5 +229,6 @@ class ChatAnswerExperimentTest {
     private companion object {
         val JA = LanguageTag("ja")
         val ZH = LanguageTag("zh-Hans-CN")
+        val BARE_ZH = LanguageTag("zh")
     }
 }

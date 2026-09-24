@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextOrientation
+import com.babel.domain.vision.LineJoin
 import com.babel.domain.vision.MangaReadingOrder
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.SoundEffect
@@ -153,7 +154,7 @@ internal class DetectingPageReader @Inject constructor(
         // here because the test is on the words rather than on the box. A
         // short katakana read inside a balloon is somebody speaking; the same
         // read on the artwork is a noise drawn into the picture.
-        if (bubble.onArt && SoundEffect.isDrawnNoise(lines.joinToString("") { it.text })) {
+        if (bubble.onArt && SoundEffect.isDrawnNoise(LineJoin.join(lines.map { it.text }))) {
             logger.debug(TAG, "dropped a sound effect")
             return null
         }
