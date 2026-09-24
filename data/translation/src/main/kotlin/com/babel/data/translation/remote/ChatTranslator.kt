@@ -177,12 +177,37 @@ class ChatTranslator(
      * answering the line instead of translating it — the failure that ruled out
      * a local instruction-following model was exactly this, on short input.
      */
+    /**
+     * What the model is told, and why each sentence is there.
+     *
+     * The first two are the job. The third is the one that stops a chat model
+     * from answering the *reader*: asked to translate the browser's address
+     * bar, it replied "I can't access files on your device. Please paste the
+     * text…", and that sentence was drawn over the address bar. Told to echo
+     * instead, an untranslatable input comes back unchanged — which
+     * [translate] already reports as `Unchanged`, and an unchanged element is
+     * never rendered. A refusal becomes a no-op rather than a caption.
+     *
+     * Measured rather than assumed: a plain `https://…` and a `host:port`
+     * already came back verbatim, so the model does this by itself for inputs
+     * it recognises as addresses. The instruction extends that to the ones it
+     * would otherwise want to discuss (`docs/milestones/v2.md`).
+     *
+     * The fourth is a separate defect: `apparently` was left sitting in the
+     * middle of a Chinese sentence. Nothing had ever asked for the whole output
+     * to be in the target language.
+     */
     private fun instruction(request: TranslationRequest): String = buildString {
         append("Translate the comic speech balloon the user sends")
         request.languages.source?.let { append(" from ${it.value}") }
         append(" into ${request.languages.target.value}.")
         append(" Reply with the translation only: no explanation, no romanisation,")
         append(" no quotation marks that the original did not have.")
+        append(" If the text cannot be translated — an address, a file path, code,")
+        append(" or nonsense — reply with it exactly as given and nothing else;")
+        append(" never address the user and never explain what you cannot do.")
+        append(" Write the whole reply in ${request.languages.target.value}:")
+        append(" leave no word of the source language standing in it.")
     }
 
     private fun TranslationRequest.completed(text: String, status: TranslationStatus) =

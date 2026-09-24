@@ -10,10 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -783,6 +781,20 @@ private fun PermissionCard(
     }
 }
 
+/**
+ * Choosing what text is translated into.
+ *
+ * A plain [Column] that scrolls, rather than a `LazyColumn`. The lazy one did
+ * not scroll by touch inside an `AlertDialog`: dragging moved the list about
+ * eight entries and then stopped, while keyboard focus traversal walked the
+ * whole way down. On a phone that put everything after `id` — **`ja`, `ko`,
+ * `ru` and `zh` among them** — out of reach, and `zh` only worked at all
+ * because it is the system default.
+ *
+ * Fifty-odd short rows need no virtualisation, and the licences dialog in this
+ * same file already scrolls this way, so this is the pattern that is known to
+ * work here rather than a guess at what the lazy one wanted.
+ */
 @Composable
 private fun LanguagePickerDialog(
     languages: List<LanguageTag>,
@@ -793,13 +805,11 @@ private fun LanguagePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.language_section_title)) },
         text = {
-            LazyColumn {
-                item {
-                    TextButton(onClick = { onSelect(null) }) {
-                        Text(stringResource(R.string.language_follow_system))
-                    }
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                TextButton(onClick = { onSelect(null) }) {
+                    Text(stringResource(R.string.language_follow_system))
                 }
-                items(languages) { tag ->
+                languages.forEach { tag ->
                     TextButton(onClick = { onSelect(tag) }) {
                         Text(tag.value)
                     }

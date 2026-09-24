@@ -72,4 +72,39 @@ class DefaultSensitiveContentPolicyTest {
             ),
         )
     }
+
+    /**
+     * A URL or a file path is meaningless to translate and revealing to send.
+     *
+     * The case that provoked the rule: the browser's address bar reached a chat
+     * model, which answered the reader — "I can't access files on your device.
+     * Please paste the text…" — and that sentence was drawn over the address
+     * bar (`docs/milestones/v2.md`).
+     */
+    @Test
+    fun `addresses are excluded`() {
+        for (address in listOf(
+            "file:///sdcard/Download/reading-sample.html",
+            "https://example.com/a/b/c?q=1",
+            "http://localhost:11434/v1/chat/completions",
+            "content://media/external/images/media/42",
+            "/sdcard/Android/data/com.babel/files",
+        )) {
+            assertFalse(policy.isTranslatable(TestElements.element(text = address)), address)
+        }
+    }
+
+    @Test
+    fun `text that merely looks address-ish stays translatable`() {
+        // Narrow on purpose: each of these is as likely to be words on a page.
+        for (text in listOf(
+            "example.com",
+            "12:30",
+            "Visit https://example.com for more",
+            "/home",
+            "a/b",
+        )) {
+            assertTrue(policy.isTranslatable(TestElements.element(text = text)), text)
+        }
+    }
 }
