@@ -68,6 +68,18 @@ class DefaultTranslationCoordinator(
     )
     override val runtimeState: StateFlow<TranslationRuntimeState> = _runtimeState.asStateFlow()
 
+    private val _providerFailure = MutableStateFlow<TranslationError?>(null)
+    override val providerFailure: StateFlow<TranslationError?> = _providerFailure.asStateFlow()
+
+    /**
+     * Failures in a row that will not fix themselves, touched only from the
+     * mailbox coroutine like every other piece of tracked state.
+     */
+    private var consecutiveFailures = 0
+
+    /** Which engine the last settings named, so a switch can be noticed. */
+    private var lastRoute: String? = null
+
     private val _renderUpdates = MutableSharedFlow<RenderUpdate>(
         replay = 0,
         extraBufferCapacity = RENDER_BUFFER,
@@ -121,6 +133,7 @@ class DefaultTranslationCoordinator(
         val active = scope ?: return
         scope = null
         _runtimeState.value = TranslationRuntimeState.Disabled
+        clearFailures()
 
         active.cancel()
         tracked.values.forEach { it.job?.cancel() }
@@ -275,6 +288,7 @@ class DefaultTranslationCoordinator(
 
         entry.translatedText = message.translatedText
         entry.job = null
+        clearFailures()
         logger.debug(TAG, "translated ${message.elementId.value}")
         _renderUpdates.emit(RenderUpdate.Show(listOf(entry.render(message.translatedText))))
     }
@@ -286,13 +300,56 @@ class DefaultTranslationCoordinator(
         // One element failing must not take down the pipeline, so runtime state
         // is left alone — that text simply stays untranslated.
         logger.warn(TAG, "translation failed for ${message.elementId.value}: ${message.error}")
+        noteFailure(message.error)
+    }
+
+    /**
+     * Counts towards saying so on screen, for the failures worth saying.
+     *
+     * Retryable ones are the weather — a tunnel, a dropped connection — and
+     * latching them would light the card up for the length of a train journey.
+     * Cancellation is ordinary too: turning a page cancels everything in
+     * flight. What is left is the kind that will still be true in an hour.
+     *
+     * Three, because one element can fail on its own merits — a language the
+     * provider declines, a single malformed request. Three different elements
+     * failing in a row is the configuration rather than the content.
+     */
+    private fun noteFailure(error: TranslationError) {
+        if (error.retryable || error == TranslationError.Cancelled) return
+        consecutiveFailures += 1
+        if (consecutiveFailures >= FAILURES_BEFORE_REPORTING) {
+            _providerFailure.value = error
+        }
+    }
+
+    /** One answer is enough to say the provider is there. */
+    private fun clearFailures() {
+        consecutiveFailures = 0
+        _providerFailure.value = null
     }
 
     private suspend fun onSettingsChanged(settings: BabelSettings) {
+        // A complaint about one engine must not outlive the switch away from
+        // it. Somebody who reads "the key was rejected" and moves to on-device
+        // has dealt with it; leaving the line up makes the route they just
+        // chose look broken too.
+        val route = settings.routeIdentity()
+        if (route != lastRoute) {
+            lastRoute = route
+            clearFailures()
+        }
+
         val resolved = resolveLanguages(settings)
         if (resolved == languages) return
 
         languages = resolved
+        // Deliberately **not** clearing the reported failure here. This runs on
+        // a language change, and it re-translates everything that was on screen
+        // — so a provider that is still broken fails again immediately and the
+        // complaint comes straight back. Clearing first would only make the
+        // card flicker. A key that has actually been fixed clears it the usual
+        // way, on the next translation that works.
         // Every existing translation was produced for the old language pair.
         val stale = tracked.values.toList()
         stale.forEach { it.job?.cancel() }
@@ -308,6 +365,16 @@ class DefaultTranslationCoordinator(
             fresh.job = launchTranslation(element, resolved, key)
         }
     }
+
+    /**
+     * Enough of the settings to say "a different engine would answer now".
+     *
+     * Derived from the settings in hand rather than from `translator.id`: the
+     * routing translator follows the same flow and may not have caught up when
+     * this runs, and a race there would clear the wrong thing.
+     */
+    private fun BabelSettings.routeIdentity(): String =
+        if (usesRemoteTranslation) "remote:${remote.service.name}" else "local"
 
     private fun cancelInFlight() {
         tracked.values.forEach {
@@ -485,5 +552,13 @@ class DefaultTranslationCoordinator(
     private companion object {
         const val TAG = "TranslationCoordinator"
         const val RENDER_BUFFER = 64
+
+        /**
+         * How many unrecoverable failures in a row before the screen says so.
+         *
+         * One is not evidence: a provider can decline a single element for its
+         * own reasons. Three different elements in a row is the configuration.
+         */
+        const val FAILURES_BEFORE_REPORTING = 3
     }
 }

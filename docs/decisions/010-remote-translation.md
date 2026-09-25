@@ -170,5 +170,40 @@ things that have each been wrong here at least once, and a copy that passes
 while the real one fails is worse than no check.
 
 Advisory, never a gate — somebody configuring this on a train should still be
-able to save. Surfacing failures at *use* time is a separate piece of work and
-is not done yet.
+able to save.
+
+## Saying so during use
+
+The check covers the moment of configuration. A key that expires, a spent
+quota, a provider that moves its address — those come later, and they were
+silent: the screen simply had no translations on it, which looks the same as a
+page with no text.
+
+`TranslationCoordinator.providerFailure` now carries the last failure worth
+reporting, and the home card names it in the same words the Test button uses.
+Deliberately narrow:
+
+- **Only what will not fix itself.** `retryable` already splits them: a dropped
+  connection is weather and latching it would light the card up for the length
+  of a train journey. Cancellation is ordinary too — turning a page cancels
+  everything in flight.
+- **Three in a row.** One element can fail on its own merits; three different
+  ones is the configuration.
+- **Cleared by the next success, by switching engine, and by stopping.** Not by
+  a language change: that path re-translates everything on screen, so a provider
+  still rejecting fails again at once and clearing first would only flicker.
+- **Not in `TranslationRuntimeState`.** See `docs/systems/runtime-state.md`:
+  putting it there hides the pause button exactly when it is wanted.
+- **On the home card only** — no overlay, no notification, no toast. Somebody
+  needs this when they open Babel wondering why nothing is being translated.
+
+Next to the message is **Switch to on-device**, one tap. Offered rather than
+taken: falling back automatically would change translation quality silently,
+which is the problem the line exists to end, and it is not certain to help —
+the on-device engine may have no model for that language, which is a failure of
+its own and now has its own message.
+
+Measured on the device: a rejected key reports itself and the pause button stays
+reachable; **51 consecutive network failures report nothing**, which is the
+weather rule doing its job; switching to on-device clears the line and the card
+says which engine is in force.

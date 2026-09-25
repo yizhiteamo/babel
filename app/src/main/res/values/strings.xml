@@ -75,6 +75,8 @@
     <string name="probe_unreachable">Could not reach it. Check the address and your connection.</string>
     <string name="probe_unexpected">The service answered with something unexpected.</string>
     <string name="probe_not_configured">Fill in the fields above first.</string>
+    <string name="probe_language_unsupported">This engine cannot translate that language pair.</string>
+    <string name="runtime_failure_action_local">Switch to on-device</string>
     <string name="route_active_local">In effect: on-device translation</string>
     <string name="route_active_chat">In effect: online translation (chat endpoint)</string>
     <string name="route_active_deepl">In effect: online translation (DeepL)</string>

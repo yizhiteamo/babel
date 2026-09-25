@@ -11,8 +11,20 @@ Disabled
 Starting
 Running
 Paused
-Error
 ```
+
+There is deliberately no `Error` here, and there used to be. It was never set,
+and it was the wrong shape: a provider rejecting a key has not changed what the
+coordinator is *doing* — it is still running, still tracking elements, still
+rendering whatever the cache can answer. Folding that in breaks the controls
+that read this, because `pause()` acts only while `Running` and the button is
+offered only for `Running` or `Paused`. It would disappear at the moment
+somebody is trying to fix their configuration.
+
+Provider health is a second, orthogonal axis:
+`TranslationCoordinator.providerFailure`. It carries the last failure that will
+not fix itself, is latched only after several in a row, and is cleared by the
+next success or by switching engine.
 
 One coordinator should own authoritative runtime state.
 

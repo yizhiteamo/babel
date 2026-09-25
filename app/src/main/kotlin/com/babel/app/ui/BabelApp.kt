@@ -48,6 +48,7 @@ import com.babel.domain.settings.ChatPreset
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
 import com.babel.domain.translation.ProbeResult
+import com.babel.domain.translation.probeResultOf
 import com.babel.domain.vision.CaptureState
 import com.babel.domain.vision.RecognizerModelState
 
@@ -146,6 +147,7 @@ fun BabelApp(
                 state = state,
                 onPause = viewModel::pauseTranslation,
                 onResume = viewModel::resumeTranslation,
+                onUseLocal = viewModel::disableRemoteTranslation,
                 onOpenOverlaySettings = { context.openOverlaySettings() },
             )
 
@@ -494,6 +496,7 @@ private fun ProbeResult.messageRes(): Int = when (this) {
     is ProbeResult.Unreachable -> R.string.probe_unreachable
     is ProbeResult.Unexpected -> R.string.probe_unexpected
     ProbeResult.NotConfigured -> R.string.probe_not_configured
+    ProbeResult.LanguageUnsupported -> R.string.probe_language_unsupported
 }
 
 private fun RemoteService.labelRes(): Int = when (this) {
@@ -666,6 +669,7 @@ private fun RuntimeCard(
     state: HomeUiState,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onUseLocal: () -> Unit,
     onOpenOverlaySettings: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -711,6 +715,33 @@ private fun RuntimeCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            // A failure that will not fix itself, named. Here and nowhere else:
+            // not over other apps, not a notification, not a toast — somebody
+            // only needs this at the moment they open Babel wondering why
+            // nothing is being translated. One success takes it away again.
+            state.providerFailure?.let { failure ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = stringResource(probeResultOf(failure).messageRes()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f),
+                    )
+                    // Offered rather than taken: falling back on its own would
+                    // change the translation quality silently, which is the
+                    // problem this line exists to end. It is also not certain
+                    // to work — the on-device engine may have no model for this
+                    // language, which is a failure of its own.
+                    if (state.settings.usesRemoteTranslation) {
+                        TextButton(onClick = onUseLocal) {
+                            Text(stringResource(R.string.runtime_failure_action_local))
+                        }
+                    }
+                }
+            }
             if (state.translatingButUnseen) {
                 // Says that the work is happening and being discarded, rather
                 // than the vaguer "not ready" — which reads as "not running"

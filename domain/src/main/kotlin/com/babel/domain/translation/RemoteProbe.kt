@@ -1,5 +1,6 @@
 package com.babel.domain.translation
 
+import com.babel.core.model.TranslationError
 import com.babel.domain.settings.RemoteProviderSettings
 
 /**
@@ -60,4 +61,43 @@ sealed interface ProbeResult {
 
     /** Nothing was asked because there was not enough to ask with. */
     data object NotConfigured : ProbeResult
+
+    /**
+     * The engine cannot do this language pair at all.
+     *
+     * The on-device route's own silent failure: ML Kit declines a language it
+     * has no model for, and nothing said so. It is the default route, so this
+     * is the one most people would meet.
+     */
+    data object LanguageUnsupported : ProbeResult
+}
+
+/**
+ * What a failure says about the configuration behind it.
+ *
+ * Shared by the two places a user learns something is wrong: the Test button in
+ * the settings dialog, and the line on the home card when it goes wrong during
+ * use. One cause should not get two different explanations depending on which
+ * of them found it.
+ *
+ * A top-level pure function so it can be exercised without a network: the
+ * mapping is the part with judgement in it, and the part a user reads.
+ */
+fun probeResultOf(error: TranslationError): ProbeResult = when (error) {
+    is TranslationError.ProviderRejected -> when (val code = error.status) {
+        null -> ProbeResult.NotConfigured
+        401, 403 -> ProbeResult.KeyRejected
+        404 -> ProbeResult.EndpointNotFound
+        400, 422 -> ProbeResult.RequestRejected
+        // DeepL's own code for a spent free-tier quota.
+        456 -> ProbeResult.QuotaExhausted
+        else -> ProbeResult.Unexpected(code)
+    }
+
+    TranslationError.RateLimited -> ProbeResult.QuotaExhausted
+    is TranslationError.Network -> ProbeResult.Unreachable(error.cause)
+    TranslationError.Offline -> ProbeResult.Unreachable()
+    is TranslationError.Unsupported -> ProbeResult.LanguageUnsupported
+    is TranslationError.Unexpected -> ProbeResult.Unreachable(error.cause)
+    TranslationError.Cancelled -> ProbeResult.Unreachable()
 }

@@ -292,6 +292,17 @@ Testing on a device: `uiautomator dump` disconnects the accessibility service wh
 Two more device-testing traps, found the hard way:
 
 - **`:app:connectedDebugAndroidTest` uninstalls `com.babel`** when it finishes, taking the DataStore (including a configured API key) and `getExternalFilesDir` (including downloaded models) with it. Run the app's instrumentation by hand instead — `adb install -r` both APKs, then `adb shell am instrument -w com.babel.test/androidx.test.runner.AndroidJUnitRunner`. Library modules are safe: they uninstall only their own test package.
+- **Never turn the guest's network off to test offline behaviour.**
+  `adb shell svc wifi disable` cuts the transport adb itself runs over: the
+  device goes `offline` and nothing on the command line brings it back —
+  `reconnect`, restarting the server and connecting to every port all fail,
+  because the port is listening and the daemon inside cannot answer. The
+  rescue is MuMu's own non-adb channel, `MuMuManager.exe sh -v 0 -c
+  "svc wifi enable"` (under `MuMuPlayer/nx_main/`), then
+  `adb connect 127.0.0.1:16384`. To test how the app behaves when no service
+  is reachable, **point the endpoint at something unreachable**
+  (`http://127.0.0.1:9/...`) instead: it produces the same `Network`
+  failures and touches nothing.
 - **Running the app's instrumentation leaves `accessibility_enabled` at 0.** An
   `am instrument` against `com.babel.test` runs in the app's own process and the
   service comes back unbound with the enabled-services list still naming it —

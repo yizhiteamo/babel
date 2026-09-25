@@ -18,6 +18,7 @@ import com.babel.core.testing.RecordingRenderer
 import com.babel.core.testing.TestDispatcherProvider
 import com.babel.core.testing.TestElements
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.language.DefaultLanguageResolver
 import com.babel.domain.privacy.DefaultSensitiveContentPolicy
 import com.babel.domain.render.RenderUpdate
@@ -558,6 +559,171 @@ class DefaultTranslationCoordinatorTest {
         // The ordinary case, guarded because dividing is now on the same path.
         assertEquals(listOf("<Hello>"), renderer.visibleText)
         coordinator.stop()
+    }
+
+    // --- provider health -------------------------------------------------
+    //
+    // A second axis, deliberately not part of `runtimeState`. A rejected key
+    // does not change what the coordinator is doing, and folding it in would
+    // hide the pause button at the moment somebody wants it.
+
+    private fun elements(count: Int) = TextSourceEvent.Upserted(
+        (1..count).map { TestElements.element(id = "e$it", text = "text $it") },
+    )
+
+    @Test
+    fun `one failure is not enough to report a provider`() = runTest {
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        val coordinator = start()
+
+        coordinator.submit(elements(1))
+        advanceUntilIdle()
+
+        // A provider can decline a single element for its own reasons.
+        assertEquals(null, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `three unrecoverable failures in a row are reported`() = runTest {
+        val rejection = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        translator.failWith = rejection
+        val coordinator = start()
+
+        coordinator.submit(elements(3))
+        advanceUntilIdle()
+
+        assertEquals(rejection, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `the coordinator keeps running while a provider is failing`() = runTest {
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        val coordinator = start()
+
+        coordinator.submit(elements(3))
+        advanceUntilIdle()
+
+        // The reason this is not a `TranslationRuntimeState`: the controls have
+        // to stay reachable while somebody fixes their key.
+        assertEquals(TranslationRuntimeState.Running, coordinator.runtimeState.value)
+        coordinator.pause()
+        assertEquals(TranslationRuntimeState.Paused, coordinator.runtimeState.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `retryable failures are never reported`() = runTest {
+        // Weather: a tunnel, a dropped connection. Latching these would light
+        // the card up for the length of a train journey.
+        translator.failWith = TranslationError.Network("SocketTimeoutException")
+        val coordinator = start()
+
+        coordinator.submit(elements(6))
+        advanceUntilIdle()
+
+        assertEquals(null, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `cancellation is never reported`() = runTest {
+        // Turning a page cancels everything in flight, which is ordinary.
+        translator.failWith = TranslationError.Cancelled
+        val coordinator = start()
+
+        coordinator.submit(elements(6))
+        advanceUntilIdle()
+
+        assertEquals(null, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `a success in between resets the count`() = runTest {
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        translator.failTimes = 2
+        val coordinator = start()
+
+        coordinator.submit(elements(4))
+        advanceUntilIdle()
+
+        // Two failures, then answers: nothing is wrong with the configuration.
+        assertEquals(null, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `one success clears a reported failure`() = runTest {
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        val coordinator = start()
+        coordinator.submit(elements(3))
+        advanceUntilIdle()
+        assertTrue(coordinator.providerFailure.value != null)
+
+        translator.failWith = null
+        coordinator.submit(TextSourceEvent.Upserted(listOf(TestElements.element(id = "ok"))))
+        advanceUntilIdle()
+
+        assertEquals(null, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `a language change does not clear a provider that is still broken`() = runTest {
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        val coordinator = start()
+        coordinator.submit(elements(3))
+        advanceUntilIdle()
+        assertTrue(coordinator.providerFailure.value != null, "expected a reported failure first")
+
+        // A language change re-translates everything on screen, so a provider
+        // that is still rejecting fails again at once. Clearing on the way in
+        // would only make the card flicker and then say the same thing.
+        settings.setTargetLanguageMode(TargetLanguageMode.Manual(LanguageTag("en")))
+        advanceUntilIdle()
+
+        assertTrue(coordinator.providerFailure.value != null, "still broken, still reported")
+        coordinator.stop()
+    }
+
+    @Test
+    fun `switching engine clears a complaint about the old one`() = runTest {
+        // Start on the remote route, which is the one that can reject a key.
+        settings.setRemoteProvider(
+            RemoteProviderSettings(
+                endpoint = "https://example.invalid/v1/chat/completions",
+                model = "some-model",
+            ),
+        )
+        settings.setProvider(RemoteProviderSettings.PROVIDER)
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        val coordinator = start()
+        coordinator.submit(elements(3))
+        advanceUntilIdle()
+        assertTrue(coordinator.providerFailure.value != null, "expected a reported failure first")
+
+        // Somebody reads "the key was rejected" and moves to on-device. The
+        // line must not follow them there and make that route look broken.
+        settings.setProvider(null)
+        advanceUntilIdle()
+
+        assertEquals(null, coordinator.providerFailure.value)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `stopping clears a reported failure`() = runTest {
+        translator.failWith = TranslationError.ProviderRejected(ProviderId("fake"), status = 401)
+        val coordinator = start()
+        coordinator.submit(elements(3))
+        advanceUntilIdle()
+        assertTrue(coordinator.providerFailure.value != null)
+
+        coordinator.stop()
+
+        assertEquals(null, coordinator.providerFailure.value)
     }
 
     @Test

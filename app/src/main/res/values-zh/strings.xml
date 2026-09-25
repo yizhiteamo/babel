@@ -72,6 +72,8 @@
     <string name="probe_unreachable">连不上，请检查地址与网络。</string>
     <string name="probe_unexpected">服务返回了意料之外的结果。</string>
     <string name="probe_not_configured">请先填好上面的字段。</string>
+    <string name="probe_language_unsupported">该引擎不支持这个语言对。</string>
+    <string name="runtime_failure_action_local">改用本机翻译</string>
     <string name="route_active_local">当前生效：本机翻译</string>
     <string name="route_active_chat">当前生效：联网翻译（聊天端点）</string>
     <string name="route_active_deepl">当前生效：联网翻译（DeepL）</string>

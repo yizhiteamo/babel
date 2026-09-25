@@ -18,6 +18,7 @@ import com.babel.domain.translation.RemoteProbe
 import com.babel.domain.vision.CaptureState
 import com.babel.domain.vision.RecognizerModel
 import com.babel.domain.vision.RecognizerModelState
+import com.babel.core.model.TranslationError
 import com.babel.core.model.TranslationRuntimeState
 import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.vision.ScreenCaptureController
@@ -38,6 +39,13 @@ data class HomeUiState(
     val captureState: CaptureState = CaptureState.IDLE,
     val runtimeState: TranslationRuntimeState = TranslationRuntimeState.Disabled,
     val recognizerModel: RecognizerModelState = RecognizerModelState.Absent,
+    /**
+     * A provider failure worth telling the user about, or null.
+     *
+     * Not part of [runtimeState]: the coordinator is still running, and the
+     * pause button has to stay reachable while somebody fixes their key.
+     */
+    val providerFailure: TranslationError? = null,
     /** What the recogniser download would cost, for saying so up front. */
     val recognizerModelBytes: Long = 0,
     /** Whether the user would pay for that by the megabyte. */
@@ -154,6 +162,11 @@ class HomeViewModel @Inject constructor(
             // and a screen should not be making those while it draws.
             meteredConnection = recognizerModel.isMetered(),
         )
+    }.combine(coordinator.providerFailure) { state, failure ->
+        // Joined separately because `combine` stops at five flows, and a
+        // sixth folded in as an array would cost the names that make the
+        // block above readable.
+        state.copy(providerFailure = failure)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),

@@ -15,6 +15,7 @@ import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.ProbeResult
 import com.babel.domain.translation.RemoteProbe
+import com.babel.domain.translation.probeResultOf
 import com.babel.domain.translation.Translator
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -85,29 +86,4 @@ class TranslatingRemoteProbe @Inject constructor(
     private companion object {
         const val PROBE_TEXT = "hello"
     }
-}
-
-/**
- * What a failed translation says about the configuration behind it.
- *
- * A top-level function so it can be exercised without a network: the mapping is
- * the part with judgement in it, and the part a user reads.
- */
-internal fun probeResultOf(error: TranslationError): ProbeResult = when (error) {
-    is TranslationError.ProviderRejected -> when (val code = error.status) {
-        null -> ProbeResult.NotConfigured
-        401, 403 -> ProbeResult.KeyRejected
-        404 -> ProbeResult.EndpointNotFound
-        400, 422 -> ProbeResult.RequestRejected
-        // DeepL's own code for a spent free-tier quota.
-        456 -> ProbeResult.QuotaExhausted
-        else -> ProbeResult.Unexpected(code)
-    }
-
-    TranslationError.RateLimited -> ProbeResult.QuotaExhausted
-    is TranslationError.Network -> ProbeResult.Unreachable(error.cause)
-    TranslationError.Offline -> ProbeResult.Unreachable()
-    is TranslationError.Unsupported -> ProbeResult.RequestRejected
-    is TranslationError.Unexpected -> ProbeResult.Unreachable(error.cause)
-    TranslationError.Cancelled -> ProbeResult.Unreachable()
 }
