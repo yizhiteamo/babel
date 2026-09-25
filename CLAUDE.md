@@ -292,6 +292,15 @@ Behavioral invariants that must survive any change:
   scrolled screen is different input. Loosening the tolerance or dropping to one
   vote does not find more balloons, it puts one balloon's words in another
   (measured: 18 of 20 at 8px, and 16px found no more).
+- The reader's memory is in **page** coordinates and every frame solves for its
+  own absolute offset, so nothing drifts. When no offset can be recovered the
+  whole memory is dropped — that one rule is the entire defence against a zoom,
+  a page turn, an app switch and a rotation, and removing it would let a stale
+  offset match a balloon to another balloon's words.
+- A balloon the viewport cuts is not read (`ClippedBalloons`); it waits for the
+  screen that shows it whole. Only on a frame whose offset was recovered,
+  though: without one there is no telling a cut balloon from one that genuinely
+  sits at the top of the page, and skipping that would never read it at all.
 - Scope and privacy are separate policies and must stay that way: scope asks whether an app is worth translating, privacy whether text may leave the screen. Adding an app to one does not belong in the other.
 
 Testing on a device: `uiautomator dump` disconnects the accessibility service while it runs, which tears down the pipeline and resets manga mode. Read state from `logcat` and `screencap` instead — a UI dump taken to check a result is what destroys it.

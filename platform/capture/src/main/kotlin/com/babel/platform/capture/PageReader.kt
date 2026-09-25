@@ -14,6 +14,7 @@ import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.abs
 
 /**
  * Turns a captured page into the regions that get translated.
@@ -95,16 +96,26 @@ internal class DetectingPageReader @Inject constructor(
     private val grouper = TextRegionGrouper()
 
     /**
-     * What the last frame's balloons said, so a scroll need not read them
-     * again.
+     * What has been read of this page, in **page** coordinates.
+     *
+     * Not just the previous screen. Each frame solves for its own absolute
+     * offset against all of these at once, which buys two things: scrolling
+     * back to a balloon already read costs nothing, and no drift accumulates,
+     * because every frame is measured against the original coordinates rather
+     * than against the frame before it.
      *
      * Only ever touched from the reading coroutine, which the scan loop runs
      * one at a time; volatile because [release] can arrive from another.
      */
     @Volatile
-    private var lastPage: List<ReadBalloon> = emptyList()
+    private var pageMemory: List<ReadBalloon> = emptyList()
 
-    /** A balloon already read, kept against the chance that it comes back. */
+    /**
+     * A balloon already read, kept against the chance that it comes back.
+     *
+     * [box] is in page coordinates: the screen box plus the offset of the frame
+     * it was read on.
+     */
     private data class ReadBalloon(val box: TextBounds, val lines: List<RecognizedLine>)
 
     override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
@@ -159,7 +170,28 @@ internal class DetectingPageReader @Inject constructor(
         //
         // Null for a page that changed rather than moved, and then everything
         // below reads as it always did (`ScrolledBalloons`).
-        val shift = ScrolledBalloons.shiftBetween(lastPage.map { it.box }, ordered.map { it.text })
+        val shift = ScrolledBalloons.shiftBetween(pageMemory.map { it.box }, ordered.map { it.text })
+
+        // Where this screen sits on the page. Solved against the whole memory
+        // rather than accumulated from the frame before, so it cannot drift.
+        val offset = shift ?: 0
+
+        // The chain from here back to the frames the memory was built on is
+        // broken, so the memory is thrown away rather than carried.
+        //
+        // This is the whole of the zoom defence, and it is deliberately not a
+        // zoom detector. A zoom changes every width and height - 3% of a 300px
+        // balloon is already past the 8px tolerance - so no offset can be
+        // recovered, and this fires. Keeping the entries instead would leave a
+        // set of page coordinates measured at the old scale; zoom back to it
+        // later and one of them could match again at an offset that is no
+        // longer true, which is how a balloon ends up with somebody else's
+        // words in it. The same reasoning covers a page turn, an app switch and
+        // a rotation, none of which needs a case of its own.
+        if (shift == null && pageMemory.isNotEmpty()) {
+            logger.debug(TAG, "lost the page; forgetting ${pageMemory.size} readings")
+            pageMemory = emptyList()
+        }
 
         // Balloons the viewport has cut in half are left for the screen that
         // shows them whole. Half a balloon costs a recognition and a provider
@@ -187,7 +219,7 @@ internal class DetectingPageReader @Inject constructor(
         var reused = 0
         for (bubble in readable) {
             val remembered = shift?.let { moved ->
-                lastPage.firstOrNull { ScrolledBalloons.isSame(it.box, bubble.text, moved) }
+                pageMemory.firstOrNull { ScrolledBalloons.isSame(it.box, bubble.text, moved) }
             }
             val lines = if (remembered != null) {
                 reused += 1
@@ -197,20 +229,51 @@ internal class DetectingPageReader @Inject constructor(
             }
             if (lines.isEmpty()) continue
 
-            // Remembered against the *current* box, so a balloon surviving many
-            // scrolls is compared against where it last actually was rather
-            // than against an origin drifting further away each time.
-            thisPage += ReadBalloon(bubble.text, lines)
+            // Stored where it sits on the page, not on this screen, so one
+            // entry answers for every later frame that shows it.
+            thisPage += ReadBalloon(bubble.text.movedBy(0, offset), lines)
 
             // Assembled from this frame's detection either way. Only the
             // reading is reused; the balloon outline, the placement and the
             // sound-effect test all come from what is on screen now.
             assemble(bubble, lines)?.let { onRegion(it) }
         }
-        lastPage = thisPage
+        remember(thisPage, offset, frame.height)
 
         if (shift != null) {
-            logger.debug(TAG, "page moved ${shift}px; reused $reused of ${readable.size} readings")
+            logger.debug(
+                TAG,
+                "page at ${offset}px; reused $reused of ${readable.size}, " +
+                    "${pageMemory.size} readings held",
+            )
+        }
+    }
+
+    /**
+     * Folds this screen into the page memory and drops what is out of reach.
+     *
+     * An entry the current screen supersedes is replaced rather than
+     * duplicated: one balloon read again, or carried again, is one balloon.
+     * What is kept is everything within [REACH] screens of the viewport, which
+     * is what makes scrolling back free without letting the memory grow with
+     * the chapter - and a smaller memory is a safer one too, since every extra
+     * entry is another chance for two boxes to agree by accident.
+     */
+    private fun remember(current: List<ReadBalloon>, offset: Int, frameHeight: Int) {
+        val top = offset - REACH * frameHeight
+        val bottom = offset + frameHeight + REACH * frameHeight
+        val kept = pageMemory.filter { old ->
+            old.box.bottom > top && old.box.top < bottom &&
+                current.none { ScrolledBalloons.isSame(old.box, it.box, 0) }
+        }
+
+        val all = kept + current
+        pageMemory = if (all.size <= LIMIT) all else {
+            // A backstop only; [REACH] is what normally bounds this. Furthest
+            // from the screen goes first, being the least likely to be
+            // scrolled back to.
+            val centre = offset + frameHeight / 2
+            all.sortedBy { abs((it.box.top + it.box.bottom) / 2 - centre) }.take(LIMIT)
         }
     }
 
@@ -218,7 +281,7 @@ internal class DetectingPageReader @Inject constructor(
         // The remembered readings go with them. Manga mode coming back on is a
         // new screen, and the alternative is reusing a reading of whatever was
         // in front of the user before they switched it off.
-        lastPage = emptyList()
+        pageMemory = emptyList()
         detector.release()
         recognizer.release()
     }
@@ -323,5 +386,17 @@ internal class DetectingPageReader @Inject constructor(
     private companion object {
         const val TAG = "DetectingPageReader"
         const val MIN_SIDE = 8
+
+        /**
+         * How many screens either side of the viewport stay in memory.
+         *
+         * Two is a few flicks back, which is as far as anybody scrolls to
+         * re-read something. Beyond that a reading is cheaper to redo than to
+         * carry, and carrying it only adds pairs that could agree by accident.
+         */
+        const val REACH = 2
+
+        /** A hard cap, for a page denser than any of the sample material. */
+        const val LIMIT = 120
     }
 }

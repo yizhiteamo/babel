@@ -30,6 +30,12 @@ import kotlin.math.abs
  * - ±8px is the working tolerance: ±16 and ±32 gained nothing on the measured
  *   page and only widen the chance of pairing two different balloons
  *
+ * The memory is not limited to the previous screen. Balloons are kept in
+ * **page** coordinates and each frame solves for its own absolute offset
+ * against all of them, so scrolling back to something already read costs
+ * nothing and no drift accumulates — every frame is measured against the
+ * original coordinates rather than against the frame before it.
+ *
  * ## What it deliberately does not do
  *
  * No horizontal tracking. A webtoon scrolls vertically, and a page that moved
@@ -50,31 +56,47 @@ object ScrolledBalloons {
     fun shiftBetween(before: List<TextBounds>, after: List<TextBounds>): Int? {
         if (before.isEmpty() || after.isEmpty()) return null
 
-        // Bucketed so near-identical deltas reinforce each other rather than
-        // splitting into a tie of ones. The bucket is for **counting** only —
-        // returning it was the first version, and it cost 4px of the tolerance
-        // to rounding alone: the measurement recovered 696 for an actual 700
-        // every single time.
-        val buckets = mutableMapOf<Int, MutableList<Int>>()
+        val deltas = mutableListOf<Int>()
         for (old in before) {
             for (new in after) {
-                if (!sameShape(old, new)) continue
-                val delta = old.top - new.top
-                buckets.getOrPut(Math.floorDiv(delta, BUCKET)) { mutableListOf() }.add(delta)
+                if (sameShape(old, new)) deltas += old.top - new.top
             }
         }
+        if (deltas.isEmpty()) return null
 
-        val best = buckets.values.maxByOrNull { it.size } ?: return null
+        // The delta the most others agree with, where agreement means the same
+        // tolerance used everywhere else.
+        //
+        // Bucketing was the first version and it had two faults. It returned
+        // the bucket, so the answer was rounded down by up to 8px — measured as
+        // 696 for an actual 700, every time. And when the true delta straddled
+        // a bucket edge it split its own votes in half, which matters most
+        // exactly when there are fewest of them. Counting neighbours has
+        // neither problem and is no more code.
+        val best = deltas.maxByOrNull { candidate -> agreeing(deltas, candidate).size }!!
+        val winners = agreeing(deltas, best)
+
         // One agreeing pair is a coincidence; two is a scroll. A single balloon
         // on screen therefore gets read again, which costs one recognition and
         // cannot show the wrong words.
-        if (best.size < MIN_VOTES) return null
+        if (winners.size < MIN_VOTES) return null
+
+        // A second, separate group with just as much support means the boxes do
+        // not agree on one answer. Saying so is the honest reply — the caller
+        // then reads the screen, which is only slow. Picking one of them puts
+        // somebody else's words in a balloon, which is wrong.
+        val rival = deltas.filter { abs(it - best) > TOLERANCE }
+            .maxOfOrNull { agreeing(deltas, it).size } ?: 0
+        if (rival >= winners.size) return null
 
         // The middle of what the winners actually said. A median rather than a
         // mean because one box landing badly should not drag the answer for the
         // rest of them.
-        return best.sorted()[best.size / 2]
+        return winners.sorted()[winners.size / 2]
     }
+
+    private fun agreeing(deltas: List<Int>, candidate: Int) =
+        deltas.filter { abs(it - candidate) <= TOLERANCE }
 
     /**
      * Whether [now] is [then] after the screen moved by [shift].
@@ -95,6 +117,5 @@ object ScrolledBalloons {
             abs(a.left - b.left) <= TOLERANCE
 
     private const val TOLERANCE = 8
-    private const val BUCKET = 8
     private const val MIN_VOTES = 2
 }

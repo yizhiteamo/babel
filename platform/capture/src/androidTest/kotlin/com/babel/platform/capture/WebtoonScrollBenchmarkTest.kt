@@ -115,6 +115,52 @@ class WebtoonScrollBenchmarkTest {
         println("WEBTOON  $repeats would be served from the translation cache")
     }
 
+    @Test
+    fun scrollingBackToSomethingAlreadyRead() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val file = File(context.getExternalFilesDir(null), "comic-sample/$WEBTOON")
+        if (!file.exists()) {
+            println("WEBTOON skipped: needs $WEBTOON pushed")
+            return@runBlocking
+        }
+        if (!MangaOcrRecognizer(context, dispatchers, BabelLogger.NoOp).isAvailable) {
+            println("WEBTOON skipped: copy the manga-ocr models into this package's files/models")
+            return@runBlocking
+        }
+
+        val page = BitmapFactory.decodeFile(file.absolutePath)
+            ?.copy(Bitmap.Config.ARGB_8888, false) ?: return@runBlocking
+        val scaled = Bitmap.createScaledBitmap(
+            page,
+            SCREEN_WIDTH,
+            page.height * SCREEN_WIDTH / page.width,
+            true,
+        )
+        if (scaled !== page) page.recycle()
+
+        // Down three screens and back up the same three. The record called the
+        // return leg out as a cost worth stating: OCR reads a partly-visible
+        // bubble differently, so the text differs, so the translation cache
+        // key differs with it, and four fresh translations were measured for
+        // four balloons already translated.
+        val there = listOf(0, 700, 1400, 2100)
+        val andBack = there + listOf(1400, 700, 0)
+        println("WEBTOON")
+        println("WEBTOON === down three screens and back ===")
+
+        val without = run(context, scaled, andBack, remembers = false)
+        val with = run(context, scaled, andBack, remembers = true)
+        scaled.recycle()
+
+        println("WEBTOON")
+        println("WEBTOON  a fresh reader each screen: ${without.totalMs}ms")
+        println("WEBTOON  one reader across the trip: ${with.totalMs}ms")
+        val saved = without.totalMs - with.totalMs
+        val percent = if (without.totalMs > 0) saved * 100 / without.totalMs else 0
+        println("WEBTOON  saved ${saved}ms of ${without.totalMs}ms ($percent%)")
+        println("WEBTOON  (${there.size} screens out, ${andBack.size - there.size} back)")
+    }
+
     private data class Run(val totalMs: Long, val regions: Int, val texts: List<String>)
 
     private suspend fun run(

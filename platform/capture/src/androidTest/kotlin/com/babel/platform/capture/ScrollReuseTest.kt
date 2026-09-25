@@ -247,6 +247,133 @@ class ScrollReuseTest {
         assertEquals(4, only.size)
     }
 
+    /**
+     * A whole page, in page coordinates, for the tests that travel over it.
+     *
+     * Six balloons across about two and a half screens, which is enough to
+     * scroll somewhere and come back.
+     */
+    private val wholePage = listOf(
+        box(120, 900, 300, 180),
+        box(520, 1180, 260, 140),
+        box(160, 1420, 340, 150),
+        box(400, 1900, 280, 160),
+        box(150, 2300, 320, 170),
+        box(560, 2650, 240, 130),
+    )
+
+    /**
+     * What a detector reports with [wholePage] scrolled to [offset].
+     *
+     * Only the balloons wholly on screen, because a clipped one is left for the
+     * screen that shows it whole and has its own tests above; including them
+     * here would measure that rule instead of this one.
+     */
+    private fun pageAt(offset: Int, scale: Float = 1f) = wholePage
+        .map {
+            box(
+                (it.left * scale).toInt(),
+                (it.top * scale).toInt() - offset,
+                (it.width * scale).toInt(),
+                (it.height * scale).toInt(),
+            )
+        }
+        .filter { it.top > 0 && it.bottom < HEIGHT }
+        .map { bubble(it) }
+
+    @Test
+    fun scrollingBackToABalloonAlreadyReadCostsNothing() = runBlocking {
+        val engine = CountingEngine()
+        val detector = StagedDetector(pageAt(0))
+        val reader = readerFor(detector, engine)
+
+        reader.read(frame()) { }
+        assertEquals(3, engine.calls, "the first screen")
+
+        detector.bubbles = pageAt(700)
+        reader.read(frame()) { }
+        assertEquals(4, engine.calls, "one balloon has come into view")
+
+        detector.bubbles = pageAt(1400)
+        reader.read(frame()) { }
+        assertEquals(6, engine.calls, "two more have")
+
+        // All the way back. The first screen's balloons scrolled off two
+        // screens ago and nothing since has touched them, which is exactly the
+        // case the old memory could not cover: it held one frame, so a scroll
+        // back read and paid for the same balloons a second time.
+        detector.bubbles = pageAt(0)
+        val back = mutableListOf<TextRegion>()
+        reader.read(frame()) { back += it }
+
+        assertEquals(6, engine.calls, "scrolling back should read nothing at all")
+        assertEquals(3, back.size, "and should still put all three on screen")
+    }
+
+    @Test
+    fun theOffsetIsMeasuredAfreshAndDoesNotDrift() = runBlocking {
+        val engine = CountingEngine()
+        val detector = StagedDetector(pageAt(0))
+        val reader = readerFor(detector, engine)
+        reader.read(frame()) { }
+
+        // Twenty small scrolls. Accumulating one recovered offset onto the last
+        // would gather about a pixel of error each time and eventually walk out
+        // of the 8px tolerance; solving for the absolute offset against the
+        // page memory every frame cannot.
+        for (step in 1..20) {
+            detector.bubbles = pageAt(step * 40)
+            reader.read(frame()) { }
+        }
+
+        // Counted as a difference rather than a total, because how many
+        // balloons scroll into view along the way is a property of the fixture
+        // and not the thing under test.
+        val travelled = engine.calls
+        detector.bubbles = pageAt(0)
+        val back = mutableListOf<TextRegion>()
+        reader.read(frame()) { back += it }
+
+        assertEquals(
+            travelled,
+            engine.calls,
+            "after twenty scrolls the first screen should still be recognised, not re-read",
+        )
+        assertEquals(3, back.size, "and all three should still be on screen")
+    }
+
+    @Test
+    fun zoomingForgetsThePageRatherThanMisplacingIt() = runBlocking {
+        val engine = CountingEngine()
+        val detector = StagedDetector(pageAt(0))
+        val reader = readerFor(detector, engine)
+        reader.read(frame()) { }
+        assertEquals(3, engine.calls)
+
+        // A pinch. Every width and height changes, so no offset can be
+        // recovered and the page memory is dropped rather than carried: a set
+        // of page coordinates measured at the old scale is not something any
+        // later frame can be placed against.
+        val zoomed = pageAt(0, scale = 1.2f)
+        detector.bubbles = zoomed
+        var shown = 0
+        reader.read(frame()) { shown += 1 }
+        assertEquals(zoomed.size, shown, "a zoomed screen has to be read again")
+        assertEquals(3 + zoomed.size, engine.calls)
+
+        // And zooming back does not resurrect the old entries at an offset that
+        // is no longer true. This is the case the rule exists for: a stale match
+        // would put one balloon's words into another.
+        val before = engine.calls
+        detector.bubbles = pageAt(0)
+        reader.read(frame()) { }
+        assertEquals(
+            before + 3,
+            engine.calls,
+            "nothing should survive the zoom in either direction",
+        )
+    }
+
     private companion object {
         const val WIDTH = 1080
         const val HEIGHT = 1700
