@@ -285,6 +285,13 @@ Behavioral invariants that must survive any change:
 - Manga mode needs API 30 (`AccessibilityService.takeScreenshot`) and reports `CaptureState.UNSUPPORTED` below it; `UNAVAILABLE` is the separate, fixable case where the accessibility service is not running. V1 still runs down to minSdk 26 — only manga mode is gated (ADR 009).
 - Whether the accessibility service is running takes **two** settings, not one: `ACCESSIBILITY_ENABLED` and the enabled-services list. They come apart after a failed bind at boot, and reading only the list once had the app reporting the service as granted while nothing was bound.
 - A frame includes Babel's own overlays, so `FrameChangeDetector` is what stops the OCR path from reading its own output **on an unchanged page** — and that is all it can do. The one frame that does get read is the frame where the page just changed, and the previous page's translations are still on it. A translation is a light rounded box with lettering, which is what a balloon detector looks for: measured, drawing two takes the detector from eight balloons to nine. So `CaptureTextSource` clears its own output and re-captures before reading a changed page, at the cost of one screenshot interval per page turn. `FLAG_SECURE` is not an alternative: measured on device, it blanks the entire mirror and the user's screenshots with it.
+- A scrolled balloon keeps its reading (`ScrolledBalloons`), and the match is on
+  **geometry** — position, width and height within 8px, with at least two pairs
+  voting for the same shift. Hashing the balloon's pixels was tried three times
+  and cannot work; the detector resizes the whole screen to 640x640, so a
+  scrolled screen is different input. Loosening the tolerance or dropping to one
+  vote does not find more balloons, it puts one balloon's words in another
+  (measured: 18 of 20 at 8px, and 16px found no more).
 - Scope and privacy are separate policies and must stay that way: scope asks whether an app is worth translating, privacy whether text may leave the screen. Adding an app to one does not belong in the other.
 
 Testing on a device: `uiautomator dump` disconnects the accessibility service while it runs, which tears down the pipeline and resets manga mode. Read state from `logcat` and `screencap` instead — a UI dump taken to check a result is what destroys it.

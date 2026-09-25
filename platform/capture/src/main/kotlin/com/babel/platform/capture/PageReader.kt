@@ -7,6 +7,7 @@ import com.babel.core.model.TextOrientation
 import com.babel.domain.vision.LineJoin
 import com.babel.domain.vision.MangaReadingOrder
 import com.babel.domain.vision.RecognizedLine
+import com.babel.domain.vision.ScrolledBalloons
 import com.babel.domain.vision.SoundEffect
 import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
@@ -92,6 +93,19 @@ internal class DetectingPageReader @Inject constructor(
 
     private val grouper = TextRegionGrouper()
 
+    /**
+     * What the last frame's balloons said, so a scroll need not read them
+     * again.
+     *
+     * Only ever touched from the reading coroutine, which the scan loop runs
+     * one at a time; volatile because [release] can arrive from another.
+     */
+    @Volatile
+    private var lastPage: List<ReadBalloon> = emptyList()
+
+    /** A balloon already read, kept against the chance that it comes back. */
+    private data class ReadBalloon(val box: TextBounds, val lines: List<RecognizedLine>)
+
     override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
         // Unavailable used to be the normal state and is now the broken one:
         // the detector ships with the app (ADR 011), so this is false only when
@@ -131,25 +145,71 @@ internal class DetectingPageReader @Inject constructor(
         // balloon to the next" needs to mean anything (`MangaReadingOrder`).
         // It also puts the incremental publishing in the order the page is
         // read, which is the order a reader wants it to appear in.
-        for (bubble in bubbles.sortedWith(readingOrder(frame))) {
-            read(frame, bubble)?.let { onRegion(it) }
+        val ordered = bubbles.sortedWith(readingOrder(frame))
+
+        // How far the page moved since the last read, when it moved at all.
+        //
+        // Scrolling a webtoon used to read every balloon on the new screen from
+        // scratch, including the ones that were fully read a moment earlier:
+        // 4.3s of recognition and eight provider calls per swipe, measured on a
+        // device. The translation cache could not help, because it is keyed on
+        // the text and a balloon read twice comes back slightly different — 8
+        // of 10 missed.
+        //
+        // Null for a page that changed rather than moved, and then everything
+        // below reads as it always did (`ScrolledBalloons`).
+        val shift = ScrolledBalloons.shiftBetween(lastPage.map { it.box }, ordered.map { it.text })
+
+        val thisPage = ArrayList<ReadBalloon>(ordered.size)
+        var reused = 0
+        for (bubble in ordered) {
+            val remembered = shift?.let { moved ->
+                lastPage.firstOrNull { ScrolledBalloons.isSame(it.box, bubble.text, moved) }
+            }
+            val lines = if (remembered != null) {
+                reused += 1
+                remembered.lines
+            } else {
+                recognize(frame, bubble)
+            }
+            if (lines.isEmpty()) continue
+
+            // Remembered against the *current* box, so a balloon surviving many
+            // scrolls is compared against where it last actually was rather
+            // than against an origin drifting further away each time.
+            thisPage += ReadBalloon(bubble.text, lines)
+
+            // Assembled from this frame's detection either way. Only the
+            // reading is reused; the balloon outline, the placement and the
+            // sound-effect test all come from what is on screen now.
+            assemble(bubble, lines)?.let { onRegion(it) }
+        }
+        lastPage = thisPage
+
+        if (shift != null) {
+            logger.debug(TAG, "page moved ${shift}px; reused $reused of ${ordered.size} readings")
         }
     }
 
     override suspend fun release() {
+        // The remembered readings go with them. Manga mode coming back on is a
+        // new screen, and the alternative is reusing a reading of whatever was
+        // in front of the user before they switched it off.
+        lastPage = emptyList()
         detector.release()
         recognizer.release()
     }
 
-    private suspend fun read(frame: Bitmap, bubble: DetectedBubble): TextRegion? {
-        val crop = frame.cropTo(bubble.text) ?: return null
-        val lines = try {
+    private suspend fun recognize(frame: Bitmap, bubble: DetectedBubble): List<RecognizedLine> {
+        val crop = frame.cropTo(bubble.text) ?: return emptyList()
+        return try {
             recognizer.recognize(crop)
         } finally {
             crop.recycle()
         }
-        if (lines.isEmpty()) return null
+    }
 
+    private fun assemble(bubble: DetectedBubble, lines: List<RecognizedLine>): TextRegion? {
         // The one place free text is told apart from speech, and it has to be
         // here because the test is on the words rather than on the box. A
         // short katakana read inside a balloon is somebody speaking; the same
