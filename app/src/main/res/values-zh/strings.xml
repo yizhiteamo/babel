@@ -100,4 +100,9 @@
     <string name="capture_state_unseen">看不见</string>
     <string name="overlay_missing_explanation">文字正在被读取和翻译，但没法画到屏幕上：Babel 没有「显示在其他应用上层」的权限，译文都被丢掉了。</string>
     <string name="overlay_missing_action">授予权限</string>
+    <string name="background_title">让它一直运行</string>
+    <string name="background_explanation">部分手机会在你切到其他应用时停掉 Babel，无障碍服务也会随之关闭。允许后台运行才不会这样。</string>
+    <string name="background_steps">省电策略设为「无限制」；再到应用设置里允许「自启动」——有的系统把它放在权限里而不是电池里。</string>
+    <string name="background_action_battery">电池设置</string>
+    <string name="background_action_app">应用设置</string>
 </resources>

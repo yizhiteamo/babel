@@ -292,6 +292,12 @@ Testing on a device: `uiautomator dump` disconnects the accessibility service wh
 Two more device-testing traps, found the hard way:
 
 - **`:app:connectedDebugAndroidTest` uninstalls `com.babel`** when it finishes, taking the DataStore (including a configured API key) and `getExternalFilesDir` (including downloaded models) with it. Run the app's instrumentation by hand instead — `adb install -r` both APKs, then `adb shell am instrument -w com.babel.test/androidx.test.runner.AndroidJUnitRunner`. Library modules are safe: they uninstall only their own test package.
+- **An ONNX session must be used under the same lock that owns its life.**
+  Fetching it under a lock and then running inference outside one lets
+  `release()` free it mid-call: that is a native `SIGSEGV`, not an
+  exception — uncatchable, and it takes the process and the accessibility
+  service with it. Found only on a real phone; the emulator needs a
+  deliberately timed race to show it (`SessionReleaseRaceTest`).
 - **Never turn the guest's network off to test offline behaviour.**
   `adb shell svc wifi disable` cuts the transport adb itself runs over: the
   device goes `offline` and nothing on the command line brings it back —

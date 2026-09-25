@@ -68,7 +68,8 @@ internal class MangaOcrRecognizer @Inject constructor(
     @Volatile
     private var failed = false
 
-    private val loading = Mutex()
+    /** Guards the sessions' life **and** their use; see [recognize]. */
+    private val sessionsInUse = Mutex()
     private var loaded: Sessions? = null
 
     private class Sessions(
@@ -87,32 +88,44 @@ internal class MangaOcrRecognizer @Inject constructor(
     override fun languageOf(text: String): LanguageTag? =
         JAPANESE.takeIf { JapaneseScript.isPresentIn(text) }
 
-    override suspend fun recognize(frame: Bitmap): List<RecognizedLine> {
-        val sessions = sessions() ?: return emptyList()
+    override suspend fun recognize(frame: Bitmap): List<RecognizedLine> =
+        // Inside the lock that owns the sessions' life. See
+        // `OnnxBubbleDetector.detectRaw` for what reading them outside it cost:
+        // a native `SIGSEGV` on a real device, because `release()` closed them
+        // while this was still using them. Two sessions here rather than one,
+        // and the same race on both.
+        //
+        // This is the expensive one — 0.3~1s per balloon — so `release()` waits
+        // that long when manga mode is switched off. Worth it: the alternative
+        // is losing the process, and with it the accessibility service.
+        sessionsInUse.withLock {
+            val sessions = lockedSessions() ?: return@withLock emptyList()
 
-        return try {
-            val text = withContext(dispatchers.default) { read(sessions, frame) }
-            if (text.isBlank()) {
+            try {
+                val text = withContext(dispatchers.default) { read(sessions, frame) }
+                if (text.isBlank()) {
+                    emptyList()
+                } else {
+                    listOf(
+                        RecognizedLine(
+                            text = text,
+                            bounds = TextBounds(
+                                0, 0, frame.width, frame.height, CoordinateSpace.SCREEN,
+                            ),
+                            // No opinion: see the class comment.
+                            orientation = null,
+                        ),
+                    )
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Throwable) {
+                // One unreadable balloon is one missing translation, not the
+                // end of manga mode.
+                logger.warn(TAG, "recognition failed: ${failure.javaClass.simpleName}")
                 emptyList()
-            } else {
-                listOf(
-                    RecognizedLine(
-                        text = text,
-                        bounds = TextBounds(0, 0, frame.width, frame.height, CoordinateSpace.SCREEN),
-                        // No opinion: see the class comment.
-                        orientation = null,
-                    ),
-                )
             }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (failure: Throwable) {
-            // One unreadable balloon is one missing translation, not the end of
-            // manga mode.
-            logger.warn(TAG, "recognition failed: ${failure.javaClass.simpleName}")
-            emptyList()
         }
-    }
 
     /**
      * Closes both sessions, which is where the memory is.
@@ -123,7 +136,7 @@ internal class MangaOcrRecognizer @Inject constructor(
      * the life of the process.
      */
     override suspend fun release() {
-        loading.withLock {
+        sessionsInUse.withLock {
             loaded?.let {
                 it.encoder.close()
                 it.decoder.close()
@@ -133,39 +146,45 @@ internal class MangaOcrRecognizer @Inject constructor(
         }
     }
 
-    private suspend fun sessions(): Sessions? {
+    /**
+     * Both sessions, loading them if this is the first use.
+     *
+     * **Assumes [sessionsInUse] is already held**, like the detector's
+     * equivalent: `Mutex` is not reentrant, and the caller has to keep holding
+     * it for as long as it uses what comes back.
+     */
+    private fun lockedSessions(): Sessions? {
         loaded?.let { return it }
         if (failed || !isAvailable) return null
 
-        return loading.withLock {
-            loaded ?: try {
-                val started = System.currentTimeMillis()
-                val environment = OrtEnvironment.getEnvironment()
-                val options = OrtSession.SessionOptions()
-                val created = Sessions(
-                    encoder = environment.createSession(
-                        File(modelsDir, ENCODER).absolutePath, options,
-                    ),
-                    decoder = environment.createSession(
-                        File(modelsDir, DECODER).absolutePath, options,
-                    ),
-                    vocabulary = File(modelsDir, VOCAB).readLines(),
-                )
-                logger.info(
-                    TAG,
-                    "manga-ocr loaded in ${System.currentTimeMillis() - started}ms, " +
-                        "vocabulary ${created.vocabulary.size}",
-                )
-                created.also { loaded = it }
-            } catch (failure: Throwable) {
-                // Latched: a truncated file is reported once, not retried per
-                // balloon for the rest of the session.
-                failed = true
-                logger.warn(TAG, "manga-ocr could not be loaded: ${failure.javaClass.simpleName}")
-                null
-            }
+        return try {
+            val started = System.currentTimeMillis()
+            val environment = OrtEnvironment.getEnvironment()
+            val options = OrtSession.SessionOptions()
+            val created = Sessions(
+                encoder = environment.createSession(
+                    File(modelsDir, ENCODER).absolutePath, options,
+                ),
+                decoder = environment.createSession(
+                    File(modelsDir, DECODER).absolutePath, options,
+                ),
+                vocabulary = File(modelsDir, VOCAB).readLines(),
+            )
+            logger.info(
+                TAG,
+                "manga-ocr loaded in ${System.currentTimeMillis() - started}ms, " +
+                    "vocabulary ${created.vocabulary.size}",
+            )
+            created.also { loaded = it }
+        } catch (failure: Throwable) {
+            // Latched: a truncated file is reported once, not retried per
+            // balloon for the rest of the session.
+            failed = true
+            logger.warn(TAG, "manga-ocr could not be loaded: ${failure.javaClass.simpleName}")
+            null
         }
     }
+
 
     private suspend fun read(sessions: Sessions, crop: Bitmap): String {
         val environment = OrtEnvironment.getEnvironment()

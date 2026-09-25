@@ -118,6 +118,16 @@ fun BabelApp(
                 onOpenSettings = { context.openOverlaySettings() },
             )
 
+            // Only once the service is on. Before that it is one more thing to
+            // read on a screen already asking for two permissions, and it
+            // describes a symptom nobody has met yet.
+            if (state.accessibilityGranted) {
+                BackgroundSurvivalCard(
+                    onOpenBattery = { context.openBatterySettings() },
+                    onOpenAppSettings = { context.openAppSettings() },
+                )
+            }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -886,6 +896,59 @@ private fun CaptureCard(
     }
 }
 
+/**
+ * Staying alive in the background, which some ROMs do not grant by default.
+ *
+ * Not a permission and not something the app can ask for: it is a pair of
+ * switches the manufacturer puts in its own settings, and without them the
+ * process is killed as soon as another app comes to the front — taking the
+ * accessibility service with it, so translation stops and the service reads as
+ * switched off. Reported from a real device.
+ *
+ * Phrased as a symptom first. "Allow background activity" means nothing to
+ * somebody who has not yet watched translation stop the moment they opened a
+ * comic; "otherwise it stops when you switch apps" does.
+ *
+ * Two buttons because one intent does not cover it: battery has a standard one,
+ * autostart has none, and pretending otherwise would send people to a page that
+ * does not have the switch they were promised.
+ */
+@Composable
+private fun BackgroundSurvivalCard(
+    onOpenBattery: () -> Unit,
+    onOpenAppSettings: () -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.background_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.background_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.background_steps),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onOpenBattery) {
+                    Text(stringResource(R.string.background_action_battery))
+                }
+                OutlinedButton(onClick = onOpenAppSettings) {
+                    Text(stringResource(R.string.background_action_app))
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun PermissionCard(
     title: String,
@@ -1008,6 +1071,38 @@ private fun Context.openAccessibilitySettings() {
         Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
+}
+
+/**
+ * The battery exemption, which on some ROMs is what keeps the service alive.
+ *
+ * `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is the standard route and
+ * HyperOS honours it. It is not the whole story there — autostart is a separate
+ * switch with no public intent — which is why the card sends people to the app's
+ * own settings page for the rest rather than pretending one button covers it.
+ */
+private fun Context.openBatterySettings() {
+    val request = Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:$packageName"),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { startActivity(request) }.onFailure {
+        // Some builds refuse or do not carry that activity. The app's own
+        // settings page always exists and has the same switches behind it.
+        openAppSettings()
+    }
+}
+
+/** The app's own page in system settings, where every ROM puts its own switches. */
+private fun Context.openAppSettings() {
+    runCatching {
+        startActivity(
+            Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName"),
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
 }
 
 private fun Context.openOverlaySettings() {

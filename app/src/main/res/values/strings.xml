@@ -103,4 +103,9 @@
     <string name="capture_state_unseen">Not visible</string>
     <string name="overlay_missing_explanation">Text is being read and translated, but nothing can be drawn on top of it: Babel does not have permission to appear over other apps. The translations are being discarded.</string>
     <string name="overlay_missing_action">Grant the permission</string>
+    <string name="background_title">Keeping it running</string>
+    <string name="background_explanation">Some phones stop Babel as soon as you switch to another app, which also switches the accessibility service off. Allowing it to run in the background is what prevents that.</string>
+    <string name="background_steps">Battery: set Babel to unrestricted. Then, in its app settings, allow autostart — on some ROMs it sits under permissions rather than battery.</string>
+    <string name="background_action_battery">Battery</string>
+    <string name="background_action_app">App settings</string>
 </resources>

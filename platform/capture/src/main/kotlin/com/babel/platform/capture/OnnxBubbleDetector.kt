@@ -73,7 +73,8 @@ internal class OnnxBubbleDetector @Inject constructor(
     @Volatile
     private var failed = false
 
-    private val loading = Mutex()
+    /** Guards the session's life **and** its use; see [detectRaw]. */
+    private val sessionInUse = Mutex()
     private var session: OrtSession? = null
 
     override suspend fun detect(frame: Bitmap): List<DetectedBubble> =
@@ -99,23 +100,41 @@ internal class OnnxBubbleDetector @Inject constructor(
      * Not part of [TextDetector]: the labels are this model's, and nothing in
      * the pipeline should learn them.
      */
-    internal suspend fun detectRaw(frame: Bitmap, floor: Float): List<RawDetection> {
-        val active = session() ?: return emptyList()
+    internal suspend fun detectRaw(frame: Bitmap, floor: Float): List<RawDetection> =
+        // The inference runs **inside** the lock that owns the session's life.
+        //
+        // It used to run outside it: the session was fetched under the lock and
+        // then used without it, while `release()` closed it under the lock. On a
+        // real device that raced and the process died —
+        // `SIGSEGV, fault addr 0x0, in tid (DefaultDispatch), libonnxruntime.so`
+        // — because native code was reading a session that had just been freed.
+        // Switching manga mode off is what closes it, and a page being read at
+        // that moment is all it took (`docs/milestones/v2.md`).
+        //
+        // A native crash is not catchable: the `try` below never sees it, and
+        // the process is gone, which also takes the accessibility service down
+        // and leaves the user to re-enable it by hand.
+        //
+        // The cost is that `release()` waits for a detection in flight. It is a
+        // suspend function off the main thread, and detection is ~0.13s.
+        sessionInUse.withLock {
+            val active = lockedSession() ?: return@withLock emptyList()
 
-        return try {
-            withContext(dispatchers.default) { run(active, frame, floor) }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (failure: Throwable) {
-            // One bad page must not take the session down; a failure here means
-            // the caller reads nothing this scan, not that manga mode ends.
-            logger.warn(TAG, "detection failed: ${failure.javaClass.simpleName}")
-            emptyList()
+            try {
+                withContext(dispatchers.default) { run(active, frame, floor) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (failure: Throwable) {
+                // One bad page must not take the session down; a failure here
+                // means the caller reads nothing this scan, not that manga mode
+                // ends.
+                logger.warn(TAG, "detection failed: ${failure.javaClass.simpleName}")
+                emptyList()
+            }
         }
-    }
 
     override suspend fun release() {
-        loading.withLock {
+        sessionInUse.withLock {
             session?.close()
             session = null
             // Not latched: releasing is a deliberate hand-back, not a failure,
@@ -124,43 +143,49 @@ internal class OnnxBubbleDetector @Inject constructor(
         }
     }
 
-    private suspend fun session(): OrtSession? {
+    /**
+     * The session, loading it if this is the first use.
+     *
+     * **Assumes [sessionInUse] is already held.** Kotlin's `Mutex` is not
+     * reentrant, so this cannot take it itself — and it must not, because the
+     * caller has to keep holding it for as long as it uses what comes back.
+     */
+    private fun lockedSession(): OrtSession? {
         session?.let { return it }
         if (failed) return null
 
-        return loading.withLock {
-            session ?: try {
-                val started = System.currentTimeMillis()
-                val environment = OrtEnvironment.getEnvironment()
-                val options = OrtSession.SessionOptions()
-                // A pushed file wins, so an experiment does not need a rebuild.
-                // Otherwise the bundled copy, read into memory rather than
-                // copied to disk first: 11MB once at load beats carrying a
-                // second copy of the same bytes on the device forever.
-                val pushed = pushedFile
-                val created = if (pushed.exists()) {
-                    environment.createSession(pushed.absolutePath, options)
-                } else {
-                    environment.createSession(
-                        context.assets.open(MODEL_NAME).use { it.readBytes() },
-                        options,
-                    )
-                }
-                logger.info(
-                    TAG,
-                    "detector loaded in ${System.currentTimeMillis() - started}ms" +
-                        if (pushed.exists()) " (pushed override)" else " (bundled)",
+        return try {
+            val started = System.currentTimeMillis()
+            val environment = OrtEnvironment.getEnvironment()
+            val options = OrtSession.SessionOptions()
+            // A pushed file wins, so an experiment does not need a rebuild.
+            // Otherwise the bundled copy, read into memory rather than copied to
+            // disk first: 11MB once at load beats carrying a second copy of the
+            // same bytes on the device forever.
+            val pushed = pushedFile
+            val created = if (pushed.exists()) {
+                environment.createSession(pushed.absolutePath, options)
+            } else {
+                environment.createSession(
+                    context.assets.open(MODEL_NAME).use { it.readBytes() },
+                    options,
                 )
-                created.also { session = it }
-            } catch (failure: Throwable) {
-                // Latched, so a broken or truncated file is reported once rather
-                // than retried on every frame for the rest of the session.
-                failed = true
-                logger.warn(TAG, "detector could not be loaded: ${failure.javaClass.simpleName}")
-                null
             }
+            logger.info(
+                TAG,
+                "detector loaded in ${System.currentTimeMillis() - started}ms" +
+                    if (pushed.exists()) " (pushed override)" else " (bundled)",
+            )
+            created.also { session = it }
+        } catch (failure: Throwable) {
+            // Latched, so a broken or truncated file is reported once rather
+            // than retried on every frame for the rest of the session.
+            failed = true
+            logger.warn(TAG, "detector could not be loaded: ${failure.javaClass.simpleName}")
+            null
         }
     }
+
 
     private fun run(session: OrtSession, frame: Bitmap, floor: Float): List<RawDetection> {
         val environment = OrtEnvironment.getEnvironment()
