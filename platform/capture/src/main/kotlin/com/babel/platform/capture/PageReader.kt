@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextOrientation
+import com.babel.domain.vision.ClippedBalloons
 import com.babel.domain.vision.LineJoin
 import com.babel.domain.vision.MangaReadingOrder
 import com.babel.domain.vision.RecognizedLine
@@ -160,9 +161,31 @@ internal class DetectingPageReader @Inject constructor(
         // below reads as it always did (`ScrolledBalloons`).
         val shift = ScrolledBalloons.shiftBetween(lastPage.map { it.box }, ordered.map { it.text })
 
-        val thisPage = ArrayList<ReadBalloon>(ordered.size)
+        // Balloons the viewport has cut in half are left for the screen that
+        // shows them whole. Half a balloon costs a recognition and a provider
+        // call to produce half a sentence, and a cut box cannot be matched
+        // after the next scroll either, so it is paid for again
+        // (`ClippedBalloons`).
+        //
+        // Only on a screen this can place, though. Without a shift there is no
+        // knowing where this screen came from — the first one after manga mode
+        // goes on, a page turn, an app switch — and a balloon at the top of a
+        // page genuinely *is* whole, so skipping it would mean never reading
+        // it. Unplaceable screens therefore behave exactly as they did before
+        // any of this, which makes the rule incapable of being worse.
+        //
+        // Cut boxes still vote above: they are evidence of where the screen
+        // moved to even when they are not worth reading.
+        val readable = if (shift == null) ordered else {
+            ordered.filterNot { ClippedBalloons.waitsForMore(it.text, frame.height) }
+        }
+        if (readable.size < ordered.size) {
+            logger.debug(TAG, "left ${ordered.size - readable.size} cut balloons for the next screen")
+        }
+
+        val thisPage = ArrayList<ReadBalloon>(readable.size)
         var reused = 0
-        for (bubble in ordered) {
+        for (bubble in readable) {
             val remembered = shift?.let { moved ->
                 lastPage.firstOrNull { ScrolledBalloons.isSame(it.box, bubble.text, moved) }
             }
@@ -187,7 +210,7 @@ internal class DetectingPageReader @Inject constructor(
         lastPage = thisPage
 
         if (shift != null) {
-            logger.debug(TAG, "page moved ${shift}px; reused $reused of ${ordered.size} readings")
+            logger.debug(TAG, "page moved ${shift}px; reused $reused of ${readable.size} readings")
         }
     }
 
