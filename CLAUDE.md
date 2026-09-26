@@ -148,7 +148,7 @@ Common system documents:
 - Capabilities: `docs/systems/capabilities.md`
 - Privacy: `docs/systems/privacy.md`
 - Translation scope: `docs/systems/scope.md`
-- Testing: `docs/systems/testing.md`
+- Testing: `docs/systems/testing.md` (traps and principles); `docs/testing/` (the pages and images to test against)
 
 Do not load all documentation unless the task genuinely spans all systems.
 
@@ -270,7 +270,7 @@ Adding a new acquisition method (OCR in V2, tracked OCR in V3) means a new `:pla
 
 ## Contracts already established
 
-Every stable contract in `docs/architecture.md` exists, and the domain side is implemented: language resolution, privacy exclusion, the coordinator, the cache, and an on-device provider. `:platform:*` is still empty — acquisition and rendering are the remaining V1 work, and each corresponds to an unchecked item in `docs/milestones/v1.md`. Implement against the existing contracts; change a contract only when the system doc that defines it changes too.
+Every stable contract in `docs/architecture.md` exists. Implement against them; change a contract only when the system doc that defines it changes too. What is built and what is not is `docs/roadmap.md` and `docs/milestones/`, never this file.
 
 `DefaultTranslationCoordinator` mutates tracked state **only from its mailbox coroutine**. Translations run concurrently and report back as messages. Keep it that way: touching the tracked map from a translation coroutine reintroduces a race between the revision check and the events that bump revisions.
 
@@ -303,52 +303,7 @@ Behavioral invariants that must survive any change:
   sits at the top of the page, and skipping that would never read it at all.
 - Scope and privacy are separate policies and must stay that way: scope asks whether an app is worth translating, privacy whether text may leave the screen. Adding an app to one does not belong in the other.
 
-Testing on a device: `uiautomator dump` disconnects the accessibility service while it runs, which tears down the pipeline and resets manga mode. Read state from `logcat` and `screencap` instead — a UI dump taken to check a result is what destroys it.
-
-Two more device-testing traps, found the hard way:
-
-- **`:app:connectedDebugAndroidTest` uninstalls `com.babel`** when it finishes, taking the DataStore (including a configured API key) and `getExternalFilesDir` (including downloaded models) with it. Run the app's instrumentation by hand instead — `adb install -r` both APKs, then `adb shell am instrument -w com.babel.test/androidx.test.runner.AndroidJUnitRunner`. Library modules are safe: they uninstall only their own test package.
-- **An ONNX session must be used under the same lock that owns its life.**
-  Fetching it under a lock and then running inference outside one lets
-  `release()` free it mid-call: that is a native `SIGSEGV`, not an
-  exception — uncatchable, and it takes the process and the accessibility
-  service with it. Found only on a real phone; the emulator needs a
-  deliberately timed race to show it (`SessionReleaseRaceTest`).
-- **Never turn the guest's network off to test offline behaviour.**
-  `adb shell svc wifi disable` cuts the transport adb itself runs over: the
-  device goes `offline` and nothing on the command line brings it back —
-  `reconnect`, restarting the server and connecting to every port all fail,
-  because the port is listening and the daemon inside cannot answer. The
-  rescue is MuMu's own non-adb channel, `MuMuManager.exe sh -v 0 -c
-  "svc wifi enable"` (under `MuMuPlayer/nx_main/`), then
-  `adb connect 127.0.0.1:16384`. To test how the app behaves when no service
-  is reachable, **point the endpoint at something unreachable**
-  (`http://127.0.0.1:9/...`) instead: it produces the same `Network`
-  failures and touches nothing.
-- **Running the app's instrumentation leaves `accessibility_enabled` at 0.** An
-  `am instrument` against `com.babel.test` runs in the app's own process and the
-  service comes back unbound with the enabled-services list still naming it —
-  the exact split state the capability check exists for. Rebind before judging
-  any V1 result, or a working build reads as a dead one.
-- **`adb install -r` unbinds the accessibility service.** Re-enabling it takes `am force-stop`, deleting `enabled_accessibility_services`, writing it again, and then **about fifteen seconds** before `dumpsys accessibility` reports it bound. Eight seconds reads as a failure to bind and invites a wrong diagnosis. On this phone that same window is when the grant gets taken away again — next bullet.
-- **MIUI/HyperOS revokes the grant a few seconds after every enable, and it is not a Babel bug.** `com.miui.securitycenter.remote` watches `enabled_accessibility_services`; every change to the list hands each listed app's APK to `com.miui.guardprovider` to be scanned, and an app that fails the scan is dropped from the list:
-
-  ```
-  VirusScanJobService: onChanged: [«another-a11y-app»/ItsService, com.babel/...BabelAccessibilityService]
-  Babel.AccessibilityService: accessibility service connected
-  AvlEngine: getVirusInfo packageName : com.babel virusLevel : 3
-  CacheInterceptor: Cache hit:«another-a11y-app» / Cache missed:com.babel
-  VirusScanJobService: try to remove: [com.babel]
-  Babel.AccessibilityService: accessibility service torn down
-  ```
-
-  Six to nine seconds from connect to teardown, every time. Babel never switches itself off — there is no `disableSelf`, `setServiceInfo(null)` or `stopSelf` in the tree — and there is no crash, no ANR and no kill: the process stays alive with the service gone, which is precisely the split state the two-settings capability check exists for.
-
-  The discriminator is **not** the installer package. `pm set-installer com.babel com.miui.packageinstaller` makes that field identical to the accessibility app that survives the same scan, and Babel is still dropped. It is the verdict: the surviving app is a cloud cache *hit*, known to the vendor's database, while a self-signed local build is a *miss* and gets judged by the local engines. No app-side change reaches this. Marking Babel trusted in 安全中心's antivirus does, but its whitelist lives in `com.miui.guardprovider`'s private data and is not reachable over adb, so it takes taps on the phone.
-
-  When a device run shows no translations, read `dumpsys accessibility` and grep for `try to remove: [com.babel]` **before** suspecting the pipeline.
-
-Testing the pipeline: a collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.
+Testing against a device, an emulator, or the pipeline has its own set of traps, several of which destroy the thing being measured. They are in `docs/systems/testing.md`; read it before trusting a device result.
 
 ---
 

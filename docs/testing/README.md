@@ -1,5 +1,9 @@
 # Test material
 
+The material itself. The traps that come with running it on a device or an
+emulator — several of which destroy the thing being measured — are in
+`docs/systems/testing.md`.
+
 ## What cannot be used as a test subject
 
 Babel's own UI and the launcher are **out of scope** by default
