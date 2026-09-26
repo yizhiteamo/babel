@@ -11,6 +11,7 @@ import android.view.WindowManager
 import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.Revision
 import com.babel.core.model.TextBounds
+import com.babel.domain.acquisition.ScanDebounce
 import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.scope.TranslationScopePolicy
@@ -199,12 +200,26 @@ class BabelAccessibilityService : AccessibilityService() {
      * Measured on a device before this existed: turning to a comic in a browser
      * fires a content-change event straight away, the node path acted on it
      * within 250ms, and the image path waited for its own timer regardless —
-     * 3.0s of a 5.9s wait was that. Debounced exactly as [runScanLoop] is, so a
-     * burst of scroll events is one scan.
+     * 3.0s of a 5.9s wait was that.
+     *
+     * **Debounced on the last event of a burst, not the first**, which is where
+     * this differs from [runScanLoop]. A fling keeps firing for a second or
+     * more, and on the image path every one of those events clears the page —
+     * so a scan started at the first of them is thrown away when it tries to
+     * publish. Measured: four drags, four scans `abandoned part way`, and the
+     * translations the user finally saw came from the scan after them.
+     *
+     * Waiting longer for the screen to settle was tried first and bought
+     * nothing (`CaptureTextSource.SETTLE_ATTEMPTS`): a doomed scan simply died
+     * later. What had to change was when the waiting starts.
+     *
+     * The node path keeps the leading debounce. Reading the tree is fast and
+     * cheap, nothing there gets thrown away mid-flight, and V1's timing is an
+     * acceptance condition rather than something to improve in passing.
      */
     private suspend fun runImageEventLoop() {
         for (request in imageScanRequests) {
-            delay(SCAN_DEBOUNCE_MS)
+            ScanDebounce.awaitQuiet(imageScanRequests, SCAN_DEBOUNCE_MS, SCAN_QUIET_LIMIT_MS)
             considerImageScan()
         }
     }
@@ -622,6 +637,17 @@ class BabelAccessibilityService : AccessibilityService() {
          * what keeps that from being expensive.
          */
         const val IMAGE_SCAN_INTERVAL_MS = 1_500L
+
+        /**
+         * How long the image path will keep extending its quiet period.
+         *
+         * A page that never stops changing would otherwise hold the event loop
+         * for ever, and [IMAGE_SCAN_INTERVAL_MS] — the thing that covers that
+         * case — cannot fire while it does. Set to the same order as the tick
+         * for that reason: past this, waiting is no longer cheaper than letting
+         * the timer have it.
+         */
+        const val SCAN_QUIET_LIMIT_MS = 1_500L
 
         /** A text node bigger than a quarter of the display is a container. */
         const val LABEL_MAX_SCREEN_FRACTION = 4
