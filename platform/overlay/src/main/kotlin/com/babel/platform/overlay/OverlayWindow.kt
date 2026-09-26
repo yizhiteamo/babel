@@ -24,20 +24,43 @@ import com.babel.core.model.TextSourceType
  * condition: translating a screen must never change how it behaves.
  *
  * The price is that the original shows through at 20%. Android caps the opacity
- * of an untrusted overlay that covers the screen while letting touches past
- * (`maximum_obscuring_opacity_for_touch`, 0.8), and a window like this is
- * exactly what that rule is for. Here the cap is unavoidable, and worth paying.
+ * of an untrusted overlay that lets touches past
+ * (`maximum_obscuring_opacity_for_touch`, 0.8). Here the cap is unavoidable,
+ * and worth paying.
  *
  * ## Text in a captured image (V2, manga)
  *
- * One window per translation, sized to the bubble, **taking touches**. Not
- * being a screen-covering passthrough window, it is not capped: `mAlpha` stays
- * 1.0 and the original is genuinely replaced rather than shining through.
+ * One window per translation, sized to the bubble, **taking touches**. A
+ * touchable window is not capped: `mAlpha` stays 1.0 and the original is
+ * genuinely replaced rather than shining through.
  *
  * A touch landing on a translation is consumed instead of reaching the app.
- * That is affordable when reading static pages — everywhere else still passes
- * through, so page turns work — and tapping a translation hides it, which is
- * both the way out of a swallowed tap and the natural way to see the original.
+ * Tapping shows the original, which is both the way out of a swallowed tap and
+ * the natural way to check a translation against the art.
+ *
+ * ## The cost of that, measured, and why it stands anyway
+ *
+ * A window that takes touches owns the gesture from `ACTION_DOWN`, so a scroll
+ * beginning on a translation never reaches the page and **the page does not
+ * move at all**. On a webtoon that is not rare: nine translation windows,
+ * **9.3%** of the screen, and **10.5%** of the start points a thumb actually
+ * uses. One swipe in ten does nothing.
+ *
+ * Making these passthrough fixes it completely — and was tried, and reverted.
+ * The cap turns out to be about **touchability, not size**, which is what the
+ * note above used to say: the moment `FLAG_NOT_TOUCHABLE` went on, `dumpsys`
+ * reported `alpha=0.7998` on every balloon window instead of 1.0, and the
+ * Japanese was plainly legible underneath the Chinese. That is the 20% ghost
+ * ADR 008's amendment exists to have removed.
+ *
+ * Nothing recovers both. Painting the view opaque cannot help — the clamp is
+ * applied when the window is composited. Stacking two 0.8 windows reaches 0.96
+ * and trips the *other* half of the same rule: combined obscuring opacity above
+ * the threshold makes the system **block** touches to the app below, silently.
+ *
+ * So the swallowed swipe is the accepted cost, for now, and it is a product
+ * judgement rather than an oversight. [OWN_WINDOW_FLAGS] and its test are where
+ * that judgement is pinned.
  *
  * ## Why this is split rather than uniform
  *
@@ -48,6 +71,30 @@ import com.babel.core.model.TextSourceType
  *
  * All methods must run on the main thread — [OverlayRenderer] guarantees this.
  */
+/**
+ * The V1 container: one window over the whole display, letting every touch
+ * through. Passthrough is a V1 acceptance condition — translating a screen must
+ * never change how it behaves — and it was broken exactly once, by giving V1
+ * the manga treatment, which turned page-sized overlays into solid blocks.
+ */
+internal const val CONTAINER_FLAGS =
+    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
+/**
+ * A single manga translation's window — **touchable on purpose**.
+ *
+ * Deliberately missing `FLAG_NOT_TOUCHABLE`. Adding it fixes the swallowed
+ * scroll and costs the 20% ghost; both halves are measured on the note above.
+ * Anything that adds it has to answer for the ghost first.
+ */
+internal const val OWN_WINDOW_FLAGS =
+    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+
 internal class OverlayWindow(private val context: Context) {
 
     private val windowManager =
@@ -251,10 +298,7 @@ internal class OverlayWindow(private val context: Context) {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            CONTAINER_FLAGS,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -277,11 +321,8 @@ internal class OverlayWindow(private val context: Context) {
             width,
             height,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            // Touchable on purpose — see the note on this class. NOT_FOCUSABLE
-            // stays: taking touches is not a reason to steal the keyboard.
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            // Touchable on purpose, and measured — see the note on this class.
+            OWN_WINDOW_FLAGS,
             // Translucent so the view can step aside and let the artwork show.
             // Not a weakening of the cover: the view still paints an opaque
             // sampled background, and the window's own alpha stays 1.0 — that
