@@ -101,8 +101,8 @@ class DataStoreSettingsRepository(
         }
     }
 
-    override suspend fun setAutoStart(enabled: Boolean) {
-        dataStore.edit { prefs -> prefs[Keys.AUTO_START] = enabled }
+    override suspend fun setTranslationPaused(paused: Boolean) {
+        dataStore.edit { prefs -> prefs[Keys.TRANSLATION_PAUSED] = paused }
     }
 
     override suspend fun setMangaMode(enabled: Boolean) {
@@ -120,7 +120,7 @@ class DataStoreSettingsRepository(
             chatKey = readKey(prefs, Keys.REMOTE_CHAT_KEY, RemoteService.CHAT),
             deepLKey = readKey(prefs, Keys.REMOTE_DEEPL_KEY, RemoteService.DEEPL),
         ),
-        autoStart = prefs[Keys.AUTO_START] ?: false,
+        translationPaused = prefs[Keys.TRANSLATION_PAUSED] ?: false,
         mangaMode = prefs[Keys.MANGA_MODE] ?: false,
     )
 
@@ -183,7 +183,11 @@ class DataStoreSettingsRepository(
         val REMOTE_KEY = stringPreferencesKey("remote_api_key")
         val REMOTE_CHAT_KEY = stringPreferencesKey("remote_chat_key")
         val REMOTE_DEEPL_KEY = stringPreferencesKey("remote_deepl_key")
-        val AUTO_START = booleanPreferencesKey("auto_start")
+        /**
+         * Replaces `auto_start`, which nothing ever wrote — there was no UI for
+         * it — so there is nothing to migrate.
+         */
+        val TRANSLATION_PAUSED = booleanPreferencesKey("translation_paused")
         val MANGA_MODE = booleanPreferencesKey("manga_mode")
     }
 

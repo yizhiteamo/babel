@@ -80,7 +80,7 @@ class TranslatingRemoteProbe @Inject constructor(
         override suspend fun setTargetLanguageMode(mode: com.babel.core.model.TargetLanguageMode) = Unit
         override suspend fun setProvider(provider: com.babel.core.model.ProviderId?) = Unit
         override suspend fun setRemoteProvider(settings: RemoteProviderSettings) = Unit
-        override suspend fun setAutoStart(enabled: Boolean) = Unit
+        override suspend fun setTranslationPaused(paused: Boolean) = Unit
         override suspend fun setMangaMode(enabled: Boolean) = Unit
     }
 

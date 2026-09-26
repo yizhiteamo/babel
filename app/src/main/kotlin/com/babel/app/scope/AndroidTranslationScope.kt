@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
 import com.babel.core.common.BabelLogger
+import com.babel.domain.scope.DefaultTranslationScopePolicy
 import com.babel.domain.scope.TranslationScopePolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -28,17 +29,23 @@ class AndroidTranslationScope @Inject constructor(
     private val logger: BabelLogger,
 ) : TranslationScopePolicy {
 
+    /**
+     * The rule itself lives in the domain; this class only answers the platform
+     * half of the question — **which** packages are the launcher, the keyboard
+     * and the system UI on this device.
+     *
+     * The two used to be separate copies of the same three lines, and the
+     * domain's copy was the one with a test. Delegating makes that test cover
+     * what actually runs.
+     */
     @Volatile
-    private var excludedPackages: Set<String> = emptySet()
+    private var rule: TranslationScopePolicy = DefaultTranslationScopePolicy(emptySet())
 
     init {
         refresh()
     }
 
-    override fun isInScope(packageName: String?): Boolean {
-        if (packageName == null) return true
-        return packageName !in excludedPackages
-    }
+    override fun isInScope(packageName: String?): Boolean = rule.isInScope(packageName)
 
     fun refresh() {
         val resolved = buildSet {
@@ -47,7 +54,7 @@ class AndroidTranslationScope @Inject constructor(
             addAll(launcherPackages())
             inputMethodPackage()?.let(::add)
         }
-        excludedPackages = resolved
+        rule = DefaultTranslationScopePolicy(resolved)
         logger.info(TAG, "out of scope: ${resolved.sorted()}")
     }
 

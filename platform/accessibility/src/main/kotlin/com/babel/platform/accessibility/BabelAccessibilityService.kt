@@ -15,7 +15,9 @@ import com.babel.domain.acquisition.ScanDebounce
 import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.scope.TranslationScopePolicy
+import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.TranslationCoordinator
+import com.babel.domain.translation.TranslationStartup
 import com.babel.domain.vision.CaptureState
 import com.babel.domain.vision.ImageTextScanner
 import dagger.hilt.android.AndroidEntryPoint
@@ -53,6 +55,9 @@ class BabelAccessibilityService : AccessibilityService() {
 
     @Inject
     lateinit var scopePolicy: TranslationScopePolicy
+
+    @Inject
+    lateinit var settings: SettingsRepository
 
     @Inject
     lateinit var mangaMode: MangaModeController
@@ -172,7 +177,9 @@ class BabelAccessibilityService : AccessibilityService() {
         newScope.launch { runImageScrollLoop() }
         newScope.launch { followMangaMode() }
 
-        coordinator.start()
+        // Not an unconditional start: a user who paused stays paused
+        // (`TranslationStartup`).
+        newScope.launch { TranslationStartup.restore(coordinator, settings) }
     }
 
     /**

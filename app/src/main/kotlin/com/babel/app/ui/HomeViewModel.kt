@@ -209,9 +209,26 @@ class HomeViewModel @Inject constructor(
      * calling this "off" would promise a clear screen that does not happen
      * until the content changes.
      */
-    fun pauseTranslation() = coordinator.pause()
+    fun pauseTranslation() {
+        coordinator.pause()
+        remember(paused = true)
+    }
 
-    fun resumeTranslation() = coordinator.start()
+    fun resumeTranslation() {
+        coordinator.start()
+        remember(paused = false)
+    }
+
+    /**
+     * Writes the choice, and only from here.
+     *
+     * These two are the only user-facing way in or out of pause — the service
+     * also calls `start()`, but that is a restore rather than a decision, and
+     * recording it would erase the very thing being restored.
+     */
+    private fun remember(paused: Boolean) {
+        viewModelScope.launch { settingsRepository.setTranslationPaused(paused) }
+    }
 
     fun startMangaMode() = screenCapture.start()
 

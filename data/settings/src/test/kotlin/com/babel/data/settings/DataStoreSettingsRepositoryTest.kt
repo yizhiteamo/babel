@@ -54,7 +54,7 @@ class DataStoreSettingsRepositoryTest {
         assertEquals(SourceLanguageMode.AutoDetect, settings.sourceLanguageMode)
         assertEquals(TargetLanguageMode.FollowSystem, settings.targetLanguageMode)
         assertNull(settings.provider)
-        assertEquals(false, settings.autoStart)
+        assertEquals(false, settings.translationPaused)
     }
 
     @Test
@@ -103,19 +103,19 @@ class DataStoreSettingsRepositoryTest {
     }
 
     @Test
-    fun `auto start is persisted`() = withRepository { repo ->
-        repo.setAutoStart(true)
+    fun `the pause choice is persisted`() = withRepository { repo ->
+        repo.setTranslationPaused(true)
 
-        assertEquals(true, repo.settings.first().autoStart)
+        assertEquals(true, repo.settings.first().translationPaused)
     }
 
     @Test
     fun `settings flow emits after a change`() = withRepository { repo ->
-        repo.setAutoStart(true)
+        repo.setTranslationPaused(true)
         repo.setTargetLanguageMode(TargetLanguageMode.Manual(LanguageTag("de")))
 
         val settings = repo.settings.first()
-        assertEquals(true, settings.autoStart)
+        assertEquals(true, settings.translationPaused)
         assertEquals(TargetLanguageMode.Manual(LanguageTag("de")), settings.targetLanguageMode)
     }
 

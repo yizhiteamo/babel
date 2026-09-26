@@ -15,8 +15,22 @@ data class BabelSettings(
     val targetLanguageMode: TargetLanguageMode = TargetLanguageMode.FollowSystem,
     val provider: ProviderId? = null,
     val remote: RemoteProviderSettings = RemoteProviderSettings(),
-    /** Translation resumes automatically when its capabilities are available. */
-    val autoStart: Boolean = false,
+    /**
+     * Whether the user last left translation paused.
+     *
+     * Pause is otherwise in memory, and the accessibility service starts the
+     * coordinator on every connect — so a process the phone killed used to
+     * bring translation back on for somebody who had deliberately switched it
+     * off, with nothing recording that they ever had.
+     *
+     * Named for the choice rather than for the behaviour. Its predecessor was
+     * `autoStart`, which defaulted to false and, taken literally, would have
+     * meant "do not translate" for everybody; what needs remembering is the
+     * user's decision, and the default is the one they never made.
+     *
+     * Only their own actions write it (`docs/systems/settings.md`).
+     */
+    val translationPaused: Boolean = false,
     /**
      * Whether the user last left manga mode on.
      *
@@ -155,7 +169,7 @@ interface SettingsRepository {
 
     suspend fun setRemoteProvider(settings: RemoteProviderSettings)
 
-    suspend fun setAutoStart(enabled: Boolean)
+    suspend fun setTranslationPaused(paused: Boolean)
 
     suspend fun setMangaMode(enabled: Boolean)
 }

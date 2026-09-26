@@ -37,8 +37,13 @@ class FakeSettingsRepository(
         state.value = state.value.copy(remote = settings)
     }
 
-    override suspend fun setAutoStart(enabled: Boolean) {
-        state.value = state.value.copy(autoStart = enabled)
+    /** How many times the pause choice was written, so a test can prove it was not. */
+    var pauseWrites = 0
+        private set
+
+    override suspend fun setTranslationPaused(paused: Boolean) {
+        pauseWrites += 1
+        state.value = state.value.copy(translationPaused = paused)
     }
 
     /** How many times manga mode was written, so a test can prove it was not. */
