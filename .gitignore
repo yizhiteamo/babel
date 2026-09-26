@@ -33,3 +33,8 @@ local.properties
 # runs out of memory mid-build; the dump lands wherever the worker was.
 hs_err_pid*.log
 replay_pid*.log
+
+# Notes tied to one physical phone: package names of other apps installed
+# on it, and log excerpts naming them. Useful for reproducing a measurement,
+# not for anyone else.
+/docs/testing/local-device-notes.md

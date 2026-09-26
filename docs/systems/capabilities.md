@@ -31,6 +31,10 @@ VirusScanJobService: try to remove: [com.babel]
 Babel.AccessibilityService: accessibility service torn down
 ```
 
+The other app is redacted; what the excerpt has to show is only that a second
+accessibility service on the same phone went through the same scan and stayed in
+the list.
+
 Six to nine seconds from connect to teardown, every time. The process survives;
 only the binding goes. Babel does not switch itself off — there is no
 `disableSelf`, `setServiceInfo(null)` or `stopSelf` in the tree — and there is
