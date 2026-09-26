@@ -105,6 +105,10 @@ class DataStoreSettingsRepository(
         dataStore.edit { prefs -> prefs[Keys.AUTO_START] = enabled }
     }
 
+    override suspend fun setMangaMode(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[Keys.MANGA_MODE] = enabled }
+    }
+
     private fun toSettings(prefs: Preferences): BabelSettings = BabelSettings(
         sourceLanguageMode = readSourceMode(prefs),
         targetLanguageMode = readTargetMode(prefs),
@@ -117,6 +121,7 @@ class DataStoreSettingsRepository(
             deepLKey = readKey(prefs, Keys.REMOTE_DEEPL_KEY, RemoteService.DEEPL),
         ),
         autoStart = prefs[Keys.AUTO_START] ?: false,
+        mangaMode = prefs[Keys.MANGA_MODE] ?: false,
     )
 
     /**
@@ -179,6 +184,7 @@ class DataStoreSettingsRepository(
         val REMOTE_CHAT_KEY = stringPreferencesKey("remote_chat_key")
         val REMOTE_DEEPL_KEY = stringPreferencesKey("remote_deepl_key")
         val AUTO_START = booleanPreferencesKey("auto_start")
+        val MANGA_MODE = booleanPreferencesKey("manga_mode")
     }
 
     private companion object {

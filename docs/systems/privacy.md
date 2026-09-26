@@ -127,6 +127,31 @@ What replaces it:
 The gap that remains, stated rather than glossed: if the user has denied
 notification permission there is no indicator, and Babel cannot create one.
 
+### Manga mode comes back by itself, and why that is not a new decision
+
+The mode is persisted and restored when the accessibility service reconnects
+(`MangaModeController`). So after a phone's power management kills the process,
+Babel can begin reading the screen again without the user touching anything —
+which deserves to be written down rather than discovered.
+
+Why it is nonetheless the right behaviour:
+
+- The process did not end because the user ended it. Restoring is putting back
+  the state they left, not deciding for them.
+- Only their own actions are ever written. A mode taken down because the
+  service went away writes nothing, so a capability failure can never be
+  replayed later as consent.
+- Nothing is restored without the accessibility service, which is a permission
+  they granted explicitly and can revoke in system settings.
+- The indicator follows `CaptureState`, so a restored mode posts the
+  notification exactly as a hand-started one does. Screen reading stays visible
+  for as long as it lasts, which is the rule this section exists to keep.
+
+What Babel deliberately does **not** do is keep itself alive to make this rarer:
+there is no foreground service (ADR 009 removed the one MediaProjection
+required). The home screen explains the power settings instead, and the user
+decides.
+
 ## What the logs contain
 
 Babel's own diagnostics carry counts, sizes and element ids — never recognised

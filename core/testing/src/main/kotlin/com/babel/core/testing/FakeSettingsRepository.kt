@@ -40,6 +40,15 @@ class FakeSettingsRepository(
     override suspend fun setAutoStart(enabled: Boolean) {
         state.value = state.value.copy(autoStart = enabled)
     }
+
+    /** How many times manga mode was written, so a test can prove it was not. */
+    var mangaModeWrites = 0
+        private set
+
+    override suspend fun setMangaMode(enabled: Boolean) {
+        mangaModeWrites += 1
+        state.value = state.value.copy(mangaMode = enabled)
+    }
 }
 
 /**

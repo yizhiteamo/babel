@@ -81,6 +81,7 @@ class TranslatingRemoteProbe @Inject constructor(
         override suspend fun setProvider(provider: com.babel.core.model.ProviderId?) = Unit
         override suspend fun setRemoteProvider(settings: RemoteProviderSettings) = Unit
         override suspend fun setAutoStart(enabled: Boolean) = Unit
+        override suspend fun setMangaMode(enabled: Boolean) = Unit
     }
 
     private companion object {

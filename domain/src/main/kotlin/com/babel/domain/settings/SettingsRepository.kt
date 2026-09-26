@@ -17,6 +17,17 @@ data class BabelSettings(
     val remote: RemoteProviderSettings = RemoteProviderSettings(),
     /** Translation resumes automatically when its capabilities are available. */
     val autoStart: Boolean = false,
+    /**
+     * Whether the user last left manga mode on.
+     *
+     * Kept because the mode itself is in memory, and the process does not
+     * always get to decide when it ends: a phone's power management kills it,
+     * the accessibility service goes with it, and everything the user had set
+     * up was gone. Restoring this is restoring their state, not making a fresh
+     * decision on their behalf — which is why only their own actions write it
+     * (`docs/systems/privacy.md`).
+     */
+    val mangaMode: Boolean = false,
 ) {
     /**
      * Whether text is allowed to leave the device.
@@ -145,4 +156,6 @@ interface SettingsRepository {
     suspend fun setRemoteProvider(settings: RemoteProviderSettings)
 
     suspend fun setAutoStart(enabled: Boolean)
+
+    suspend fun setMangaMode(enabled: Boolean)
 }
