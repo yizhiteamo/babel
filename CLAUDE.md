@@ -330,7 +330,23 @@ Two more device-testing traps, found the hard way:
   service comes back unbound with the enabled-services list still naming it —
   the exact split state the capability check exists for. Rebind before judging
   any V1 result, or a working build reads as a dead one.
-- **`adb install -r` unbinds the accessibility service.** Re-enabling it takes `am force-stop`, deleting `enabled_accessibility_services`, writing it again, and then **about fifteen seconds** before `dumpsys accessibility` reports it bound. Eight seconds reads as a failure to bind and invites a wrong diagnosis.
+- **`adb install -r` unbinds the accessibility service.** Re-enabling it takes `am force-stop`, deleting `enabled_accessibility_services`, writing it again, and then **about fifteen seconds** before `dumpsys accessibility` reports it bound. Eight seconds reads as a failure to bind and invites a wrong diagnosis. On this phone that same window is when the grant gets taken away again — next bullet.
+- **MIUI/HyperOS revokes the grant a few seconds after every enable, and it is not a Babel bug.** `com.miui.securitycenter.remote` watches `enabled_accessibility_services`; every change to the list hands each listed app's APK to `com.miui.guardprovider` to be scanned, and an app that fails the scan is dropped from the list:
+
+  ```
+  VirusScanJobService: onChanged: [«another-a11y-app»/ItsService, com.babel/...BabelAccessibilityService]
+  Babel.AccessibilityService: accessibility service connected
+  AvlEngine: getVirusInfo packageName : com.babel virusLevel : 3
+  CacheInterceptor: Cache hit:«another-a11y-app» / Cache missed:com.babel
+  VirusScanJobService: try to remove: [com.babel]
+  Babel.AccessibilityService: accessibility service torn down
+  ```
+
+  Six to nine seconds from connect to teardown, every time. Babel never switches itself off — there is no `disableSelf`, `setServiceInfo(null)` or `stopSelf` in the tree — and there is no crash, no ANR and no kill: the process stays alive with the service gone, which is precisely the split state the two-settings capability check exists for.
+
+  The discriminator is **not** the installer package. `pm set-installer com.babel com.miui.packageinstaller` makes that field identical to the accessibility app that survives the same scan, and Babel is still dropped. It is the verdict: the surviving app is a cloud cache *hit*, known to the vendor's database, while a self-signed local build is a *miss* and gets judged by the local engines. No app-side change reaches this. Marking Babel trusted in 安全中心's antivirus does, but its whitelist lives in `com.miui.guardprovider`'s private data and is not reachable over adb, so it takes taps on the phone.
+
+  When a device run shows no translations, read `dumpsys accessibility` and grep for `try to remove: [com.babel]` **before** suspecting the pipeline.
 
 Testing the pipeline: a collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.
 
