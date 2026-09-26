@@ -2,6 +2,7 @@ package com.babel.platform.overlay
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -119,5 +120,94 @@ class VerticalTextLayoutTest {
         assertNull(layout("文字", width = 0, height = 200))
         assertNull(layout("文字", width = 200, height = 0))
         assertNull(VerticalTextLayout.layout("文字", 200, 200, maxGlyphPx = 10, minGlyphPx = 20))
+    }
+
+    // ---- whether the balloon can take vertical setting at all --------------
+
+    /**
+     * The balloon that produced the report, with its real numbers.
+     *
+     * A user on a 560dpi phone saw balloon-shaped blanks covering the artwork.
+     * `MIN_GLYPH_SP` is 8, so the smallest type there is 28px, and a column
+     * costs `1 + COLUMN_GAP_RATIO` of that — 35px — while the box is 68 wide
+     * and the padding takes 8 of it. Six characters need two columns at 5 per
+     * column, so 70px of column against 60px of box: **no fit**, at the
+     * smallest type the policy allows.
+     *
+     * The boundary is exactly there: **five** characters make one column of
+     * 35px and fit. The first version of this test used a five-character
+     * string by miscounting, and passed against the unfixed code.
+     *
+     * Before this, the caller asked for a vertical view anyway, the view
+     * painted its background and drew nothing, and the reader lost the
+     * translation and the original together.
+     */
+    @Test
+    fun `a small balloon on a dense screen cannot take vertical setting`() {
+        assertFalse(
+            VerticalTextLayout.fits(
+                text = SIX_CHARACTERS,
+                boxWidthPx = 68,
+                boxHeightPx = 164,
+                density = PHONE_DENSITY,
+            ),
+        )
+    }
+
+    /**
+     * And the same balloon on the emulator can, which is why months of testing
+     * there never showed this. Type is sized in `sp`, so it doubles between
+     * these two screens; the artwork's balloons do not.
+     */
+    @Test
+    fun `the same balloon on a coarser screen can`() {
+        assertTrue(
+            VerticalTextLayout.fits(
+                text = SIX_CHARACTERS,
+                boxWidthPx = 68,
+                boxHeightPx = 164,
+                density = EMULATOR_DENSITY,
+            ),
+        )
+    }
+
+    /** The other three the device reported, all real boxes and real lengths. */
+    @Test
+    fun `the rest of the reported balloons are refused too`() {
+        val reported = listOf(
+            27 to (112 to 254),
+            31 to (142 to 302),
+            14 to (99 to 194),
+        )
+        for ((chars, box) in reported) {
+            val (w, h) = box
+            assertFalse(
+                VerticalTextLayout.fits("字".repeat(chars), w, h, PHONE_DENSITY),
+                "$chars chars in ${w}x$h should not fit vertically at 560dpi",
+            )
+        }
+    }
+
+    @Test
+    fun `a roomy balloon still takes vertical setting`() {
+        assertTrue(
+            VerticalTextLayout.fits(
+                text = "这是一句放得下的台词",
+                boxWidthPx = 300,
+                boxHeightPx = 700,
+                density = PHONE_DENSITY,
+            ),
+        )
+    }
+
+    private companion object {
+        /** What the device reported: six characters, two columns, no fit. */
+        const val SIX_CHARACTERS = "六个字符不行"
+
+        /** 560dpi, the phone the defect was reported from. */
+        const val PHONE_DENSITY = 3.5f
+
+        /** 280dpi, the emulator everything else was measured on. */
+        const val EMULATOR_DENSITY = 1.75f
     }
 }

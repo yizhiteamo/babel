@@ -148,7 +148,23 @@ internal class OverlayWindow(private val context: Context) {
             // lettering looks and how the translation lands on the columns it
             // replaces instead of beside them (`docs/milestones/v2.md`).
             // Accessibility reports no orientation, so V1 stays horizontal.
-            val vertical = translation.style.sourceStyle.orientation == TextOrientation.VERTICAL
+            //
+            // **Unless it will not fit.** Vertical setting runs out of room
+            // sooner than horizontal — a quarter of the box goes to the gaps
+            // between columns — and when it does, `VerticalTextLayout` has
+            // always said the caller should set the line horizontally instead.
+            // Nothing ever did, so the view painted its sampled background and
+            // then drew no text: a balloon-shaped blank covering the artwork,
+            // reported from a device. Measured there, at 560dpi: **six**
+            // characters would not fit a 68x164 balloon vertically, and the
+            // same box takes far more set horizontally.
+            val vertical = translation.style.sourceStyle.orientation == TextOrientation.VERTICAL &&
+                VerticalTextLayout.fits(
+                    text = translation.text,
+                    boxWidthPx = bounds.width,
+                    boxHeightPx = bounds.height,
+                    density = context.resources.displayMetrics.density,
+                )
 
             val existing = views[translation.elementId]
             val held = if (existing != null && existing.matches(vertical, ownWindow)) {

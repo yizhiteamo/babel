@@ -225,7 +225,7 @@ class DefaultTranslationCoordinator(
                 // Same text, same languages — a scroll or re-layout, not new
                 // content. Move the overlay instead of re-translating.
                 existing.element = element
-                existing.translatedText?.let { readyToShow += existing.render(it) }
+                existing.translatedText?.let { readyToShow += show(existing, it) }
                 continue
             }
 
@@ -290,7 +290,35 @@ class DefaultTranslationCoordinator(
         entry.job = null
         clearFailures()
         logger.debug(TAG, "translated ${message.elementId.value}")
-        _renderUpdates.emit(RenderUpdate.Show(listOf(entry.render(message.translatedText))))
+        _renderUpdates.emit(RenderUpdate.Show(listOf(show(entry, message.translatedText))))
+    }
+
+    /**
+     * What this element will show, and a complaint when that is nothing.
+     *
+     * A blank one is a real defect a user reported: the overlay paints its
+     * sampled background whatever happens, so an empty translation covers the
+     * artwork and shows no words — the reader loses both. Two things can
+     * produce one, and the counts here are what tell them apart: a share that
+     * divided into fewer characters than there are balloons, or a provider that
+     * answered with nothing.
+     *
+     * **Lengths only.** Recognised screen text never reaches the log
+     * (`docs/systems/privacy.md`).
+     */
+    private fun show(entry: Tracked, translated: String): RenderedTranslation {
+        val rendered = entry.render(translated)
+        if (rendered.text.isBlank()) {
+            val share = entry.element.share
+            logger.warn(
+                TAG,
+                "blank translation: source ${entry.element.text.length} chars, " +
+                    "provider ${translated.length} chars, " +
+                    (share?.let { "share ${it.index + 1} of ${it.count}, weights ${it.weights}" }
+                        ?: "not shared"),
+            )
+        }
+        return rendered
     }
 
     private fun onFailed(message: Message.Failed) {

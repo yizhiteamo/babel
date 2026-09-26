@@ -46,17 +46,28 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
         val bounds = translation.bounds
         layout = VerticalTextLayout.layout(
             text = translation.text,
-            boxWidthPx = bounds.width - HORIZONTAL_PADDING_PX * 2,
-            boxHeightPx = bounds.height - VERTICAL_PADDING_PX * 2,
-            maxGlyphPx = spToPx(MAX_GLYPH_SP),
-            minGlyphPx = spToPx(MIN_GLYPH_SP),
+            boxWidthPx = bounds.width - VerticalTextLayout.HORIZONTAL_PADDING_PX * 2,
+            boxHeightPx = bounds.height - VerticalTextLayout.VERTICAL_PADDING_PX * 2,
+            maxGlyphPx = spToPx(VerticalTextLayout.MAX_GLYPH_SP),
+            minGlyphPx = spToPx(VerticalTextLayout.MIN_GLYPH_SP),
         )
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
+        // Nothing to say, so nothing is covered — the background is what hides
+        // the original, and hiding it to show nothing leaves the reader with
+        // neither. A reported defect: `VerticalTextLayout.layout` returns null
+        // when even the smallest type will not fit, and this used to paint the
+        // balloon anyway and then return.
+        //
+        // The chooser in `OverlayWindow` now sets such a balloon horizontally
+        // instead, so this is the net rather than the cure.
+        //
         // Rounded rather than filled to the corners: a balloon is an oval, and
         // a rectangle's corners sit outside it ([BalloonShape]).
+        val result = layout ?: return
+
         backgroundPaint.color = background
         val radius = BalloonShape.cornerRadius(width, height)
         canvas.drawRoundRect(
@@ -69,7 +80,6 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
             backgroundPaint,
         )
 
-        val result = layout ?: return
         paint.textSize = result.glyphSizePx.toFloat()
 
         val pitch = result.columnPitchPx
@@ -104,11 +114,8 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
     private companion object {
         const val LIGHT_SURFACE = 0xFFFFFFFF.toInt()
         const val MID_LUMINANCE = 128.0
-        const val HORIZONTAL_PADDING_PX = 4
-        const val VERTICAL_PADDING_PX = 4
 
         /** Same ceiling the horizontal path uses, for the same reason. */
-        const val MAX_GLYPH_SP = 24f
-        const val MIN_GLYPH_SP = 8f
+
     }
 }

@@ -23,6 +23,17 @@ internal object VerticalTextLayout {
      * are hard to follow; a full glyph of air between them is more than manga
      * uses.
      */
+    /**
+     * The type sizes vertical setting may use, and the padding inside the
+     * balloon. Here rather than in the view because [fits] has to answer the
+     * same question the view will, and two copies of a constant is how they
+     * come to disagree.
+     */
+    const val MAX_GLYPH_SP = 24f
+    const val MIN_GLYPH_SP = 8f
+    const val HORIZONTAL_PADDING_PX = 4
+    const val VERTICAL_PADDING_PX = 4
+
     private const val COLUMN_GAP_RATIO = 0.25f
 
     /** Vertical advance per character, as a fraction of the glyph size. */
@@ -72,4 +83,29 @@ internal object VerticalTextLayout {
 
         return content.chunked(perColumn)
     }
+
+    /**
+     * Whether vertical setting can show this at all, in a box of this size.
+     *
+     * Asked **before** the view is chosen, because a balloon that cannot take
+     * vertical text is better set horizontally than left blank — which is what
+     * used to happen, and what a user reported: the overlay paints its sampled
+     * background whatever happens, so a null layout covered the artwork and
+     * showed nothing. The reader lost the translation *and* the original.
+     *
+     * Vertical setting runs out of room sooner than horizontal does, and the
+     * arithmetic says why: a column costs `1 + COLUMN_GAP_RATIO` of the glyph
+     * in width, so a quarter of the box goes to the gaps between columns.
+     * Measured on a 560dpi phone, where `MIN_GLYPH_SP` is 28px: **six**
+     * characters would not fit a 68x164 balloon vertically, while the same box
+     * takes far more horizontally.
+     */
+    fun fits(text: String, boxWidthPx: Int, boxHeightPx: Int, density: Float): Boolean =
+        layout(
+            text = text,
+            boxWidthPx = boxWidthPx - HORIZONTAL_PADDING_PX * 2,
+            boxHeightPx = boxHeightPx - VERTICAL_PADDING_PX * 2,
+            maxGlyphPx = (MAX_GLYPH_SP * density).toInt(),
+            minGlyphPx = (MIN_GLYPH_SP * density).toInt(),
+        ) != null
 }
