@@ -27,6 +27,12 @@
     <string name="runtime_action_pause">Pause</string>
     <string name="runtime_action_resume">Resume</string>
 
+    <!-- Source language -->
+    <string name="source_language_title">Translate from</string>
+    <string name="source_language_auto">Detect automatically</string>
+    <string name="source_language_auto_value">Automatic</string>
+    <string name="source_language_explanation">Usually best left automatic. Set it when detection gets the language wrong — a page of English read as Japanese, say — and nothing is translated as a result.</string>
+
     <!-- Target language -->
     <string name="language_section_title">Translate into</string>
     <string name="language_none_selected">—</string>

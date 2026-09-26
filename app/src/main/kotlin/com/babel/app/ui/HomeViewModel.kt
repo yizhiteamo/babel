@@ -6,6 +6,7 @@ import com.babel.core.model.Capability
 import com.babel.core.model.CapabilityState
 import com.babel.core.model.CapabilityStatus
 import com.babel.core.model.LanguageTag
+import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.runtime.CapabilityChecker
@@ -233,6 +234,23 @@ class HomeViewModel @Inject constructor(
     fun startMangaMode() = screenCapture.start()
 
     fun stopMangaMode() = screenCapture.stop()
+
+    /**
+     * @param tag null to go back to detecting it.
+     *
+     * The escape hatch for when detection is wrong, which it can be: a page of
+     * English read by the Japanese recogniser came back as nonsense and was
+     * translated as nonsense (`docs/milestones/v2.md`). Everything under this
+     * — the setting, the resolver, the provider request — has worked all
+     * along; until now there was simply no way to reach it.
+     */
+    fun selectSourceLanguage(tag: LanguageTag?) {
+        viewModelScope.launch {
+            settingsRepository.setSourceLanguageMode(
+                if (tag == null) SourceLanguageMode.AutoDetect else SourceLanguageMode.Manual(tag),
+            )
+        }
+    }
 
     fun selectTargetLanguage(tag: LanguageTag?) {
         viewModelScope.launch {

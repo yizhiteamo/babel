@@ -24,6 +24,12 @@
     <string name="runtime_action_pause">暂停</string>
     <string name="runtime_action_resume">继续</string>
 
+    <!-- 源语言 -->
+    <string name="source_language_title">原文语言</string>
+    <string name="source_language_auto">自动检测</string>
+    <string name="source_language_auto_value">自动检测</string>
+    <string name="source_language_explanation">通常保持自动即可。只有在检测认错语言时才需要指定——例如一页英文被当成日文，结果什么都没译出来。</string>
+
     <!-- 目标语言 -->
     <string name="language_section_title">译入语言</string>
     <string name="language_none_selected">—</string>

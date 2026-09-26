@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
 import com.babel.core.model.ApiKey
 import com.babel.core.model.LanguageTag
+import com.babel.core.model.SourceLanguageMode
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.ChatPreset
 import com.babel.domain.settings.RemoteProviderSettings
@@ -71,6 +72,7 @@ fun BabelApp(
     RefreshOnResume(viewModel::refreshOnReturn)
 
     var showLanguagePicker by remember { mutableStateOf(false) }
+    var showSourcePicker by remember { mutableStateOf(false) }
     var showRemoteSetup by remember { mutableStateOf(false) }
     var showLicences by remember { mutableStateOf(false) }
 
@@ -126,6 +128,36 @@ fun BabelApp(
                     onOpenBattery = { context.openBatterySettings() },
                     onOpenAppSettings = { context.openAppSettings() },
                 )
+            }
+
+            // Before the target, because a reader asks "what language is this"
+            // before "translate it into what".
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.source_language_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = when (val mode = state.settings.sourceLanguageMode) {
+                            is SourceLanguageMode.Manual -> mode.language.value
+                            SourceLanguageMode.AutoDetect ->
+                                stringResource(R.string.source_language_auto_value)
+                        },
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.source_language_explanation),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = { showSourcePicker = true }) {
+                        Text(stringResource(R.string.language_action_change))
+                    }
+                }
             }
 
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -189,8 +221,23 @@ fun BabelApp(
         }
     }
 
+    if (showSourcePicker) {
+        LanguagePickerDialog(
+            title = stringResource(R.string.source_language_title),
+            defaultLabel = stringResource(R.string.source_language_auto),
+            languages = viewModel.supportedLanguages(),
+            onSelect = {
+                viewModel.selectSourceLanguage(it)
+                showSourcePicker = false
+            },
+            onDismiss = { showSourcePicker = false },
+        )
+    }
+
     if (showLanguagePicker) {
         LanguagePickerDialog(
+            title = stringResource(R.string.language_section_title),
+            defaultLabel = stringResource(R.string.language_follow_system),
             languages = viewModel.supportedLanguages(),
             onSelect = {
                 viewModel.selectTargetLanguage(it)
@@ -1025,18 +1072,27 @@ private fun PermissionCard(
  * work here rather than a guess at what the lazy one wanted.
  */
 @Composable
+/**
+ * @param title which language is being chosen — the two cards ask different
+ *   questions of the same list.
+ * @param defaultLabel what the first entry says, because "follow the system"
+ *   and "detect it" are the two different ways of not choosing. Both pass null
+ *   to [onSelect].
+ */
 private fun LanguagePickerDialog(
+    title: String,
+    defaultLabel: String,
     languages: List<LanguageTag>,
     onSelect: (LanguageTag?) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.language_section_title)) },
+        title = { Text(title) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 TextButton(onClick = { onSelect(null) }) {
-                    Text(stringResource(R.string.language_follow_system))
+                    Text(defaultLabel)
                 }
                 languages.forEach { tag ->
                     TextButton(onClick = { onSelect(tag) }) {
