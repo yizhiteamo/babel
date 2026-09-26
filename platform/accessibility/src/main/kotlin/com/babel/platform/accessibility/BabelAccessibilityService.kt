@@ -263,9 +263,16 @@ class BabelAccessibilityService : AccessibilityService() {
         // bitmap, so a second one must not start alongside it. Skipping rather
         // than queueing is deliberate: whatever provoked this will still be on
         // screen when the running scan or the next tick looks.
-        if (!imageScanning.tryLock()) return
+        if (!imageScanning.tryLock()) {
+            // TEMPORARY diagnostic: manga mode stops silently and only a
+            // force-stop revives it. Every early return here is silent, so the
+            // hunt starts by naming which one repeats.
+            logger.debug(TAG, "image scan skipped: a scan is already running")
+            return
+        }
         try {
             if (mangaMode.state.value != CaptureState.ACTIVE) {
+                logger.debug(TAG, "image scan skipped: manga mode ${mangaMode.state.value}")
                 standDownImagePath()
                 return
             }
@@ -280,12 +287,14 @@ class BabelAccessibilityService : AccessibilityService() {
             // does for nodes, not less (`docs/systems/scope.md`).
             val front = activePackage()
             if (!scopePolicy.isInScope(front)) {
+                logger.debug(TAG, "image scan skipped: out of scope")
                 standDownImagePath()
                 return
             }
 
             val layout = readScreenLayout()
             if (!layout.imagePathOwnsScreen) {
+                logger.debug(TAG, "image scan skipped: the node path owns this screen")
                 // The node path can read this screen, so it should: it is
                 // faster and more accurate than recognising pixels, and running
                 // both would stack two layers of overlays.

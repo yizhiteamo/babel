@@ -14,6 +14,7 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -76,7 +77,10 @@ class AccessibilityScreenshotSource @Inject constructor(
         return pacing.withLock {
             val since = SystemClock.elapsedRealtime() - lastCaptureAt
             if (since < MIN_INTERVAL_MS) delay(MIN_INTERVAL_MS - since)
-            takeScreenshot(current).also { lastCaptureAt = SystemClock.elapsedRealtime() }
+            val frame = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { takeScreenshot(current) }
+            lastCaptureAt = SystemClock.elapsedRealtime()
+            if (frame == null) logger.warn(TAG, "no screenshot within ${CAPTURE_TIMEOUT_MS}ms")
+            frame
         }
     }
 
@@ -135,5 +139,27 @@ class AccessibilityScreenshotSource @Inject constructor(
          * itself, and costs nothing: nothing here wants screenshots faster.
          */
         const val MIN_INTERVAL_MS = 400L
+
+        /**
+         * How long to wait for the platform to answer before giving up on a
+         * frame.
+         *
+         * `takeScreenshot` promises a callback and does not promise to make
+         * one: neither `onSuccess` nor `onFailure` is guaranteed to arrive.
+         * Waiting for it without a bound is not just a slow scan — this runs
+         * under [pacing], and the caller holds a second lock across the whole
+         * scan, so one call that never answers stops manga mode for the life of
+         * the process. Every tick afterwards finds the lock held and returns
+         * silently; only a restart clears it, which is exactly the shape of a
+         * failure seen on an emulator and not reproduced since
+         * (`docs/milestones/v2.md`).
+         *
+         * Timing out is a state the caller already handles: it is the same "no
+         * frame this time" that `onFailure` produces, and the next scan tries
+         * again. Screenshots answer in the low hundreds of milliseconds, so
+         * five seconds is far outside the working range and far inside
+         * forever.
+         */
+        const val CAPTURE_TIMEOUT_MS = 5_000L
     }
 }
