@@ -184,6 +184,28 @@ When documentation becomes large:
 - link instead of duplicating
 - update existing truth instead of appending chronological notes
 
+### Where a hard-won finding goes
+
+Its default home is the matching `docs/systems/*.md`. It belongs in **this**
+file only if it passes all three:
+
+- **It constrains any future change** — not "here is how it works" but "break
+  this and something breaks". The behavioral invariants further down are the
+  model.
+- **The code cannot tell you.** Someone reading the type finds what it does but
+  not why it must stay that way, because the reason is a measurement or a
+  platform quirk.
+- **It survives compression to a few lines.** The evidence, the numbers and the
+  story stay in `docs/`; the rule and a link are what land here.
+
+Whichever side it lands on, it is written **once** and referenced from the
+other, never restated there: two copies drift, and the stale one is always the
+one that gets read.
+
+Apply the test on the way in. Every session turns up something worth keeping and
+nothing ever asks to be deleted, so this file grows by default; a section past a
+screenful is the signal to move its body out and leave a link.
+
 ---
 
 ## Data and Privacy Rules
