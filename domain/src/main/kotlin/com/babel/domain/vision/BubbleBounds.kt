@@ -52,6 +52,26 @@ object BubbleBounds {
     private const val MAX_FRAME_DENOMINATOR = 5
 
     /**
+     * How many times its own area a box may gain before the growth is read as
+     * having found nothing — for callers that ask for it, which in practice
+     * means a region with no detected balloon around it.
+     *
+     * Measured across nine pages on a device. A box inside a real balloon is
+     * stopped early by the outline: every enclosed region came back at **1.6x
+     * or less**, and even the regions whose balloon the detector missed stayed
+     * at **1.7x or less**, because the drawn outline still stopped them. Text
+     * with no balloon at all has nothing to stop it, and ran to **3.5x, 4.3x,
+     * 7.6x, 9.3x and 11.5x** — one of them 65% of the page wide. Those are the
+     * boxes a user reported as covering the artwork, and, where several sat in
+     * one margin, as covering each other.
+     *
+     * So the threshold sits in the gap the measurement left between 1.7 and
+     * 2.0, and it is the growth itself that discriminates: an outline that
+     * stops the box is what makes a balloon a balloon.
+     */
+    private const val MAX_OPEN_GROWTH = 2.0
+
+    /**
      * Returns [start] unchanged when the text turns out not to be inside
      * anything.
      *
@@ -70,17 +90,29 @@ object BubbleBounds {
      * @param isBackground whether the pixel at (x, y) looks like the region's
      *   background — the caller decides what that means, having sampled the
      *   colour.
+     * @param capOpenGrowth stop at [MAX_OPEN_GROWTH] times the starting area as
+     *   well as at [limit]. Asked for when nothing is known to enclose this
+     *   text, where unchecked growth paints over the art rather than filling a
+     *   balloon.
      */
     fun expand(
         start: TextBounds,
         limit: TextBounds,
         isBackground: (Int, Int) -> Boolean,
+        capOpenGrowth: Boolean = false,
     ): TextBounds {
         if (start.width <= 0 || start.height <= 0) return start
 
         val step = maxOf(2, minOf(start.width, start.height) / 16)
         val maxWidth = limit.width * MAX_FRAME_NUMERATOR / MAX_FRAME_DENOMINATOR
         val maxHeight = limit.height * MAX_FRAME_NUMERATOR / MAX_FRAME_DENOMINATOR
+
+        val maxArea = if (capOpenGrowth) {
+            start.width.toLong() * start.height * MAX_OPEN_GROWTH
+        } else {
+            Double.MAX_VALUE
+        }
+        fun tooLarge(w: Int, h: Int) = w.toLong() * h > maxArea
 
         var left = start.left
         var top = start.top
@@ -107,7 +139,9 @@ object BubbleBounds {
             growing = false
 
             if (isColumnClear(left - step, top, bottom, isBackground)) {
-                if (left - step < limit.left || right - (left - step) > maxWidth) {
+                if (left - step < limit.left || right - (left - step) > maxWidth ||
+                    tooLarge(right - (left - step), bottom - top)
+                ) {
                     unbounded = true
                 } else {
                     left -= step
@@ -115,7 +149,9 @@ object BubbleBounds {
                 }
             }
             if (isColumnClear(right + step, top, bottom, isBackground)) {
-                if (right + step > limit.right || (right + step) - left > maxWidth) {
+                if (right + step > limit.right || (right + step) - left > maxWidth ||
+                    tooLarge((right + step) - left, bottom - top)
+                ) {
                     unbounded = true
                 } else {
                     right += step
@@ -129,7 +165,9 @@ object BubbleBounds {
             growing = false
 
             if (isRowClear(top - step, left, right, isBackground)) {
-                if (top - step < limit.top || bottom - (top - step) > maxHeight) {
+                if (top - step < limit.top || bottom - (top - step) > maxHeight ||
+                    tooLarge(right - left, bottom - (top - step))
+                ) {
                     unbounded = true
                 } else {
                     top -= step
@@ -137,7 +175,9 @@ object BubbleBounds {
                 }
             }
             if (isRowClear(bottom + step, left, right, isBackground)) {
-                if (bottom + step > limit.bottom || (bottom + step) - top > maxHeight) {
+                if (bottom + step > limit.bottom || (bottom + step) - top > maxHeight ||
+                    tooLarge(right - left, (bottom + step) - top)
+                ) {
                     unbounded = true
                 } else {
                     bottom += step

@@ -405,6 +405,12 @@ class CaptureTextSource @Inject internal constructor(
             // inscribed shape that growing produces.
             limit = enclosure ?: FrameSampler.frameBounds(frame),
             isBackground = FrameSampler.backgroundTest(frame, background),
+            // With no balloon around this text there is no interior to find, and
+            // the frame is far too loose a stop: measured, such boxes ran to
+            // nine and eleven times their own area, over the artwork and over
+            // each other. A balloon's outline stops the growth by itself, which
+            // is why the cap does not affect enclosed regions.
+            capOpenGrowth = enclosure == null,
         )
         return Placement(bubble, style)
     }

@@ -85,7 +85,7 @@ class BubbleBoundsTest {
     fun `text with nothing around it is left alone`() {
         val text = bounds(400, 400, 460, 500)
 
-        assertEquals(text, BubbleBounds.expand(text, frame) { _, _ -> true })
+        assertEquals(text, BubbleBounds.expand(text, frame, { _, _ -> true }))
     }
 
     /**
@@ -128,6 +128,59 @@ class BubbleBoundsTest {
     fun `an empty box is returned untouched`() {
         val empty = bounds(10, 10, 10, 10)
 
-        assertEquals(empty, BubbleBounds.expand(empty, frame) { _, _ -> true })
+        assertEquals(empty, BubbleBounds.expand(empty, frame, { _, _ -> true }))
+    }
+
+    /**
+     * A wide open area of one colour — sky, ground, a black margin — with no
+     * balloon anywhere in it. Uncapped, the box takes the whole of it.
+     *
+     * This is the scene a user reported twice over. Measured on nine pages: a
+     * region with no detected balloon and nothing to stop it grew to 3.5x,
+     * 4.3x, 7.6x, 9.3x and 11.5x its own area, one of them 65% of the page
+     * wide. On `jap-mag-12` that is a box over the artwork; on `jap-mag-17`
+     * and `-18`, where several such texts share one margin, the boxes reach
+     * into each other and the translations stack.
+     */
+    @Test
+    fun `text in an open area grows to fill it`() {
+        val open = bounds(100, 100, 700, 900)
+        val text = bounds(300, 400, 400, 700)
+
+        val grown = BubbleBounds.expand(text, frame, rectangularBubble(open))
+
+        val ratio = (grown.width.toLong() * grown.height).toDouble() /
+            (text.width.toLong() * text.height)
+        assertTrue(ratio > 3.0, "grew only ${ratio}x; the scene is meant to run away")
+    }
+
+    /** The same scene, with the cap the caller asks for when nothing encloses. */
+    @Test
+    fun `capped growth keeps the lettering box in an open area`() {
+        val open = bounds(100, 100, 700, 900)
+        val text = bounds(300, 400, 400, 700)
+
+        val grown = BubbleBounds.expand(text, frame, rectangularBubble(open), capOpenGrowth = true)
+
+        assertEquals(text, grown)
+    }
+
+    /**
+     * The cap must not cost a real balloon the detector happened to miss.
+     *
+     * Those were measured too, and they behave differently: the drawn outline
+     * stops the box on its own, so every one of them came back at **1.7x or
+     * less**. The threshold sits in the gap between that and the 2.0x the
+     * runaway cases all exceeded.
+     */
+    @Test
+    fun `capped growth still fills a balloon the detector missed`() {
+        val balloon = bounds(300, 350, 560, 760)
+        val text = bounds(330, 380, 530, 730)
+
+        val grown = BubbleBounds.expand(text, frame, rectangularBubble(balloon), capOpenGrowth = true)
+
+        assertTrue(grown.width > text.width, "the balloon's width went unused")
+        assertTrue(grown.height > text.height, "the balloon's height went unused")
     }
 }
