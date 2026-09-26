@@ -523,9 +523,38 @@ class CaptureTextSource @Inject internal constructor(
 
         /**
          * How many times to ask before giving up and leaving it to the next
-         * tick. Three bounds the wait at about 0.7s, which is shorter than the
-         * 1.5s tick it replaces — a screen that is still moving after that is
-         * animating, not loading.
+         * tick. Three bounds the wait at about a second, which is shorter than
+         * the 1.5s tick it replaces.
+         *
+         * ## Widening this was tried, measured, and reverted
+         *
+         * Every scroll produced a `never came to rest` before the scan that did
+         * the work, so the window looked too narrow. Measured with the limit
+         * lifted right out of the way, over gestures checked to have actually
+         * moved the page: 2 looks twice (514ms), 3 twice (1015ms), **4 twice
+         * (1541ms)**, never a fifth. So three does clip the tail, and a 1.8s
+         * budget removes the `never came to rest` entirely.
+         *
+         * It bought nothing. Four drags each, from the same place, timed from
+         * the scroll event to the first translation on screen:
+         *
+         * | | Times | Mean |
+         * |---|---|---|
+         * | 1.0s (this) | 3.52, 3.58, 3.22, 2.65s | **3.24s** |
+         * | 1.8s | 2.87, 4.38, 2.80, 3.54s | **3.40s** |
+         *
+         * Slightly worse, inside the noise. The reason is in the logs rather
+         * than the numbers: **the first scan after a scroll is invalidated
+         * whatever it does.** A fling keeps firing `TYPE_VIEW_SCROLLED` for a
+         * second or more, each one clears the page, and the scan in flight is
+         * dropped when it tries to publish. Waiting longer only makes a doomed
+         * scan die later, and delays the one that replaces it.
+         *
+         * What the data points at instead is *when* the scan starts, not how
+         * long it waits: the event loop delays 250ms from the **first** scroll
+         * event of a burst rather than settling after the **last**. That is a
+         * change in `BabelAccessibilityService`, and it is unmeasured — so it
+         * stays a note here rather than a constant edited on a hunch.
          */
         const val SETTLE_ATTEMPTS = 3
 
