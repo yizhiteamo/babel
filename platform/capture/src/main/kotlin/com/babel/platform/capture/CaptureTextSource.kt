@@ -104,10 +104,12 @@ class CaptureTextSource @Inject internal constructor(
         // re-check learns nothing.
         var frame: Bitmap? = null
         var signature: IntArray? = null
+        var looks = 0
         for (attempt in 0 until SETTLE_ATTEMPTS) {
             if (attempt > 0) delay(SETTLE_RECHECK_MS)
 
             val candidate = frames.latestFrame() ?: return
+            looks += 1
             val candidateSignature = FrameSignature.of(candidate)
             val settled = FrameChangeDetector.hasSettled(lastSeen, candidateSignature)
             lastSeen = candidateSignature
@@ -115,6 +117,18 @@ class CaptureTextSource @Inject internal constructor(
             if (settled) {
                 frame = candidate
                 signature = candidateSignature
+                // Only when it took more than one look. Every scan settles,
+                // so logging the ordinary case would bury everything else at
+                // one line per 1.5s tick; what is worth seeing is how long a
+                // moving screen actually takes, which is the number
+                // [SETTLE_ATTEMPTS] has to cover.
+                if (looks > 1) {
+                    logger.debug(
+                        TAG,
+                        "settled on look $looks after " +
+                            "${System.currentTimeMillis() - captureStarted}ms",
+                    )
+                }
                 break
             }
             // Still moving. The bitmap is the largest object here, so it goes
@@ -125,7 +139,11 @@ class CaptureTextSource @Inject internal constructor(
         // Never came to rest — an animation, a video, a page still loading.
         // Leave it to the next tick rather than reading a smear.
         if (frame == null || signature == null) {
-            logger.debug(TAG, "skipped: the screen never came to rest")
+            logger.debug(
+                TAG,
+                "skipped: still moving after $looks looks and " +
+                    "${System.currentTimeMillis() - captureStarted}ms",
+            )
             return
         }
         val captureMs = System.currentTimeMillis() - captureStarted
@@ -257,24 +275,27 @@ class CaptureTextSource @Inject internal constructor(
             pages.read(page) { region ->
                 read += 1
                 // Cleared while this page was being read — the user has moved
-                // on. Stop publishing; the rest of the reading is already paid
-                // for but none of it belongs on the screen.
-                if (abandoned) return@read
+                // on. Answering false stops the reader: measured on a device,
+                // carrying on cost 1997ms of recognition for a screen that was
+                // already gone, and the screen the user *was* looking at waited
+                // behind it.
+                if (abandoned) return@read false
 
                 // Already guaranteed when the frame was cropped to it.
                 val outside = crop == null && within != null && !region.bounds.centreIsIn(within)
                 if (outside || region.bounds.isExcludedBy(exclusionsInPage)) {
                     onInterface += 1
-                    return@read
+                    return@read true
                 }
 
                 // Null while this balloon is waiting for the next one.
-                val ready = grouper.offer(region) ?: return@read
+                val ready = grouper.offer(region) ?: return@read true
 
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
                 if (!publish(ready)) abandoned = true
+                !abandoned
             }
 
             // A page can end on an unfinished balloon — the sentence carries

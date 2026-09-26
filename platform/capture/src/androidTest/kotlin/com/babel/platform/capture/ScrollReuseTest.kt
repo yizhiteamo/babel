@@ -113,7 +113,7 @@ class ScrollReuseTest {
         val reader = readerFor(detector, engine)
 
         val first = mutableListOf<TextRegion>()
-        reader.read(frame()) { first += it }
+        reader.read(frame()) { first += it; true }
         assertEquals(3, engine.calls, "the first screen has to be read")
         assertEquals(3, first.size)
 
@@ -122,7 +122,7 @@ class ScrollReuseTest {
         detector.bubbles = (scrolled(by = 700) + box(400, 1100, 280, 160)).map { bubble(it) }
 
         val second = mutableListOf<TextRegion>()
-        reader.read(frame()) { second += it }
+        reader.read(frame()) { second += it; true }
 
         assertEquals(4, engine.calls, "only the newly visible balloon should be read")
         assertEquals(4, second.size)
@@ -142,7 +142,7 @@ class ScrollReuseTest {
         val detector = StagedDetector(screen.map { bubble(it) })
         val reader = readerFor(detector, engine)
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(3, engine.calls)
 
         // Nothing in common: a chapter ending, or the user leaving for another
@@ -154,7 +154,7 @@ class ScrollReuseTest {
             box(210, 1133, 145, 275),
         ).map { bubble(it) }
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(6, engine.calls, "a page that changed has to be read from scratch")
     }
 
@@ -164,7 +164,7 @@ class ScrollReuseTest {
         val detector = StagedDetector(screen.map { bubble(it) })
         val reader = readerFor(detector, engine)
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(3, engine.calls)
 
         // Releasing is what happens when the user turns manga mode off. Coming
@@ -172,7 +172,7 @@ class ScrollReuseTest {
         // looking at before would be a reading of the wrong thing.
         reader.release()
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(6, engine.calls, "nothing should survive a release")
     }
 
@@ -182,7 +182,7 @@ class ScrollReuseTest {
         val detector = StagedDetector(screen.map { bubble(it) })
         val reader = readerFor(detector, engine)
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(3, engine.calls)
 
         // The same three, scrolled, plus one running off the bottom and one cut
@@ -196,7 +196,7 @@ class ScrollReuseTest {
             ).map { bubble(it) }
 
         val second = mutableListOf<TextRegion>()
-        reader.read(frame()) { second += it }
+        reader.read(frame()) { second += it; true }
 
         assertEquals(3, engine.calls, "neither cut balloon should have been read")
         assertEquals(3, second.size, "and neither should have reached the screen")
@@ -208,12 +208,12 @@ class ScrollReuseTest {
         val detector = StagedDetector(screen.map { bubble(it) })
         val reader = readerFor(detector, engine)
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
 
         // Only its top 100px are on screen; the balloon is 340 tall.
         detector.bubbles = (scrolled(by = 700) + box(400, HEIGHT - 100, 280, 340))
             .map { bubble(it) }
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(3, engine.calls, "still cut")
 
         // Scrolled another 300. The two balloons that stayed on screen carry
@@ -226,7 +226,7 @@ class ScrollReuseTest {
             ).map { bubble(it) }
 
         val third = mutableListOf<TextRegion>()
-        reader.read(frame()) { third += it }
+        reader.read(frame()) { third += it; true }
         assertEquals(4, engine.calls, "the balloon should be read now that it is whole")
         assertEquals(3, third.size)
     }
@@ -242,7 +242,7 @@ class ScrollReuseTest {
         val reader = readerFor(detector, engine)
 
         val only = mutableListOf<TextRegion>()
-        reader.read(frame()) { only += it }
+        reader.read(frame()) { only += it; true }
         assertEquals(4, engine.calls, "an unplaceable screen reads everything on it")
         assertEquals(4, only.size)
     }
@@ -287,15 +287,15 @@ class ScrollReuseTest {
         val detector = StagedDetector(pageAt(0))
         val reader = readerFor(detector, engine)
 
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(3, engine.calls, "the first screen")
 
         detector.bubbles = pageAt(700)
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(4, engine.calls, "one balloon has come into view")
 
         detector.bubbles = pageAt(1400)
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(6, engine.calls, "two more have")
 
         // All the way back. The first screen's balloons scrolled off two
@@ -304,7 +304,7 @@ class ScrollReuseTest {
         // back read and paid for the same balloons a second time.
         detector.bubbles = pageAt(0)
         val back = mutableListOf<TextRegion>()
-        reader.read(frame()) { back += it }
+        reader.read(frame()) { back += it; true }
 
         assertEquals(6, engine.calls, "scrolling back should read nothing at all")
         assertEquals(3, back.size, "and should still put all three on screen")
@@ -315,7 +315,7 @@ class ScrollReuseTest {
         val engine = CountingEngine()
         val detector = StagedDetector(pageAt(0))
         val reader = readerFor(detector, engine)
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
 
         // Twenty small scrolls. Accumulating one recovered offset onto the last
         // would gather about a pixel of error each time and eventually walk out
@@ -323,7 +323,7 @@ class ScrollReuseTest {
         // page memory every frame cannot.
         for (step in 1..20) {
             detector.bubbles = pageAt(step * 40)
-            reader.read(frame()) { }
+            reader.read(frame()) { true }
         }
 
         // Counted as a difference rather than a total, because how many
@@ -332,7 +332,7 @@ class ScrollReuseTest {
         val travelled = engine.calls
         detector.bubbles = pageAt(0)
         val back = mutableListOf<TextRegion>()
-        reader.read(frame()) { back += it }
+        reader.read(frame()) { back += it; true }
 
         assertEquals(
             travelled,
@@ -347,7 +347,7 @@ class ScrollReuseTest {
         val engine = CountingEngine()
         val detector = StagedDetector(pageAt(0))
         val reader = readerFor(detector, engine)
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(3, engine.calls)
 
         // A pinch. Every width and height changes, so no offset can be
@@ -357,7 +357,7 @@ class ScrollReuseTest {
         val zoomed = pageAt(0, scale = 1.2f)
         detector.bubbles = zoomed
         var shown = 0
-        reader.read(frame()) { shown += 1 }
+        reader.read(frame()) { shown += 1; true }
         assertEquals(zoomed.size, shown, "a zoomed screen has to be read again")
         assertEquals(3 + zoomed.size, engine.calls)
 
@@ -366,12 +366,60 @@ class ScrollReuseTest {
         // would put one balloon's words into another.
         val before = engine.calls
         detector.bubbles = pageAt(0)
-        reader.read(frame()) { }
+        reader.read(frame()) { true }
         assertEquals(
             before + 3,
             engine.calls,
             "nothing should survive the zoom in either direction",
         )
+    }
+
+    @Test
+    fun sayingNoStopsTheReadRatherThanFinishingThePage() = runBlocking {
+        val engine = CountingEngine()
+        val detector = StagedDetector(screen.map { bubble(it) })
+        val reader = readerFor(detector, engine)
+
+        // What a scroll landing mid-read does: the screen being read is gone,
+        // so the caller stops wanting it. Measured on a device before this was
+        // honoured — 1997ms of recognition finished for a page whose every
+        // region was then dropped, while the screen the user was looking at
+        // waited behind it.
+        var handed = 0
+        reader.read(frame()) {
+            handed += 1
+            false
+        }
+
+        assertEquals(1, handed, "the caller should be asked once and then left alone")
+        assertEquals(1, engine.calls, "and nothing after the first balloon should be read")
+    }
+
+    @Test
+    fun whatWasReadBeforeStoppingIsStillRemembered() = runBlocking {
+        val engine = CountingEngine()
+        val detector = StagedDetector(screen.map { bubble(it) })
+        val reader = readerFor(detector, engine)
+
+        // Stopped after two of the three. Two and not one because the memory
+        // has to be able to place the next frame, and one agreeing pair is a
+        // coincidence rather than a scroll (`ScrolledBalloons`) — a scan
+        // abandoned after a single balloon leaves nothing to match against, and
+        // the replacement reads the screen from scratch. On a real page the
+        // stop lands well past that; this is the fixture being small.
+        var handed = 0
+        reader.read(frame()) { handed += 1; handed < 2 }
+        assertEquals(2, engine.calls)
+
+        // The scan that replaces the abandoned one sees the same screen. What
+        // was read before the stop carries over, which is why the re-read costs
+        // a fraction of the first — measured at 227ms against 1997ms on the
+        // device.
+        val again = mutableListOf<TextRegion>()
+        reader.read(frame()) { again += it; true }
+
+        assertEquals(3, again.size, "the replacement scan puts the whole screen up")
+        assertEquals(3, engine.calls, "having read only the one it never got to")
     }
 
     private companion object {

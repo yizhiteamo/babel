@@ -201,7 +201,7 @@ class WebtoonScrollBenchmarkTest {
             val window = Bitmap.createBitmap(scaled, 0, offset, SCREEN_WIDTH, VIEWPORT)
             val found = mutableListOf<TextRegion>()
             val started = System.currentTimeMillis()
-            reader.read(window) { found += it }
+            reader.read(window) { found += it; true }
             val elapsed = System.currentTimeMillis() - started
             window.recycle()
 

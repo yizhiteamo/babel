@@ -34,9 +34,18 @@ internal interface PageReader {
      * caller that publishes as it goes can put the first one on screen in about
      * a second and a half instead.
      *
-     * [onRegion] is called on the reading coroutine, in reading order.
+     * [onRegion] is called on the reading coroutine, in reading order, and
+     * answers whether the rest of the page is still wanted. **False stops the
+     * read.**
+     *
+     * That is not a nicety. A scroll landing mid-read means the screen being
+     * read is gone, and measured on a device the reader carried on anyway:
+     * 1997ms spent finishing a page whose every region was then dropped, while
+     * the screen the user was actually looking at waited its turn. Nothing read
+     * before the stop is wasted — it is remembered, which is why the re-read
+     * that follows costs a fraction of the first.
      */
-    suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit)
+    suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean)
 
     /** Lets go of loaded models. Reading again afterwards reloads them. */
     suspend fun release() = Unit
@@ -63,10 +72,15 @@ internal class GroupingPageReader @Inject constructor(
      * over early. The streaming shape belongs to the caller, not to every
      * reader.
      */
-    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
+    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean) {
         val lines = recognizer.recognize(frame)
         if (lines.isEmpty()) return
-        grouper.group(lines).forEach { onRegion(it) }
+        for (region in grouper.group(lines)) {
+            // The recognition is already paid for on this path, so stopping
+            // saves nothing here. It is still honoured: a caller that has said
+            // it no longer wants the page should not keep being handed it.
+            if (!onRegion(region)) return
+        }
     }
 }
 
@@ -118,7 +132,7 @@ internal class DetectingPageReader @Inject constructor(
      */
     private data class ReadBalloon(val box: TextBounds, val lines: List<RecognizedLine>)
 
-    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Unit) {
+    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean) {
         // Unavailable used to be the normal state and is now the broken one:
         // the detector ships with the app (ADR 011), so this is false only when
         // a load has failed. The older path still works, which is what makes
@@ -217,6 +231,7 @@ internal class DetectingPageReader @Inject constructor(
 
         val thisPage = ArrayList<ReadBalloon>(readable.size)
         var reused = 0
+        var stopped = false
         for (bubble in readable) {
             val remembered = shift?.let { moved ->
                 pageMemory.firstOrNull { ScrolledBalloons.isSame(it.box, bubble.text, moved) }
@@ -236,11 +251,19 @@ internal class DetectingPageReader @Inject constructor(
             // Assembled from this frame's detection either way. Only the
             // reading is reused; the balloon outline, the placement and the
             // sound-effect test all come from what is on screen now.
-            assemble(bubble, lines)?.let { onRegion(it) }
+            val region = assemble(bubble, lines)
+            if (region != null && !onRegion(region)) {
+                // The screen this was being read from is gone. What has been
+                // read is still remembered below — it is the same page, and the
+                // scan that replaces this one will reuse it.
+                logger.debug(TAG, "stopped after $reused reused of ${readable.size}")
+                stopped = true
+                break
+            }
         }
         remember(thisPage, offset, frame.height)
 
-        if (shift != null) {
+        if (shift != null && !stopped) {
             logger.debug(
                 TAG,
                 "page at ${offset}px; reused $reused of ${readable.size}, " +

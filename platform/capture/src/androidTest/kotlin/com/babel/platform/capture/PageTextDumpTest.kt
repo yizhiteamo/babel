@@ -116,7 +116,7 @@ class PageTextDumpTest {
             }
 
             val regions = mutableListOf<TextRegion>()
-            reader.read(page) { regions += it }
+            reader.read(page) { regions += it; true }
 
             println("PAGETEXT")
             println("PAGETEXT === ${file.name} (${page.width}x${page.height}) ===")
