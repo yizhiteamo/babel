@@ -76,4 +76,32 @@ class PageLanguageTest {
         page.reset()
         assertEquals(PageLanguage.Verdict.UNDECIDED, page.verdict)
     }
+
+    /**
+     * Hangul settles a page the way kana does, and takes precedence: a Korean
+     * page read by a Japanese engine comes back full of invented kana
+     * (measured on `kr-mag-01`), so a page holding both is Korean.
+     */
+    @Test
+    fun `one Hangul balloon settles the page as Korean`() {
+        val page = PageLanguage()
+        page.observe("이부키, 뭐해?")
+        assertEquals(PageLanguage.Verdict.KOREAN, page.verdict)
+    }
+
+    @Test
+    fun `Hangul wins over invented kana on the same page`() {
+        val page = PageLanguage()
+        page.observe("olデヲル号おH?")
+        assertEquals(PageLanguage.Verdict.JAPANESE, page.verdict)
+        page.observe("이부키, 뭐해?")
+        assertEquals(PageLanguage.Verdict.KOREAN, page.verdict)
+    }
+
+    @Test
+    fun `a Japanese page is never called Korean`() {
+        val page = PageLanguage()
+        japanese.forEach(page::observe)
+        assertEquals(PageLanguage.Verdict.JAPANESE, page.verdict)
+    }
 }

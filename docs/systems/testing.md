@@ -86,6 +86,24 @@ Found the hard way, each one having cost a wrong diagnosis:
   service that cannot start. The order that works is launch the app once, then
   write an empty list, then write the real one — bound within twelve seconds.
 
+- **A library module's instrumentation wipes its own external files dir.**
+  `:platform:capture:connectedAndroidTest` uninstalls the test package when it
+  finishes, and that clears
+  `/sdcard/Android/data/com.babel.platform.capture.test/files/` — models and
+  pushed pages with it. So both have to be put back **immediately before every
+  run**, not once:
+
+  ```
+  T=/sdcard/Android/data/com.babel.platform.capture.test/files
+  adb shell "mkdir -p $T/models $T/comic-sample"
+  adb shell "cp /sdcard/Android/data/com.babel/files/models/* $T/models/"
+  adb push comic-sample/<page> $T/comic-sample/
+  ```
+
+  Forgetting the models gives `manga-ocr available: false` and a test that
+  skips while reporting success, which reads as "nothing to see" rather than as
+  "nothing ran".
+
 ## Testing the pipeline
 
 A collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.

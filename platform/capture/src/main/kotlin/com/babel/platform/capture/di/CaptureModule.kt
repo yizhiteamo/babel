@@ -13,7 +13,9 @@ import com.babel.platform.capture.PageReader
 import com.babel.platform.capture.TextDetector
 import com.babel.platform.capture.TextRecognizer
 import dagger.Binds
+import com.babel.core.common.BabelLogger
 import dagger.Module
+import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
@@ -41,9 +43,6 @@ abstract class CaptureModule {
 @InstallIn(SingletonComponent::class)
 internal abstract class RecognizerModule {
 
-    @Binds
-    @Singleton
-    abstract fun bindTextRecognizer(impl: MlKitTextRecognizer): TextRecognizer
 
     /**
      * The balloon engine as a capability rather than as manga-ocr.
@@ -80,4 +79,28 @@ internal abstract class RecognizerModule {
     @Binds
     @Singleton
     abstract fun bindPageReader(impl: DetectingPageReader): PageReader
+
+    companion object {
+        /**
+         * The general reader: ML Kit's Japanese model, which reads Latin too.
+         * Provided rather than bound because both readers are the same class
+         * and differ only in the model they are given.
+         */
+        @Provides
+        @Singleton
+        fun provideTextRecognizer(logger: BabelLogger): TextRecognizer =
+            MlKitTextRecognizer(logger, MlKitTextRecognizer.Script.JAPANESE)
+
+        /**
+         * The Korean reader, consulted once a page to answer a question no
+         * Japanese engine can: manga-ocr invents fluent Japanese for Korean
+         * artwork, so only Hangul found by a Korean model proves the page is
+         * Korean (`KoreanScript`).
+         */
+        @Provides
+        @Singleton
+        @KoreanEngine
+        fun provideKoreanRecognizer(logger: BabelLogger): TextRecognizer =
+            MlKitTextRecognizer(logger, MlKitTextRecognizer.Script.KOREAN)
+    }
 }

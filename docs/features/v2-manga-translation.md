@@ -10,6 +10,8 @@ Translate mostly static visual content such as manga and comics while preserving
 - OCR
 - OCR output normalized to `TextElement`
 - vertical Japanese text support
+- Korean (Hangul) page support — added after V2 shipped, because the Japanese
+  engines do not decline Korean artwork, they invent Japanese for it
 - page/region change detection
 - text-region detection
 - speech-bubble-aware layout where useful

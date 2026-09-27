@@ -7,13 +7,13 @@ import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.TextBounds
 import com.babel.domain.vision.JapaneseScript
+import com.babel.domain.vision.KoreanScript
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.TextOrientationDetector
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
-import javax.inject.Inject
-import javax.inject.Singleton
+import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
@@ -26,22 +26,39 @@ import kotlinx.coroutines.tasks.await
  *
  * Recognition is on-device, so frames never leave the machine.
  */
-@Singleton
-internal class MlKitTextRecognizer @Inject constructor(
+internal class MlKitTextRecognizer(
     private val logger: BabelLogger,
+    private val script: Script,
 ) : TextRecognizer {
 
     /**
-     * This client is built with [JapaneseTextRecognizerOptions], but that model
-     * reads Latin script alongside Japanese — so what it produces is only
-     * Japanese when it actually says so in kana ([JapaneseScript]).
+     * Which of ML Kit's models this instance is. One class rather than two
+     * because everything below the model — enlarging, line mapping, coordinate
+     * correction — is the same work, and two copies of it is how they come to
+     * differ.
      */
-    override fun languageOf(text: String): LanguageTag? =
-        JAPANESE.takeIf { JapaneseScript.isJapanese(text) }
+    internal enum class Script { JAPANESE, KOREAN }
 
+    /**
+     * Each model reads Latin script alongside its own, so neither may claim its
+     * language merely because it returned something.
+     *
+     * The two claims are not equally hard. Japanese needs a ratio, because a
+     * Han-only line is shared with Chinese ([JapaneseScript]). Korean needs one
+     * character: Hangul is shared with nothing ([KoreanScript]).
+     */
+    override fun languageOf(text: String): LanguageTag? = when (script) {
+        Script.JAPANESE -> JAPANESE.takeIf { JapaneseScript.isJapanese(text) }
+        Script.KOREAN -> KOREAN.takeIf { KoreanScript.isPresentIn(text) }
+    }
 
     private val recognizer by lazy {
-        TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
+        TextRecognition.getClient(
+            when (script) {
+                Script.JAPANESE -> JapaneseTextRecognizerOptions.Builder().build()
+                Script.KOREAN -> KoreanTextRecognizerOptions.Builder().build()
+            },
+        )
     }
 
     override suspend fun recognize(frame: Bitmap): List<RecognizedLine> = try {
@@ -121,6 +138,7 @@ internal class MlKitTextRecognizer @Inject constructor(
         const val TAG = "TextRecognizer"
 
         val JAPANESE = LanguageTag("ja")
+        val KOREAN = LanguageTag("ko")
 
         /** Doubling won the comparison; see [scaleFor]. */
         const val SCALE = 2

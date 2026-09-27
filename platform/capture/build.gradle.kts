@@ -37,6 +37,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.mlkit.text.recognition.japanese)
+    implementation(libs.mlkit.text.recognition.korean)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)

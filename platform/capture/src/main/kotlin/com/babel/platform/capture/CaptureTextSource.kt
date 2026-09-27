@@ -468,6 +468,7 @@ class CaptureTextSource @Inject internal constructor(
     private fun languageFor(text: String, verdict: PageLanguage.Verdict): LanguageTag? =
         recognizer.languageOf(text) ?: when (verdict) {
             PageLanguage.Verdict.JAPANESE -> JAPANESE
+            PageLanguage.Verdict.KOREAN -> KOREAN
             PageLanguage.Verdict.NOT_JAPANESE ->
                 CHINESE.takeIf { text.any(JapaneseScript::isHan) }
             PageLanguage.Verdict.UNDECIDED -> null
@@ -578,6 +579,7 @@ class CaptureTextSource @Inject internal constructor(
 
     private companion object {
         private val JAPANESE = LanguageTag("ja")
+        private val KOREAN = LanguageTag("ko")
 
         /**
          * Claimed for Han text on a page that is not Japanese. Simplified or

@@ -3,7 +3,9 @@ package com.babel.platform.capture
 import android.graphics.Bitmap
 import com.babel.core.model.LanguageTag
 import com.babel.domain.vision.JapaneseScript
+import com.babel.domain.vision.KoreanScript
 import com.babel.domain.vision.RecognizedLine
+import com.babel.platform.capture.di.KoreanEngine
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,13 +28,86 @@ import javax.inject.Singleton
 internal class BubbleRecognizer @Inject constructor(
     private val manga: BalloonEngine,
     private val general: TextRecognizer,
+    @KoreanEngine private val korean: TextRecognizer,
 ) : TextRecognizer {
+
+    /**
+     * Whether the page being read is Korean artwork, decided by [startPage].
+     *
+     * Volatile because the page is decided on one coroutine and the balloons
+     * may be read on another.
+     */
+    @Volatile
+    private var pageIsKorean = false
 
     private val current: TextRecognizer get() = if (manga.isAvailable) manga else general
 
-    override fun languageOf(text: String): LanguageTag? = current.languageOf(text)
+    /**
+     * Looks at the whole page once, and only to ask whether it is Korean.
+     *
+     * Nothing downstream can answer this. Both other engines are Japanese, and
+     * manga-ocr does not decline artwork it cannot read — measured on
+     * `kr-mag-01`/`-02`, it invented Japanese for every balloon:
+     * 「이부키, 뭐해?」 came back `olデヲル号おH?`, and one balloon became
+     * `それを考えなければ、今、2018年3月19日`, fluent and wholly fabricated.
+     * Those readings are 75–80% kana, so every test this class already
+     * applies — [JapaneseScript.couldBeJapanese] included — passes them, and
+     * the fabrications were translated and drawn over the art. What the user
+     * reported as misplaced balloons was this.
+     *
+     * Only positive evidence settles it, and only a Korean model can give it:
+     * Hangul is shared with no other language, so one syllable is proof
+     * ([KoreanScript]). Asked of the whole page rather than of one balloon,
+     * because a page's first balloon may be a sound effect.
+     *
+     * One extra recognition per page, not per balloon. Japanese pages pay it
+     * once and nothing else changes for them.
+     *
+     * ## Presence proves nothing; proportion does
+     *
+     * The first version asked whether the Korean model found *any* Hangul, and
+     * every page in the sample came back yes — the model hallucinates Hangul on
+     * Japanese and Chinese artwork just as manga-ocr hallucinates kana on
+     * Korean. It is the same mistake as the one this class exists to catch,
+     * made in the other direction, and it cost every Japanese page its reader:
+     * `jap-mag-10` went from 21 translations to 13.
+     *
+     * The proportion separates them cleanly, measured over three pages:
+     *
+     * | page | Hangul / characters | |
+     * |---|---|---|
+     * | `kr-mag-01`, Korean | 48 / 51 | **94.1%** |
+     * | `cn-mag-01`, Chinese | 16 / 43 | 37.2% |
+     * | `jap-mag-10`, Japanese | 28 / 89 | 31.5% |
+     *
+     * [MIN_HANGUL_RATIO] sits in the gap, far from both edges. As with
+     * `JapaneseScript.MIN_KANA_RATIO`, no value between 38% and 94% would have
+     * behaved differently here, so the exact number carries no weight and
+     * should not be tuned without new measurements.
+     */
+    suspend fun startPage(frame: Bitmap) {
+        val lines = korean.recognize(frame)
+        var hangul = 0
+        var characters = 0
+        for (line in lines) {
+            for (c in line.text) {
+                if (c.isWhitespace()) continue
+                characters++
+                if (KoreanScript.isPresentIn(c.toString())) hangul++
+            }
+        }
+        pageIsKorean = characters >= MIN_PROBE_CHARS &&
+            hangul.toFloat() / characters >= MIN_HANGUL_RATIO
+    }
+
+    override fun languageOf(text: String): LanguageTag? =
+        if (pageIsKorean) korean.languageOf(text) else current.languageOf(text)
 
     override suspend fun recognize(frame: Bitmap): List<RecognizedLine> {
+        // Settled for the page: no Japanese engine is asked, because a wrong
+        // answer from one is indistinguishable from a right one.
+        if (pageIsKorean) return korean.recognize(frame)
+
         val chosen = current
         val lines = chosen.recognize(frame)
         if (chosen === general) return lines
@@ -60,4 +135,15 @@ internal class BubbleRecognizer @Inject constructor(
     }
 
     suspend fun release() = manga.release()
+
+    private companion object {
+        /** See [startPage] for the measurement. */
+        const val MIN_HANGUL_RATIO = 0.65f
+
+        /**
+         * Characters the probe needs before it will decide anything, so a page
+         * showing two glyphs does not settle which reader the rest of it gets.
+         */
+        const val MIN_PROBE_CHARS = 10
+    }
 }

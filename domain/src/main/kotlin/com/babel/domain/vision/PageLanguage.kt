@@ -34,14 +34,19 @@ package com.babel.domain.vision
  */
 class PageLanguage {
 
-    enum class Verdict { UNDECIDED, JAPANESE, NOT_JAPANESE }
+    enum class Verdict { UNDECIDED, JAPANESE, KOREAN, NOT_JAPANESE }
 
     private var japaneseSeen = false
+    private var koreanSeen = false
     private var balloons = 0
     private var hanSeen = 0
 
     val verdict: Verdict
         get() = when {
+            // Before Japanese, because Hangul is certain where kana is only
+            // very likely: a Korean page read by a Japanese engine comes back
+            // full of invented kana, while no Japanese page contains Hangul.
+            koreanSeen -> Verdict.KOREAN
             japaneseSeen -> Verdict.JAPANESE
             balloons >= MIN_BALLOONS && hanSeen >= MIN_HAN -> Verdict.NOT_JAPANESE
             else -> Verdict.UNDECIDED
@@ -49,6 +54,10 @@ class PageLanguage {
 
     /** Adds one balloon's recognised text to the evidence. */
     fun observe(text: String) {
+        if (KoreanScript.isPresentIn(text)) {
+            koreanSeen = true
+            return
+        }
         if (JapaneseScript.isJapanese(text)) {
             japaneseSeen = true
             return
@@ -60,6 +69,7 @@ class PageLanguage {
     /** Starts a new page. */
     fun reset() {
         japaneseSeen = false
+        koreanSeen = false
         balloons = 0
         hanSeen = 0
     }

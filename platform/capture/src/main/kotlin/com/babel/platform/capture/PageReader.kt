@@ -141,6 +141,10 @@ internal class DetectingPageReader @Inject constructor(
         // would put the sound effects and the chrome straight back.
         if (!detector.isAvailable) return fallback.read(frame, onRegion)
 
+        // Which language's reader to use is a page-level question, and one the
+        // balloon readers cannot answer for themselves (`BubbleRecognizer`).
+        recognizer.startPage(frame)
+
         val bubbles = detector.detect(frame)
         logger.debug(TAG, "detector found ${bubbles.size} bubbles")
 
