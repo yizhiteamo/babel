@@ -149,6 +149,16 @@ class BabelAccessibilityService : AccessibilityService() {
      * Volatile because [followMangaMode] writes it too, so that switching the
      * mode off clears immediately rather than at the next tick. A lost update
      * there can only cost one redundant clear.
+     *
+     * **Null means stood down, and nothing else.** It used to mean that *or*
+     * "reading a screen whose app could not be named", because the package was
+     * assigned here straight from `activePackage`, which is nullable. When that
+     * happened the scan still ran and published, and [standDownImagePath] then
+     * read the null as "already down" and never cleared — so that page's image
+     * translations could not be taken off the screen at all. A user met it as
+     * seven lines of nonsense over a text page that survived a reload. The
+     * invariant is held by the caller: only a non-null package reaches the
+     * assignment below.
      */
     @Volatile
     private var imagePathOwner: String? = null
@@ -263,10 +273,14 @@ class BabelAccessibilityService : AccessibilityService() {
         // bitmap, so a second one must not start alongside it. Skipping rather
         // than queueing is deliberate: whatever provoked this will still be on
         // screen when the running scan or the next tick looks.
+        // Every return below says why. They are kept rather than trimmed
+        // because a silent one costs a day: when the image path stops, the app
+        // goes on reporting 正在读取屏幕 and nothing says which check turned it
+        // away. Both defects found in this area were located by reading these
+        // lines — the second by noticing that "the node path owns this screen"
+        // repeated thirty-nine times while the overlays it should have cleared
+        // stayed put.
         if (!imageScanning.tryLock()) {
-            // TEMPORARY diagnostic: manga mode stops silently and only a
-            // force-stop revives it. Every early return here is silent, so the
-            // hunt starts by naming which one repeats.
             logger.debug(TAG, "image scan skipped: a scan is already running")
             return
         }
@@ -285,7 +299,19 @@ class BabelAccessibilityService : AccessibilityService() {
             // the whole screen with no policy applied anywhere. A capture reads
             // everything on display, which makes scope matter more here than it
             // does for nodes, not less (`docs/systems/scope.md`).
-            val front = activePackage()
+            //
+            // Which is also why an app that cannot be named is not one to read.
+            // `activePackage` returns null while the window is mid-change, and
+            // `isInScope(null)` answers true — the node path's default, and the
+            // right one there, since it reads named nodes. A capture reads the
+            // whole display, and with no package neither the scope list nor the
+            // privacy policy's per-app exclusions can match anything, because
+            // both key on it. Skipping costs one tick.
+            val front = activePackage() ?: run {
+                logger.debug(TAG, "image scan skipped: cannot tell which app is in front")
+                standDownImagePath()
+                return
+            }
             if (!scopePolicy.isInScope(front)) {
                 logger.debug(TAG, "image scan skipped: out of scope")
                 standDownImagePath()
