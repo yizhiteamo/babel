@@ -246,7 +246,28 @@ internal class DetectingPageReader @Inject constructor(
             } else {
                 recognize(frame, bubble)
             }
-            if (lines.isEmpty()) continue
+            if (lines.isEmpty()) {
+                // Said out loud, because this is where balloons disappear.
+                //
+                // A reader asked why some balloons on a Korean page were never
+                // translated, and nothing in the log could answer: a balloon
+                // the engine declines was skipped here in silence, before
+                // `assemble` and before any count. Measured with a temporary
+                // line in this spot — five of ten on `kr-mag-01`, every one of
+                // them a small crop (38x45 up to 93x82).
+                //
+                // It is not a Korean problem, which is the part worth
+                // remembering. manga-ocr never declines — it invents Japanese
+                // for whatever it is given — so the Japanese path reaches zero
+                // here and looks perfect. ML Kit answers honestly, so every
+                // page it reads can lose a balloon this way. Sizes only; the
+                // text is screen content (`docs/systems/privacy.md`).
+                logger.debug(
+                    TAG,
+                    "read nothing: ${bubble.text.width}x${bubble.text.height} onArt=${bubble.onArt}",
+                )
+                continue
+            }
 
             // Stored where it sits on the page, not on this screen, so one
             // entry answers for every later frame that shows it.
