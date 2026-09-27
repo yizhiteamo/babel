@@ -35,11 +35,17 @@ internal class BubbleRecognizer @Inject constructor(
     /**
      * Whether the page being read is Korean artwork, decided by [startPage].
      *
+     * Readable because it is also the only thing that knows which way the page
+     * reads: Japanese runs right to left, a Korean webtoon left to right
+     * (`MangaReadingOrder`). [startPage] settles it before the first balloon is
+     * read, which is what makes it usable for ordering them.
+     *
      * Volatile because the page is decided on one coroutine and the balloons
      * may be read on another.
      */
     @Volatile
-    private var pageIsKorean = false
+    var pageIsKorean = false
+        private set
 
     /**
      * What [startPage] read off the whole frame, in frame coordinates, kept for

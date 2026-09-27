@@ -11,16 +11,21 @@ import com.babel.core.model.TextBounds
  * balloon to "the next one" means nothing without an order
  * (`docs/milestones/v2.md`).
  *
- * Japanese pages read **right to left, top to bottom**. Rows come first — a
- * balloon slightly lower but far to the right is still read first — so
- * positions are banded before they are compared. Without the band a two-pixel
- * difference between two box tops reorders a row, and the order is the whole
- * point.
+ * Rows come first in either direction — a balloon slightly lower but far to the
+ * side is still read first — so positions are banded before they are compared.
+ * Without the band a two-pixel difference between two box tops reorders a row,
+ * and the order is the whole point.
  *
- * Right-to-left is not a safe default for every comic, and this is only reached
- * from the manga path, where the recogniser is Japanese and the assumption
- * holds. A western comic would want the mirror of it, and that belongs with
- * whatever eventually decides the page's language rather than here.
+ * **Which way a row runs is the caller's to say.** Japanese pages read right to
+ * left; Korean webtoons set their text horizontally and read left to right like
+ * a western comic. This used to hard-code right-to-left and note that the
+ * choice "belongs with whatever eventually decides the page's language" — that
+ * decision now exists (`BubbleRecognizer.pageIsKorean`, from the whole-frame
+ * probe that already runs before any balloon is read), so the note became a
+ * parameter.
+ *
+ * No default: there is one call site, and a default is how the Japanese
+ * assumption would quietly come back.
  */
 object MangaReadingOrder {
 
@@ -30,9 +35,16 @@ object MangaReadingOrder {
     /**
      * @param pageHeight the height of the frame the bounds were measured in,
      *   which sets how tall a row is.
+     * @param rightToLeft true for Japanese artwork, false for a page that reads
+     *   the western way.
      */
-    fun of(pageHeight: Int): Comparator<TextBounds> {
+    fun of(pageHeight: Int, rightToLeft: Boolean): Comparator<TextBounds> {
         val band = (pageHeight * ROW_FRACTION).toInt().coerceAtLeast(1)
-        return compareBy<TextBounds> { it.top / band }.thenByDescending { it.right }
+        val row = compareBy<TextBounds> { it.top / band }
+        return if (rightToLeft) {
+            row.thenByDescending { it.right }
+        } else {
+            row.thenBy { it.left }
+        }
     }
 }

@@ -424,9 +424,19 @@ internal class DetectingPageReader @Inject constructor(
         )
     }
 
-    /** Balloons across the page, as opposed to columns within one. */
+    /**
+     * Balloons across the page, as opposed to columns within one.
+     *
+     * The direction comes from the page itself. `startPage` has already probed
+     * the whole frame by the time this is asked, so a Korean page is known to
+     * be Korean before its balloons are put in order — and a Korean webtoon
+     * reads left to right, not right to left like manga.
+     */
     private fun readingOrder(frame: Bitmap): Comparator<DetectedBubble> {
-        val across = MangaReadingOrder.of(frame.height)
+        val across = MangaReadingOrder.of(
+            pageHeight = frame.height,
+            rightToLeft = !recognizer.pageIsKorean,
+        )
         return Comparator { first, second -> across.compare(first.text, second.text) }
     }
 
