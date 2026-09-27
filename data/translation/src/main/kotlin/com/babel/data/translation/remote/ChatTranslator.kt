@@ -197,10 +197,19 @@ class ChatTranslator(
      * The fourth is a separate defect: `apparently` was left sitting in the
      * middle of a Chinese sentence. Nothing had ever asked for the whole output
      * to be in the target language.
+     *
+     * Both languages are named rather than coded, and the source only became so
+     * later. It had been `from ja` while the target was already "Chinese", and
+     * the gap showed on the word this whole business is about: a balloon
+     * reading 「先生」, correctly stated as Japanese, came back as 「先生」 —
+     * a real Chinese word, so a model given a weak hint has no reason to
+     * disturb it. `from Japanese` is the same hint the target has had since
+     * [nameOf] was written; there was never a reason for the source to be
+     * different.
      */
     private fun instruction(request: TranslationRequest): String = buildString {
         append("Translate the comic speech balloon the user sends")
-        request.languages.source?.let { append(" from ${it.value}") }
+        request.languages.source?.let { append(" from ${nameOf(it)}") }
         append(" into ${nameOf(request.languages.target)}.")
         append(" Reply with the translation only: no explanation, no romanisation,")
         append(" no quotation marks that the original did not have.")
