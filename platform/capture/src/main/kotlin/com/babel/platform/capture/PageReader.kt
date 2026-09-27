@@ -335,6 +335,25 @@ internal class DetectingPageReader @Inject constructor(
     }
 
     private suspend fun recognize(frame: Bitmap, bubble: DetectedBubble): List<RecognizedLine> {
+        // The page first, when a reading of the whole page exists. It does on a
+        // Korean page, where `BubbleRecognizer.startPage` had to read the frame
+        // anyway to decide which engine the page needs — and that reading is
+        // the better one: 16 lines off the page against 6 regions off the same
+        // page read balloon by balloon. Cropping a 40x40 balloon takes away the
+        // glyph edges and the layout at once, and this engine then declines it.
+        //
+        // Back into crop coordinates, because [assemble] puts them back again.
+        recognizer.pageLinesIn(bubble.text)
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { pageLines ->
+                return pageLines.map { line ->
+                    line.copy(bounds = line.bounds.movedBy(-bubble.text.left, -bubble.text.top))
+                }
+            }
+
+        // Still the way every other page is read, and the fallback for a
+        // balloon the page pass had nothing for — so this can only add
+        // balloons, never lose one.
         val crop = frame.cropTo(bubble.text) ?: return emptyList()
         return try {
             recognizer.recognize(crop)

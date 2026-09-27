@@ -2,6 +2,7 @@ package com.babel.platform.capture
 
 import android.graphics.Bitmap
 import com.babel.core.model.LanguageTag
+import com.babel.core.model.TextBounds
 import com.babel.domain.vision.JapaneseScript
 import com.babel.domain.vision.KoreanScript
 import com.babel.domain.vision.RecognizedLine
@@ -39,6 +40,13 @@ internal class BubbleRecognizer @Inject constructor(
      */
     @Volatile
     private var pageIsKorean = false
+
+    /**
+     * What [startPage] read off the whole frame, in frame coordinates, kept for
+     * [pageLinesIn]. Null whenever the page is not Korean.
+     */
+    @Volatile
+    private var pageLines: List<RecognizedLine>? = null
 
     private val current: TextRecognizer get() = if (manga.isAvailable) manga else general
 
@@ -98,7 +106,26 @@ internal class BubbleRecognizer @Inject constructor(
         }
         pageIsKorean = characters >= MIN_PROBE_CHARS &&
             hangul.toFloat() / characters >= MIN_HANGUL_RATIO
+        pageLines = if (pageIsKorean) lines else null
     }
+
+    /**
+     * The lines of [startPage]'s reading that fall inside [area], or null when
+     * there is no such reading to offer.
+     *
+     * This exists because the probe's work was being thrown away. It reads the
+     * **whole frame**, and a whole frame is a better thing to hand this engine
+     * than a balloon cut out of it: measured on `kr-mag-01`, the page pass
+     * returned **16 lines** while reading the same page one balloon at a time
+     * produced **6 regions**. The crops it refuses are 38x45 to 68x61 — small
+     * enough that cropping has taken away both the glyph edges and every clue
+     * the layout gave.
+     *
+     * Null on any page that is not Korean, so the Japanese and Chinese paths
+     * never see this and keep reading balloon by balloon.
+     */
+    fun pageLinesIn(area: TextBounds): List<RecognizedLine>? =
+        pageLines?.filter { it.bounds.centreIsIn(area) }
 
     override fun languageOf(text: String): LanguageTag? =
         if (pageIsKorean) korean.languageOf(text) else current.languageOf(text)
