@@ -86,7 +86,7 @@ internal class MangaOcrRecognizer @Inject constructor(
      * separate question ([JapaneseScript]).
      */
     override fun languageOf(text: String): LanguageTag? =
-        JAPANESE.takeIf { JapaneseScript.isPresentIn(text) }
+        JAPANESE.takeIf { JapaneseScript.isJapanese(text) }
 
     override suspend fun recognize(frame: Bitmap): List<RecognizedLine> =
         // Inside the lock that owns the sessions' life. See

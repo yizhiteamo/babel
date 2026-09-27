@@ -218,8 +218,26 @@ class DefaultTranslationCoordinator(
                 continue
             }
 
+            val languages = pair.forElement(element)
+
+            // Already in the reader's language, so there is nothing to do and
+            // something to avoid. A translation of Chinese into Chinese comes
+            // back all but identical, and drawing it costs a provider call to
+            // cover the artwork with the words that were already there — which
+            // is what a Chinese fan translation of a Japanese comic looked
+            // like with manga mode on. Only checked when the source is known:
+            // null means "detect it", and the provider's guess is not something
+            // to act on here (`docs/milestones/v2.md`).
+            if (languages.source != null && languages.source == languages.target) {
+                logger.debug(TAG, "already in the target language: ${element.id.value}")
+                if (tracked.remove(element.id)?.also { it.job?.cancel() } != null) {
+                    toHide += element.id
+                }
+                continue
+            }
+
             val existing = tracked[element.id]
-            val key = TranslationCacheKey.of(element.text, pair.forElement(element), translator.id)
+            val key = TranslationCacheKey.of(element.text, languages, translator.id)
 
             if (existing != null && existing.key == key) {
                 // Same text, same languages — a scroll or re-layout, not new

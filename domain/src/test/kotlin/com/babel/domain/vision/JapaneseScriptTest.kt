@@ -1,6 +1,7 @@
 package com.babel.domain.vision
 
 import kotlin.test.assertFalse
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.Test
 
@@ -82,5 +83,35 @@ class JapaneseScriptTest {
         // is the right answer for it too.
         assertFalse(JapaneseScript.couldBeJapanese("......!?"))
         assertFalse(JapaneseScript.couldBeJapanese(""))
+    }
+
+    /**
+     * The katakana middle dot is punctuation and must not count as evidence.
+     * Four of the six "kana" a Japanese recogniser produced on a Chinese page
+     * were this character, standing in for the artwork's own `…`.
+     */
+    @Test
+    fun `the katakana middle dot is not evidence of Japanese`() {
+        assertEquals(0f, JapaneseScript.kanaRatio("那公、作力老姉的妻子・今后清多多指教了"))
+    }
+
+    @Test
+    fun `a hallucinated kana does not make a Chinese balloon Japanese`() {
+        assertFalse(JapaneseScript.isJapanese("明明和怖父的青春活み進恋愛都没送行到。"))
+        assertFalse(JapaneseScript.isJapanese("老怖汶是要人贅勘解由小路家!嶋大樺了!"))
+    }
+
+    @Test
+    fun `real Japanese balloons are Japanese`() {
+        assertTrue(JapaneseScript.isJapanese("さっき消滅してなかった!?"))
+        assertTrue(JapaneseScript.isJapanese("今の私は霊基トランクから召喚された器だ"))
+        // The leanest balloon measured across two pages, at 44% kana.
+        assertTrue(JapaneseScript.isJapanese("最低限役には立つさ"))
+    }
+
+    @Test
+    fun `a Han-only line claims nothing either way`() {
+        assertFalse(JapaneseScript.isJapanese("先生"))
+        assertEquals(0f, JapaneseScript.kanaRatio("先生"))
     }
 }

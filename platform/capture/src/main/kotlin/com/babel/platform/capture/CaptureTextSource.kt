@@ -13,7 +13,10 @@ import com.babel.core.model.TextOrientation
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextElementIds
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.core.model.LanguageTag
 import com.babel.domain.vision.BubbleBounds
+import com.babel.domain.vision.JapaneseScript
+import com.babel.domain.vision.PageLanguage
 import com.babel.domain.vision.FrameChangeDetector
 import com.babel.domain.vision.ImageTextScanner
 import com.babel.domain.vision.OcrPunctuation
@@ -243,11 +246,19 @@ class CaptureTextSource @Inject internal constructor(
         // may carry over into the next.
         val grouper = UtteranceGrouper()
 
+        // A balloon of nothing but Han is ambiguous; the page it sits on is
+        // not (`PageLanguage`). Such balloons are held until the page answers,
+        // which on a Japanese page is its first balloon — measured, every one
+        // of 46 Japanese balloons carried kana.
+        val pageLanguage = PageLanguage()
+        val held = mutableListOf<Utterance>()
+
         val publish: suspend (Utterance) -> Boolean = publish@{ utterance ->
             // Placed first, because the weights that divide the translation are
             // the drawn boxes' areas rather than the lettering's.
+            val language = languageFor(utterance.text, pageLanguage.verdict)
             val placed = utterance.regions.map { region ->
-                toElement(region, utterance.text, packageName, occurrences) { bounds, set, box ->
+                toElement(region, utterance.text, language, packageName, occurrences) { bounds, set, box ->
                     val placement = placeIn(page, bounds, set, box)
                     // Back to screen coordinates, which is the only space
                     // anything downstream knows about.
@@ -291,6 +302,19 @@ class CaptureTextSource @Inject internal constructor(
                 // Null while this balloon is waiting for the next one.
                 val ready = grouper.offer(region) ?: return@read true
 
+                pageLanguage.observe(ready.text)
+                if (pageLanguage.verdict != PageLanguage.Verdict.UNDECIDED) {
+                    for (waiting in held) {
+                        if (!publish(waiting)) { abandoned = true; return@read false }
+                    }
+                    held.clear()
+                } else if (languageFor(ready.text, pageLanguage.verdict) == null) {
+                    // Nothing can be said about this one yet, and saying the
+                    // wrong thing is what leaves 「先生」 untranslated.
+                    held += ready
+                    return@read true
+                }
+
                 // Both done before the frame goes: this is the only moment the
                 // pixels behind the text exist. Accessibility never had them,
                 // which is why V1 overlays could only guess at a background.
@@ -302,7 +326,19 @@ class CaptureTextSource @Inject internal constructor(
             // into the next page, which this pipeline never sees. It goes out
             // on its own rather than being lost.
             val remaining = grouper.flush()
-            if (!abandoned && remaining != null && !publish(remaining)) abandoned = true
+            if (!abandoned && remaining != null) {
+                pageLanguage.observe(remaining.text)
+                if (!publish(remaining)) abandoned = true
+            }
+
+            // The page is over, so the verdict is as good as it will get —
+            // including when it is still undecided, where these go out exactly
+            // as they did before any of this existed.
+            for (waiting in held) {
+                if (abandoned) break
+                if (!publish(waiting)) abandoned = true
+            }
+            held.clear()
         } finally {
             if (page !== frame) page.recycle()
             frame.recycle()
@@ -415,6 +451,28 @@ class CaptureTextSource @Inject internal constructor(
         return Placement(bubble, style)
     }
 
+    /**
+     * What language this balloon is in, taking the page's word for it when the
+     * balloon itself cannot say.
+     *
+     * The recogniser answers first and is trusted when it answers: it states
+     * Japanese only for text that is mostly kana, which no Chinese text is
+     * ([JapaneseScript.isJapanese]). A Han-only balloon leaves it silent, and
+     * that silence used to reach the provider as "detect it" — which read Han
+     * as Chinese, made source equal target, and handed the balloon back
+     * unchanged. 「先生」 stayed 「先生」 where 「老师」 was wanted.
+     *
+     * Chinese is claimed only for text that actually has Han in it, so a page
+     * of Latin captions is not swept up by a verdict about the artwork.
+     */
+    private fun languageFor(text: String, verdict: PageLanguage.Verdict): LanguageTag? =
+        recognizer.languageOf(text) ?: when (verdict) {
+            PageLanguage.Verdict.JAPANESE -> JAPANESE
+            PageLanguage.Verdict.NOT_JAPANESE ->
+                CHINESE.takeIf { text.any(JapaneseScript::isHan) }
+            PageLanguage.Verdict.UNDECIDED -> null
+        }
+
     private data class Placement(val bounds: TextBounds, val style: SourceStyle)
 
     /**
@@ -433,6 +491,7 @@ class CaptureTextSource @Inject internal constructor(
     private fun toElement(
         region: TextRegion,
         text: String,
+        sourceLanguage: LanguageTag?,
         packageName: String?,
         occurrences: MutableMap<String, Int>,
         place: (TextBounds, TextOrientation, TextBounds?) -> Placement,
@@ -466,7 +525,7 @@ class CaptureTextSource @Inject internal constructor(
             style = placement.style,
             // Told rather than guessed where the recogniser can vouch for
             // it, and left to detection where it cannot.
-            sourceLanguage = recognizer.languageOf(text),
+            sourceLanguage = sourceLanguage,
         )
     }
 
@@ -518,6 +577,16 @@ class CaptureTextSource @Inject internal constructor(
     }
 
     private companion object {
+        private val JAPANESE = LanguageTag("ja")
+
+        /**
+         * Claimed for Han text on a page that is not Japanese. Simplified or
+         * traditional is not distinguished and does not need to be: the
+         * question this answers is "is this already the reader's language",
+         * and a provider matches on the base tag.
+         */
+        private val CHINESE = LanguageTag("zh")
+
         const val TAG = "CaptureTextSource"
 
         /**

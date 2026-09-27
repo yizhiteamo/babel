@@ -37,7 +37,7 @@ internal class MlKitTextRecognizer @Inject constructor(
      * Japanese when it actually says so in kana ([JapaneseScript]).
      */
     override fun languageOf(text: String): LanguageTag? =
-        JAPANESE.takeIf { JapaneseScript.isPresentIn(text) }
+        JAPANESE.takeIf { JapaneseScript.isJapanese(text) }
 
 
     private val recognizer by lazy {
