@@ -19,7 +19,14 @@ data class TranslationCacheKey(
     val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
 ) {
     companion object {
-        const val CURRENT_SCHEMA_VERSION: Int = 1
+        /**
+         * Bumped to 2 when the page's own words started travelling with each
+         * request ([PageContext]). The prompt changed, so entries made under
+         * the old one answer a different question — and context deliberately
+         * stays out of the key, because "the same line keeps the rendering it
+         * was first given" is the consistency this exists to buy.
+         */
+        const val CURRENT_SCHEMA_VERSION: Int = 2
 
         private val WHITESPACE = Regex("\\s+")
 

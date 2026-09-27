@@ -197,6 +197,16 @@ class DefaultTranslationCoordinator(
      * does not arise today, but dropping half of one silently is the kind of
      * bug that takes a day to find.
      */
+    /**
+     * What the page being read has already said, offered to the provider so a
+     * balloon is not translated in a vacuum ([PageContext]).
+     *
+     * Touched only from the mailbox coroutine, like everything else here: a
+     * snapshot is taken when a translation is launched and travels with it,
+     * rather than the translation coroutine reaching back into this.
+     */
+    private val pageContext = PageContext()
+
     private fun isPausedSource(element: TextElement): Boolean =
         element.sourceType == TextSourceType.ACCESSIBILITY
 
@@ -250,7 +260,17 @@ class DefaultTranslationCoordinator(
             existing?.job?.cancel()
             val entry = Tracked(element = element, key = key)
             tracked[element.id] = entry
-            entry.job = launchTranslation(element, pair, key)
+
+            // Only the image path. On the node path every element is a separate
+            // control on one screen, and handing a button's label to a dialog's
+            // translation as "context" would be noise, not help.
+            val context = if (element.sourceType == TextSourceType.OCR) {
+                pageContext.note(element.revision, element.text)
+                pageContext.forLine(element.text)
+            } else {
+                null
+            }
+            entry.job = launchTranslation(element, pair, key, context)
         }
 
         if (toHide.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(toHide))
@@ -306,6 +326,9 @@ class DefaultTranslationCoordinator(
 
         entry.translatedText = message.translatedText
         entry.job = null
+        if (entry.element.sourceType == TextSourceType.OCR) {
+            pageContext.agree(entry.element.text, message.translatedText)
+        }
         clearFailures()
         logger.debug(TAG, "translated ${message.elementId.value}")
         _renderUpdates.emit(RenderUpdate.Show(listOf(show(entry, message.translatedText))))
@@ -408,7 +431,11 @@ class DefaultTranslationCoordinator(
             val key = TranslationCacheKey.of(element.text, resolved, translator.id)
             val fresh = Tracked(element = element, key = key)
             tracked[element.id] = fresh
-            fresh.job = launchTranslation(element, resolved, key)
+            // No context on a re-translation: what the page agreed was agreed in
+            // the language the user has just changed away from, and offering it
+            // now would argue for the wrong answer. The memory refills from
+            // these results as they land.
+            fresh.job = launchTranslation(element, resolved, key, null)
         }
     }
 
@@ -435,6 +462,7 @@ class DefaultTranslationCoordinator(
         element: TextElement,
         pair: LanguagePair,
         key: TranslationCacheKey,
+        context: String?,
     ): Job? {
         val active = scope ?: return null
         return active.launch {
@@ -453,7 +481,7 @@ class DefaultTranslationCoordinator(
 
                 permits.withPermit {
                     val waitedMs = System.currentTimeMillis() - started
-                    val result = translateWithRetry(element, pair)
+                    val result = translateWithRetry(element, pair, context)
                     logger.debug(
                         TAG,
                         "translated in ${System.currentTimeMillis() - started}ms" +
@@ -507,6 +535,7 @@ class DefaultTranslationCoordinator(
     private suspend fun translateWithRetry(
         element: TextElement,
         pair: LanguagePair,
+        context: String?,
     ): TranslationResult {
         var attempt = 0
         while (true) {
@@ -516,6 +545,7 @@ class DefaultTranslationCoordinator(
                 revision = element.revision,
                 sourceText = element.text,
                 languages = pair.forElement(element),
+                context = context,
             )
             val result = translator.translate(request)
             val status = result.status
