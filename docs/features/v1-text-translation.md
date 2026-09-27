@@ -42,7 +42,9 @@ V1 is complete when:
 - supported text-heavy apps can expose text to the system
 - visible supported text can be translated without OCR
 - translated text appears near/in the original location
-- scrolling does not leave stale translations behind
+- scrolling does not leave stale translations behind — holds in every
+  measured run; one unreproduced exception after rapid flings is recorded
+  in `docs/milestones/v1.md`
 - changing target language produces correct new results
 - translation can be paused/stopped cleanly
 - sensitive input is excluded
