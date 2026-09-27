@@ -48,7 +48,10 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
             text = translation.text,
             boxWidthPx = bounds.width - VerticalTextLayout.HORIZONTAL_PADDING_PX * 2,
             boxHeightPx = bounds.height - VerticalTextLayout.VERTICAL_PADDING_PX * 2,
-            maxGlyphPx = spToPx(VerticalTextLayout.MAX_GLYPH_SP),
+            maxGlyphPx = VerticalTextLayout.ceilingPx(
+                translation.style.sourceStyle.glyphSizePx,
+                resources.displayMetrics.scaledDensity,
+            ),
             minGlyphPx = spToPx(VerticalTextLayout.MIN_GLYPH_SP),
         )
         invalidate()

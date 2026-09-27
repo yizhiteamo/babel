@@ -210,4 +210,53 @@ class VerticalTextLayoutTest {
         /** 280dpi, the emulator everything else was measured on. */
         const val EMULATOR_DENSITY = 1.75f
     }
+
+    private val density = 2f
+    private val flatCeiling = (VerticalTextLayout.MAX_GLYPH_SP * density).toInt()
+
+    /**
+     * Lettering larger than the flat ceiling is the case worth measuring for:
+     * a title or a shout, held down to 24sp, reads as a caption.
+     */
+    @Test
+    fun `lettering larger than the flat ceiling raises it`() {
+        val large = flatCeiling + 30
+        assertEquals(large, VerticalTextLayout.ceilingPx(glyphSizePx = large, density = density))
+    }
+
+    /**
+     * Lettering smaller than it must not lower it.
+     *
+     * Measured on `kr-mag-01`: the original is 26–30px against a 42px ceiling,
+     * and honouring it would only narrow a limit the box already binds tighter
+     * than. The first version of this did lower it, and made type smaller on
+     * the very page the change was meant to help.
+     */
+    @Test
+    fun `lettering smaller than the flat ceiling leaves it alone`() {
+        assertEquals(flatCeiling, VerticalTextLayout.ceilingPx(glyphSizePx = 27, density = density))
+    }
+
+    @Test
+    fun `without a measurement the flat ceiling stands`() {
+        assertEquals(flatCeiling, VerticalTextLayout.ceilingPx(glyphSizePx = null, density = density))
+        assertEquals(flatCeiling, VerticalTextLayout.ceilingPx(glyphSizePx = 0, density = density))
+    }
+
+    /**
+     * Raising the ceiling must not push text out of the balloon: the layout
+     * still steps down until it fits.
+     */
+    @Test
+    fun `a large ceiling still shrinks to fit`() {
+        val result = VerticalTextLayout.layout(
+            text = "这是一段相当长的译文需要缩小才放得下",
+            boxWidthPx = 60,
+            boxHeightPx = 200,
+            maxGlyphPx = 200,
+            minGlyphPx = 8,
+        )
+        assertNotNull(result)
+        assertTrue(result.glyphSizePx < 200, "stayed at the ceiling instead of fitting")
+    }
 }

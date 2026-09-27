@@ -474,6 +474,37 @@ class CaptureTextSource @Inject internal constructor(
             PageLanguage.Verdict.UNDECIDED -> null
         }
 
+    /**
+     * How large this region's lettering is, in frame pixels — when it was
+     * actually measured, and null when it would be a guess.
+     *
+     * A line's thickness across the reading direction is the type size: the
+     * height of a row, the width of a column. The median rather than the mean,
+     * because one mis-detected line spanning two rows would drag an average and
+     * cannot move a median.
+     *
+     * **Only lines that carry an orientation are measured**, and that is the
+     * whole subtlety. ML Kit reports a box and an angle per line, so its boxes
+     * are lines. manga-ocr reports one string for the whole crop with no
+     * geometry at all ([MangaOcrRecognizer]) and states no orientation — its
+     * single "line" is the balloon, so its height is the balloon's height.
+     * Taking that as a type size would set a short balloon's translation in
+     * type as tall as the balloon.
+     *
+     * So a balloon read by manga-ocr yields null here and the renderer stays on
+     * its 24sp ceiling, exactly as before. That is the honest answer: nothing
+     * measured the lettering, so nothing should claim to have.
+     */
+    private fun TextRegion.glyphSizePx(): Int? {
+        val thicknesses = lines
+            .filter { it.orientation != null }
+            .map { if (it.orientation == TextOrientation.VERTICAL) it.bounds.width else it.bounds.height }
+            .filter { it > 0 }
+            .sorted()
+        if (thicknesses.isEmpty()) return null
+        return thicknesses[thicknesses.size / 2]
+    }
+
     private data class Placement(val bounds: TextBounds, val style: SourceStyle)
 
     /**
@@ -505,6 +536,7 @@ class CaptureTextSource @Inject internal constructor(
         val index = occurrences.getOrDefault(text, 0)
         occurrences[text] = index + 1
         val placement = place(region.bounds, region.orientation, region.enclosure)
+        val style = placement.style.copy(glyphSizePx = region.glyphSizePx())
 
         return TextElement(
             id = TextElementIds.forContent(
@@ -523,7 +555,7 @@ class CaptureTextSource @Inject internal constructor(
             // capture is of the screen, not of a window.
             source = SourceIdentity(packageName = packageName),
             revision = Revision(generation),
-            style = placement.style,
+            style = style,
             // Told rather than guessed where the recogniser can vouch for
             // it, and left to detection where it cannot.
             sourceLanguage = sourceLanguage,

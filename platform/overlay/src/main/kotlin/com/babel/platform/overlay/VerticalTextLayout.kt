@@ -100,12 +100,47 @@ internal object VerticalTextLayout {
      * characters would not fit a 68x164 balloon vertically, while the same box
      * takes far more horizontally.
      */
-    fun fits(text: String, boxWidthPx: Int, boxHeightPx: Int, density: Float): Boolean =
+    fun fits(
+        text: String,
+        boxWidthPx: Int,
+        boxHeightPx: Int,
+        density: Float,
+        glyphSizePx: Int? = null,
+    ): Boolean =
         layout(
             text = text,
             boxWidthPx = boxWidthPx - HORIZONTAL_PADDING_PX * 2,
             boxHeightPx = boxHeightPx - VERTICAL_PADDING_PX * 2,
-            maxGlyphPx = (MAX_GLYPH_SP * density).toInt(),
+            maxGlyphPx = ceilingPx(glyphSizePx, density),
             minGlyphPx = (MIN_GLYPH_SP * density).toInt(),
         ) != null
+
+    /**
+     * The largest type this translation may be set in.
+     *
+     * The measured size of the lettering being replaced when there is one, and
+     * [MAX_GLYPH_SP] when there is not. The ceiling exists because a size that
+     * was *inferred* can be absurd — a container node's height read as type on
+     * the accessibility path — and that reasoning does not reach a size that
+     * was measured off the pixels ([SourceStyle.glyphSizePx]). Holding a
+     * measured original down to 24sp is what left a large balloon's translation
+     * looking like a caption.
+     *
+     * Still only a ceiling: [layout] steps down from it until the text fits, so
+     * raising it cannot push text outside the balloon.
+     *
+     * **A measurement may only raise it.** The first version let it lower the
+     * ceiling too, on the reasoning that a translation should be set at the
+     * size of the text it replaces. Measured on `kr-mag-01`, that made type
+     * *smaller*: the original lettering is 26–30px there while the flat ceiling
+     * is 42px, so honouring the original narrowed a limit that was not binding
+     * anyway — the box is what binds, and at three lines of 1.2 spacing a
+     * 117px-tall box cannot take more than about 30px whatever the ceiling
+     * says. Lowering it could only lose, so it does not.
+     */
+    fun ceilingPx(glyphSizePx: Int?, density: Float): Int {
+        val flat = (MAX_GLYPH_SP * density).toInt()
+        val measured = glyphSizePx?.takeIf { it > 0 } ?: return flat
+        return maxOf(measured, flat)
+    }
 }

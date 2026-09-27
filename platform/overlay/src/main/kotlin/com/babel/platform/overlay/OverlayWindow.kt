@@ -164,6 +164,10 @@ internal class OverlayWindow(private val context: Context) {
                     boxWidthPx = bounds.width,
                     boxHeightPx = bounds.height,
                     density = context.resources.displayMetrics.density,
+                    // The same ceiling the view will use. Asking a different
+                    // question here than the view answers is how a balloon
+                    // comes to be set vertically and then not fit.
+                    glyphSizePx = translation.style.sourceStyle.glyphSizePx,
                 )
 
             val existing = views[translation.elementId]

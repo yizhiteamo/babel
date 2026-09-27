@@ -146,7 +146,15 @@ internal class TranslationTextView(context: Context) : TextView(context), Transl
             TextFitting.maxTextSizePx(
                 boundsHeightPx = heightPx,
                 glyphHeightRatio = GLYPH_HEIGHT_RATIO,
-                ceilingPx = spToPx(MAX_TEXT_SIZE_SP),
+                // A measured original may raise this ceiling but never lower
+                // it: the flat one guards a size that was *inferred*, and
+                // measuring cannot make that guard necessary in the other
+                // direction. See [VerticalTextLayout.ceilingPx] for the
+                // measurement that settled it.
+                ceilingPx = maxOf(
+                    translation.style.sourceStyle.glyphSizePx ?: 0,
+                    spToPx(MAX_TEXT_SIZE_SP),
+                ),
                 floorPx = minAutoSizePx(),
             )
         }
