@@ -118,7 +118,22 @@ internal class MlKitTextRecognizer(
      */
     private fun scaleFor(frame: Bitmap): Int {
         val pixels = frame.width.toLong() * frame.height
-        return if (pixels * SCALE * SCALE <= MAX_PIXELS) SCALE else 1
+        val shortest = minOf(frame.width, frame.height)
+
+        // A balloon crop is not a page, and the doubling below was measured on
+        // pages. Asked for a 38x45 crop, doubling gives 76x90, which this
+        // engine declines outright — five of ten balloons on `kr-mag-01` came
+        // back with nothing at all. There is room to ask for more: the pixel
+        // budget is for a doubled full screen, and a crop that small could be
+        // enlarged forty times inside it.
+        val wanted = when {
+            shortest <= 0 -> SCALE
+            else -> maxOf(SCALE, TARGET_SHORTEST_SIDE / shortest)
+        }.coerceAtMost(MAX_SCALE)
+
+        var scale = wanted
+        while (scale > 1 && pixels * scale * scale > MAX_PIXELS) scale--
+        return scale
     }
 
     private fun Bitmap.enlargedBy(factor: Int): Bitmap =
@@ -140,8 +155,26 @@ internal class MlKitTextRecognizer(
         val JAPANESE = LanguageTag("ja")
         val KOREAN = LanguageTag("ko")
 
-        /** Doubling won the comparison; see [scaleFor]. */
+        /** Doubling won the comparison on whole pages; see [scaleFor]. */
         const val SCALE = 2
+
+        /**
+         * What a small crop is enlarged towards, on its shorter side.
+         *
+         * Measured on `kr-mag-01`, where doubling alone left five of ten
+         * balloons unread. Enlarging towards this recovers the largest of them,
+         * a 93x82 balloon — a real one, not a sound effect. Doubling the target
+         * again to 640 recovers **nothing** further and costs 25–45% more time
+         * per page, so the gain is here and no further.
+         *
+         * The four still declined are 38x45 down to 68x61: an ellipsis balloon
+         * with nothing to read and the page's slanted sound effects. Those are
+         * the engine's limit rather than a resolution problem.
+         */
+        const val TARGET_SHORTEST_SIDE = 320
+
+        /** So a one-pixel sliver cannot ask for an absurd enlargement. */
+        const val MAX_SCALE = 8
 
         /** Roughly 8.5 megapixels, so a doubled 1080x1920 frame still fits. */
         const val MAX_PIXELS = 8_500_000L
