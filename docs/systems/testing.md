@@ -119,10 +119,36 @@ Found the hard way, each one having cost a wrong diagnosis:
   adb shell "cp /sdcard/Android/data/com.babel/files/models/* $NEW/"
   ```
 
-  Verified: the app read weights `adb` had written and reported 识别模型已安装.
+  **`chmod` after copying, or the app cannot read what it was given.** `cp` runs
+  as `shell`, and on the phone the copied directory and files stay owned by
+  `shell` with mode 660 while their parent belongs to the app — so the app sees
+  nothing and offers to download 116MB again. `chmod 777` the directory and
+  `chmod 666` the files and it reads them. **The emulator does not need this**
+  (its FUSE layer maps ownership by path), which is how the step got missed the
+  first time: the migration was rehearsed there and the recipe written up as if
+  it were complete.
+
   The API key cannot come across — it is in app-private storage — so it has to be
   entered again. Uninstall the old package as well, or two accessibility
   services compete for the same screens.
+
+- **The phone's log buffer rolls over faster than a test round takes.** Dumping
+  with `adb logcat -d` after a 45-second round returned **zero** `Babel.*` lines
+  while the app was working perfectly — other apps had pushed them out of the
+  shared ring. It reads exactly like a dead pipeline, and cost a hunt: the
+  service was bound, the permissions granted, the screen simply had no overlays
+  because none had been asked for yet. Capture by process instead —
+  `adb logcat -d --pid=$(adb shell pidof <applicationId>)` — and raise the ring
+  with `adb logcat -G 32M`. The emulator is quiet enough that neither is needed,
+  which is why the habit did not exist.
+- **`dumpsys accessibility | grep -c 'label=Babel'` does not answer "is it
+  bound".** The label appears in more than one block, so a service that is
+  enabled-but-unbound — the split state the capability check exists for — counts
+  as 1 and reads as healthy. Scope the grep to the block:
+
+  ```
+  adb shell dumpsys accessibility | sed -n '/Bound services/,/Enabled services/p'
+  ```
 
 ## Testing the pipeline
 

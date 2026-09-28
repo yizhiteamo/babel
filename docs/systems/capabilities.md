@@ -37,6 +37,21 @@ experiment below — predates the rename and so says `com.babel`; the app's id i
 commands are left as they were actually run: rewriting evidence to match later
 code is how a record stops being one.
 
+### One observation after the rename, which is not yet a finding
+
+The same build under `com.yizhiteamo.babel` was scanned on the same phone and
+**kept**: the cloud cache missed it exactly as before
+(`CacheInterceptor: Cache missed:com.yizhiteamo.babel`), but the local engines
+returned a clean verdict and the line came back `try to remove: []`. The service
+stayed bound.
+
+That is **one run**, and the honest reading is that it narrows nothing on its
+own: the analysis above already says the cache miss is necessary and not
+sufficient, and that the local verdict decides. Whether the bare two-segment name
+`com.babel` was itself part of what the engine disliked is unproven and would
+take deliberate repetition to establish — the point of writing it down is that
+the next person sees a data point rather than repeats the hunt.
+
 The other app is redacted; what the excerpt has to show is only that a second
 accessibility service on the same phone went through the same scan and stayed in
 the list.
