@@ -11,7 +11,13 @@ android {
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.babel"
+        // The app's identity to Android, and deliberately not the Kotlin package
+        // root (`com.babel`) nor the `namespace` above (`com.babel.app`) — the
+        // three are independent, and only this one is what the system keys on:
+        // component names, `/data/data/<id>`, the external files dir the models
+        // live in, and uniqueness on Play. It cannot be changed after a release,
+        // which is why it was changed before there was one.
+        applicationId = "com.yizhiteamo.babel"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1

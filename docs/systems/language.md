@@ -54,9 +54,9 @@ because before that nobody had a reason to set a per-app locale.
 To re-check after changes:
 
 ```bash
-adb shell cmd locale set-app-locales com.babel --locales en
+adb shell cmd locale set-app-locales com.yizhiteamo.babel --locales en
 # UI turns English; "Translate into" must still read zh on a Chinese device
-adb shell cmd locale set-app-locales com.babel --locales ""
+adb shell cmd locale set-app-locales com.yizhiteamo.babel --locales ""
 ```
 
 Known trade-off: `values-zh` matches every Chinese region, so users in

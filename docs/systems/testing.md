@@ -44,7 +44,7 @@ Found the hard way, each one having cost a wrong diagnosis:
   it. Measured again while smoke-testing V2: a dump taken to read the home
   screen reported 文字翻译 未运行 and 漫画模式 不可用 while both were in
   fact running, and the reading was believed long enough to start a hunt.
-- **`:app:connectedDebugAndroidTest` uninstalls `com.babel`** when it finishes, taking the DataStore (including a configured API key) and `getExternalFilesDir` (including downloaded models) with it. Run the app's instrumentation by hand instead — `adb install -r` both APKs, then `adb shell am instrument -w com.babel.test/androidx.test.runner.AndroidJUnitRunner`. Library modules are safe: they uninstall only their own test package.
+- **`:app:connectedDebugAndroidTest` uninstalls `com.yizhiteamo.babel`** when it finishes, taking the DataStore (including a configured API key) and `getExternalFilesDir` (including downloaded models) with it. Run the app's instrumentation by hand instead — `adb install -r` both APKs, then `adb shell am instrument -w com.yizhiteamo.babel.test/androidx.test.runner.AndroidJUnitRunner`. Library modules are safe: they uninstall only their own test package.
 - **An ONNX session must be used under the same lock that owns its life.**
   Fetching it under a lock and then running inference outside one lets
   `release()` free it mid-call: that is a native `SIGSEGV`, not an
@@ -63,7 +63,7 @@ Found the hard way, each one having cost a wrong diagnosis:
   (`http://127.0.0.1:9/...`) instead: it produces the same `Network`
   failures and touches nothing.
 - **Running the app's instrumentation leaves `accessibility_enabled` at 0.** An
-  `am instrument` against `com.babel.test` runs in the app's own process and the
+  `am instrument` against `com.yizhiteamo.babel.test` runs in the app's own process and the
   service comes back unbound with the enabled-services list still naming it —
   the exact split state the capability check exists for. Rebind before judging
   any V1 result, or a working build reads as a dead one.
@@ -74,12 +74,13 @@ Found the hard way, each one having cost a wrong diagnosis:
   its antivirus dislikes — six to nine seconds after connect, every time. The
   discriminator is not the installer package but the scan verdict; the evidence
   and what can be done about it are in `docs/systems/capabilities.md`. When a
-  device run shows no translations, grep for `try to remove: [com.babel]`
+  device run shows no translations, grep for `try to remove: [com.yizhiteamo.babel]`
   before suspecting the pipeline.
 - **Rebinding the service on an emulator takes a real change, and an unstopped
   package.** `am force-stop` puts the package in the stopped state, and the
   framework then refuses to launch its service at all
-  (`ActivityManager: Unable to launch app com.babel … for service`); worse, a
+  (`ActivityManager: Unable to launch app com.babel … for service` — quoted
+  from before the rename; the id is `com.yizhiteamo.babel` now); worse, a
   `settings put` of the **same value** notifies nobody, so the retry never
   happens. Both failures look identical from outside: `Bound services:{}` with
   `Binding services:{}` and `Crashed services:{}` also empty, which reads as a
@@ -96,13 +97,32 @@ Found the hard way, each one having cost a wrong diagnosis:
   ```
   T=/sdcard/Android/data/com.babel.platform.capture.test/files
   adb shell "mkdir -p $T/models $T/comic-sample"
-  adb shell "cp /sdcard/Android/data/com.babel/files/models/* $T/models/"
+  adb shell "cp /sdcard/Android/data/com.yizhiteamo.babel/files/models/* $T/models/"
   adb push comic-sample/<page> $T/comic-sample/
   ```
 
   Forgetting the models gives `manga-ocr available: false` and a test that
   skips while reporting success, which reads as "nothing to see" rather than as
   "nothing ran".
+
+- **Changing `applicationId` migrates nothing, and the models are the expensive
+  part.** A new id is a new app to Android: private storage (the DataStore, so
+  the configured API key), the external files dir (117MB of recogniser weights),
+  the overlay permission and the accessibility grant all belong to the old id
+  and stay with it. The weights need not be re-downloaded — they live on shared
+  storage and `adb` can copy them straight across before the new package is
+  installed:
+
+  ```
+  NEW=/sdcard/Android/data/com.yizhiteamo.babel/files/models
+  adb shell "mkdir -p $NEW"
+  adb shell "cp /sdcard/Android/data/com.babel/files/models/* $NEW/"
+  ```
+
+  Verified: the app read weights `adb` had written and reported 识别模型已安装.
+  The API key cannot come across — it is in app-private storage — so it has to be
+  entered again. Uninstall the old package as well, or two accessibility
+  services compete for the same screens.
 
 ## Testing the pipeline
 

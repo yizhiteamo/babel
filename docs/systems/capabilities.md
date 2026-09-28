@@ -31,6 +31,12 @@ VirusScanJobService: try to remove: [com.babel]
 Babel.AccessibilityService: accessibility service torn down
 ```
 
+Everything quoted in this section — this excerpt and the `pm set-installer`
+experiment below — predates the rename and so says `com.babel`; the app's id is
+`com.yizhiteamo.babel` now. Device logs are kept as they were printed, and the
+commands are left as they were actually run: rewriting evidence to match later
+code is how a record stops being one.
+
 The other app is redacted; what the excerpt has to show is only that a second
 accessibility service on the same phone went through the same scan and stayed in
 the list.

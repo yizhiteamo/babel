@@ -332,7 +332,8 @@ Testing against a device, an emulator, or the pipeline has its own set of traps,
 ## Conventions
 
 - Kotlin sources live under `src/main/kotlin/`.
-- Package root is `com.babel`; `applicationId` is `com.babel` (placeholder — change before any release).
+- Kotlin package root is `com.babel`; `applicationId` is **`com.yizhiteamo.babel`**. They differ on purpose and neither follows from the other, so the accessibility component reads `com.yizhiteamo.babel/com.babel.platform.accessibility.BabelAccessibilityService` — two different halves, not a typo.
+- **No app icon yet.** `app/src/main/res/` has no mipmap or drawable and the manifest declares no `android:icon`, so the launcher shows the platform's placeholder. Needed before any release.
 - DI is Hilt + KSP. Pure-Kotlin modules use `javax.inject` annotations only; the Hilt plugin is applied in Android modules.
 
 ---
