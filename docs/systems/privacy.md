@@ -95,10 +95,17 @@ went from happening to not: measured 0 recognitions on the home screen against 7
 on the comic page.
 
 **Per-app privacy exclusions could not match.** They key on
-`SourceIdentity.packageName`, and OCR elements carried none, so a user who had
-excluded their banking app would have been silently unprotected in manga mode.
-Elements now carry the foreground package. Scope and privacy remain separate
-lists, as they must — this fixed the plumbing, not the policy.
+`SourceIdentity.packageName`, and OCR elements carried none, so an excluded app
+would have been silently unprotected in manga mode. Elements now carry the
+foreground package.
+
+**This fixed the plumbing and nothing else, which is worth stating plainly
+because the earlier wording did not.** `DefaultSensitiveContentPolicy` is
+constructed at `app/.../di/PipelineModule.kt` with **no arguments**, so
+`excludedPackages` is the empty set, and no screen anywhere writes to it. Every
+sentence about "an app the user excluded" therefore describes a path **no user
+can reach today**. Scope and privacy remain separate lists, as they must — but
+one of them currently has no contents and no way to acquire any.
 
 ### Known, unfixed
 
@@ -106,6 +113,73 @@ ML Kit's native layer logs recognised text to logcat under the `native` tag,
 outside our control. Local only, and unreadable by other apps since Android 4.1,
 but "we do not log screen content" and "screen content is not logged" are
 different claims and only the first is true.
+
+#### Manga mode reads any app that does not expose its text
+
+Asked by the user as a question — *will this fire in other apps?* — and the
+answer is yes, by default, and it is worth being exact about when.
+
+With manga mode on, two checks stand between a foreground app and a full-screen
+capture (`BabelAccessibilityService.considerImageScan`):
+
+1. **Scope**, which is a **deny**-list: the launcher, the keyboard, Babel and
+   SystemUI. Everything else is in scope (`docs/systems/scope.md`).
+2. **`imagePathOwnsScreen`** — fewer than `MIN_CONTENT_LABELS` (3) label-sized
+   nodes inside the largest container.
+
+So the condition is "not one of those four, and the accessibility tree barely
+exposes any text". A photo viewer showing one image, a full-screen video, a
+game, a map, anything drawn with Canvas/Unity/WebGL, a scan or an ID photo — all
+of them satisfy it. What then happens is the whole pipeline: **screenshot →
+on-device OCR → and, if remote translation is configured and on, the recognised
+text goes to the endpoint the user named.** Frames still never travel; text does.
+
+Three things make this larger than it first looks:
+
+- **The mode is persisted and restores itself** when the service reconnects
+  (above). Left on and forgotten, it comes back after the process is killed.
+- **Nothing narrows it per app.** The exclusion list is empty and unreachable,
+  as the correction above now says.
+- **Pausing is not a defence.** Pause stops the node path only — measured, with
+  translation showing 已暂停, a comic page still made 21 provider calls. The
+  interface says as much ("漫画模式是独立开关"); it is repeated here because it
+  is easy to assume otherwise.
+
+**The balloon detector is not a content gate, and this is measured rather than
+argued.** From a device log taken on an English article page:
+
+```
+20:44:27.973 DetectingPageReader  detector found 2 bubbles
+20:44:28.088 MangaOcr             balloon: encode 80ms, decode 23ms, 6 steps
+20:44:28.091 CaptureTextSource    read 1 regions ... abandoned part way
+20:44:29.605 AccessibilityService image scan skipped: the node path owns this screen
+```
+
+Two "balloons" found in prose, one of them recognised. Note the order as well:
+**the layout check is evaluated once, when a scan starts.** A screen that only
+becomes readable while the scan runs has already been captured and recognised by
+the time the node path claims it. And a chat bubble is shaped exactly like a
+speech balloon, so "it only reads comics" is not a claim this detector supports.
+
+##### The ways out, and what each costs
+
+Recorded so the next attempt does not re-derive them:
+
+- **Bind the mode to one app** — the first app entered after it is switched on
+  owns it; every other app is skipped, and the notification names the owner.
+  No new settings screen, small change, and it grows naturally into the next
+  option. Costs: switching readers means switching the mode off and on.
+- **A user allow-list** — strongest and supports several readers at once. Costs
+  an app-picker and persistence, which `docs/systems/settings.md` defers.
+- **Ask on entering a new app** — clearest consent, but it interrupts reading,
+  and with notification permission denied there is nowhere to ask (the gap this
+  document already records).
+- **A content gate** — attractive and, as measured above, **not reliable**;
+  worse, it only fires after the screenshot and the OCR, which is the step that
+  matters most here.
+
+Untouched for now by the user's decision: the risk is recorded, the code is not
+changed.
 
 ## Visibility of screen reading
 

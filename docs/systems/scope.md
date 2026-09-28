@@ -42,6 +42,30 @@ Everything except the system UI package is resolved at runtime rather than
 hardcoded, so the policy follows whichever launcher and keyboard the user
 actually has.
 
+## The image path leans on this list far harder than the node path
+
+Both paths ask [isInScope], and the answer means something different to each.
+
+The node path reads **named nodes**: text an app deliberately exposed to
+accessibility. The image path reads **the whole display** as pixels. So the same
+deny-list that merely avoids wasted work on one path is, on the other, the only
+thing standing between manga mode and a screenshot of whatever is in front —
+which is why the scan loop checks it separately rather than trusting the node
+path to have done it (`docs/systems/privacy.md` records the review that found it
+missing).
+
+The second check on that path, `imagePathOwnsScreen`, is easy to mistake for a
+safety rule and is not one. It asks **"can the text path read this screen?"** —
+a layout question, answered by counting label-sized nodes inside the content
+area. It does not ask whether the screen *should* be read. A screen with no
+exposed text passes it, whatever that screen contains.
+
+Between a deny-list of four packages and a layout test, an app that draws its
+own text is in scope by default. That is a deliberate consequence of the current
+policy rather than an oversight, and what it means in practice — including
+device evidence and the options for narrowing it — is recorded under
+**Known, unfixed** in `docs/systems/privacy.md`, not repeated here.
+
 ## Placement
 
 The decision runs at the acquisition entry point, before the node tree is
