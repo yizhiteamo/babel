@@ -6,6 +6,8 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -388,8 +390,15 @@ private fun RemoteTranslationDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.remote_dialog_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Scrolls, because this is the tallest dialog in the app — chips, a
+            // paragraph of hint, three fields, the probe row and the warning —
+            // and `AlertDialog` does not scroll its text slot. Without it the
+            // bottom is simply cut off at a large font size.
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ChipRow {
                     RemoteService.entries.forEach { option ->
                         FilterChip(
                             selected = service == option,
@@ -418,7 +427,7 @@ private fun RemoteTranslationDialog(
                     // It stays editable, and `Custom` stays in the list, so a
                     // server of one's own is still a first-class configuration
                     // (ADR 010).
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ChipRow {
                         ChatPreset.ALL.forEach { option ->
                             FilterChip(
                                 selected = preset == option,
@@ -435,6 +444,7 @@ private fun RemoteTranslationDialog(
                         }
                     }
                     OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
                         value = endpoint,
                         onValueChange = {
                             endpoint = it
@@ -445,6 +455,7 @@ private fun RemoteTranslationDialog(
                         label = { Text(stringResource(R.string.remote_field_endpoint)) },
                     )
                     OutlinedTextField(
+                        modifier = Modifier.fillMaxWidth(),
                         value = model,
                         onValueChange = {
                             model = it
@@ -455,6 +466,7 @@ private fun RemoteTranslationDialog(
                     )
                 }
                 OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
                     value = if (service == RemoteService.CHAT) chatKey else deepLKey,
                     onValueChange = {
                         if (service == RemoteService.CHAT) chatKey = it else deepLKey = it
@@ -497,6 +509,38 @@ private fun RemoteTranslationDialog(
             }
         },
     )
+}
+
+/**
+ * A row of chips that wraps rather than losing the ones that do not fit.
+ *
+ * A [Row] compresses its children when they are too wide — which is how
+ * `Ollama (local)` came to be set as three lines — and then simply clips what
+ * is still over. On a 1440px phone that took `Custom` off the screen entirely,
+ * and `Custom` is the option that keeps "point it at something of your own" a
+ * first-class configuration (ADR 010, [ChatPreset.CUSTOM]). A layout cannot be
+ * allowed to withdraw a documented choice.
+ *
+ * Wrapping rather than scrolling sideways: there are four chips, they are one
+ * choice, and a chip that has to be discovered by swiping is only marginally
+ * better than one that is clipped.
+ *
+ * [FlowRow] is still experimental in Compose Foundation 1.7 (it settles in 1.8),
+ * so the opt-in lives here and nowhere else: one wrapper is the whole exposure,
+ * and the call sites stay ordinary.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChipRow(content: @Composable () -> Unit) {
+    // A plain lambda rather than `FlowRowScope.() -> Unit`: putting the scope in
+    // the signature would make every caller touch the experimental API too,
+    // which is the opposite of containing it. Nothing here needs the scope.
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        content()
+    }
 }
 
 /**
