@@ -87,7 +87,7 @@ class ScrollReuseTest {
         val general = UnusedRecognizer()
         return DetectingPageReader(
             detector = detector,
-            recognizer = BubbleRecognizer(engine, general),
+            recognizer = BubbleRecognizer(engine, general, UnusedRecognizer()),
             fallback = GroupingPageReader(general),
             logger = BabelLogger.NoOp,
         )

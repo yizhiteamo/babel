@@ -65,7 +65,7 @@ class BubbleOracleExperimentTest {
             return@runBlocking
         }
 
-        val recognizer = MlKitTextRecognizer(BabelLogger.NoOp)
+        val recognizer = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.JAPANESE)
         val grouper = TextRegionGrouper()
 
         for (page in pages) {

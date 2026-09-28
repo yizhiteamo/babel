@@ -88,8 +88,9 @@ class PageTextDumpTest {
             return@runBlocking
         }
 
-        val general = MlKitTextRecognizer(BabelLogger.NoOp)
-        val recognizer = BubbleRecognizer(manga, general)
+        val general = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.JAPANESE)
+        val korean = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.KOREAN)
+        val recognizer = BubbleRecognizer(manga, general, korean)
         val reader = DetectingPageReader(
             detector = OnnxBubbleDetector(context, dispatchers, BabelLogger.NoOp),
             recognizer = recognizer,
@@ -147,6 +148,125 @@ class PageTextDumpTest {
         }
 
         reader.release()
+    }
+
+    /**
+     * Every balloon the detector found, **including the ones that read as
+     * nothing**.
+     *
+     * [dumpEachPageInReadingOrder] cannot answer this. It prints what
+     * `DetectingPageReader.read` hands over, and a balloon that recognised to
+     * nothing is dropped by `if (lines.isEmpty()) continue` *before* it reaches
+     * the callback — so the very balloons the recall question is about are the
+     * ones that tool cannot see. Measured on `kr-mag-01`: nine detected, six
+     * delivered, and the three missing were known only by their sizes from a
+     * log line (`docs/milestones/v2.md`).
+     *
+     * So this asks the detector and the recogniser directly and prints a row
+     * per balloon, empty or not, making the page's arithmetic add up: detected
+     * N, read M, and here is what each of the N−M actually contained.
+     *
+     * **It mirrors `DetectingPageReader.recognize` rather than calling it** —
+     * that method is private, and the two-step it performs (the whole-page
+     * reading first, the crop only as a fallback) is exactly what this is
+     * measuring. Worth knowing they can drift apart; the step order is stated
+     * here so a reader can check.
+     */
+    @Test
+    fun dumpEveryDetectedBalloon() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val pages = File(context.getExternalFilesDir(null), "comic-sample")
+            .listFiles { file -> file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
+            ?.sortedBy { it.name }
+            .orEmpty()
+
+        if (pages.isEmpty()) {
+            println("BALLOONS skipped: needs comic-sample pushed")
+            return@runBlocking
+        }
+
+        val manga = MangaOcrRecognizer(context, dispatchers, BabelLogger.NoOp)
+        println("BALLOONS manga-ocr available: ${manga.isAvailable}")
+
+        val general = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.JAPANESE)
+        val korean = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.KOREAN)
+        val recognizer = BubbleRecognizer(manga, general, korean)
+        val detector = OnnxBubbleDetector(context, dispatchers, BabelLogger.NoOp)
+
+        for (file in pages) {
+            val full = BitmapFactory.decodeFile(file.absolutePath)
+                ?.copy(Bitmap.Config.ARGB_8888, false) ?: continue
+            val page = if (full.width > SCREEN_WIDTH) {
+                val height = full.height * SCREEN_WIDTH / full.width
+                Bitmap.createScaledBitmap(full, SCREEN_WIDTH, height, true)
+                    .also { if (it !== full) full.recycle() }
+            } else {
+                full
+            }
+
+            // Same order as the pipeline: the page is judged before any balloon
+            // is cropped, and the verdict decides both which engine reads and
+            // which way the page is read.
+            recognizer.startPage(page)
+            val bubbles = detector.detect(page)
+
+            println("BALLOONS")
+            println(
+                "BALLOONS === ${file.name} (${page.width}x${page.height}) " +
+                    "detected=${bubbles.size} korean=${recognizer.pageIsKorean} ===",
+            )
+
+            var empty = 0
+            for ((index, bubble) in bubbles.sortedWith(balloonOrder(page)).withIndex()) {
+                val fromPage = recognizer.pageLinesIn(bubble.text)?.takeIf { it.isNotEmpty() }
+                val lines = fromPage ?: run {
+                    val crop = page.cropped(bubble.text)
+                    if (crop == null) {
+                        emptyList()
+                    } else {
+                        try {
+                            recognizer.recognize(crop)
+                        } finally {
+                            crop.recycle()
+                        }
+                    }
+                }
+                if (lines.isEmpty()) empty++
+                val box = bubble.text
+                println(
+                    "BALLOONS   %2d %-11s %-4s %-7s lines=%d %s".format(
+                        index + 1,
+                        "${box.width}x${box.height}@${box.left},${box.top}",
+                        if (bubble.onArt) "art" else "bub",
+                        if (fromPage != null) "page" else "crop",
+                        lines.size,
+                        if (lines.isEmpty()) "<empty>" else lines.joinToString(" | ") { it.text },
+                    ),
+                )
+            }
+            println("BALLOONS --- ${file.name}: ${bubbles.size} detected, $empty read as nothing")
+            page.recycle()
+        }
+
+        recognizer.release()
+        detector.release()
+    }
+
+    /** Same crop rule as `DetectingPageReader`, including its minimum side. */
+    private fun Bitmap.cropped(bounds: com.babel.core.model.TextBounds): Bitmap? {
+        val left = bounds.left.coerceIn(0, width)
+        val top = bounds.top.coerceIn(0, height)
+        val right = bounds.right.coerceIn(left, width)
+        val bottom = bounds.bottom.coerceIn(top, height)
+        if (right - left < 8 || bottom - top < 8) return null
+        return Bitmap.createBitmap(this, left, top, right - left, bottom - top)
+    }
+
+    /** [readingOrder] for detections rather than for regions. */
+    private fun balloonOrder(page: Bitmap): Comparator<DetectedBubble> {
+        val band = (page.height * rowTolerance).toInt().coerceAtLeast(1)
+        return compareBy<DetectedBubble> { it.text.top / band }
+            .thenByDescending { it.text.right }
     }
 
     /**

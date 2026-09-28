@@ -174,11 +174,12 @@ class WebtoonScrollBenchmarkTest {
         // Loaded once and shared by every reader in this half. The models are
         // what cost seconds to load; the reader around them holds only the
         // memory of the last screen, which is the thing under test.
-        val general = MlKitTextRecognizer(BabelLogger.NoOp)
+        val general = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.JAPANESE)
         val detector = OnnxBubbleDetector(context, dispatchers, BabelLogger.NoOp)
         val recognizer = BubbleRecognizer(
             MangaOcrRecognizer(context, dispatchers, BabelLogger.NoOp),
             general,
+            MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.KOREAN),
         )
         fun reader() = DetectingPageReader(
             detector = detector,

@@ -62,7 +62,7 @@ class OcrPreprocessingExperimentTest {
             return@runBlocking
         }
 
-        val recognizer = MlKitTextRecognizer(BabelLogger.NoOp)
+        val recognizer = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.JAPANESE)
         val grouper = TextRegionGrouper()
         val scores = LinkedHashMap<String, MutableList<Pair<String, Double>>>()
 

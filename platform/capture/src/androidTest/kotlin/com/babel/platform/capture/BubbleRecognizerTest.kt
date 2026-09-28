@@ -59,12 +59,26 @@ class BubbleRecognizerTest {
         }
     }
 
+    /**
+     * The Korean engine, which none of these cases should reach.
+     *
+     * It throws rather than returning nothing: the Korean path only opens after
+     * [BubbleRecognizer.startPage] has judged a whole frame, and no case here
+     * calls that. An engine that quietly returned an empty list would let a
+     * future change start consulting it without a single test noticing.
+     */
+    private class NotThisPage : TextRecognizer {
+        override fun languageOf(text: String) = error("the Korean engine was asked to judge")
+        override suspend fun recognize(frame: Bitmap): List<RecognizedLine> =
+            error("the Korean engine was asked to read")
+    }
+
     @Test
     fun japaneseFromTheComicEngineIsKept() = runBlocking {
         val manga = Manga(isAvailable = true, lines = listOf(line("わたしの")))
         val general = General(listOf(line("should not be asked")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertEquals(listOf("わたしの"), read.map { it.text })
         assertEquals(0, general.calls, "the second engine should not have been asked")
@@ -77,7 +91,7 @@ class BubbleRecognizerTest {
         val manga = Manga(isAvailable = true, lines = listOf(line("懺悔室")))
         val general = General(listOf(line("should not be asked")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertEquals(listOf("懺悔室"), read.map { it.text })
         assertEquals(0, general.calls)
@@ -93,7 +107,7 @@ class BubbleRecognizerTest {
         )
         val general = General(listOf(line("Wait, isn't that Samantha?")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertEquals(listOf("Wait, isn't that Samantha?"), read.map { it.text })
         assertEquals(1, manga.calls, "the comic engine is still asked first")
@@ -105,7 +119,7 @@ class BubbleRecognizerTest {
         val manga = Manga(isAvailable = true, lines = emptyList())
         val general = General(listOf(line("いくらでも使ってください")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertEquals(listOf("いくらでも使ってください"), read.map { it.text })
         assertEquals(1, general.calls)
@@ -116,7 +130,7 @@ class BubbleRecognizerTest {
         val manga = Manga(isAvailable = true, lines = listOf(line("......!?")))
         val general = General(listOf(line("…あ")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertEquals(listOf("…あ"), read.map { it.text })
     }
@@ -128,7 +142,7 @@ class BubbleRecognizerTest {
         val manga = Manga(isAvailable = false, lines = listOf(line("unused")))
         val general = General(listOf(line("Hello")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertEquals(listOf("Hello"), read.map { it.text })
         assertEquals(0, manga.calls)
@@ -142,7 +156,7 @@ class BubbleRecognizerTest {
         val manga = Manga(isAvailable = true, lines = listOf(line("!?"), line("はい")))
         val general = General(listOf(line("should not be asked")))
 
-        val read = BubbleRecognizer(manga, general).recognize(frame())
+        val read = BubbleRecognizer(manga, general, NotThisPage()).recognize(frame())
 
         assertTrue(read.map { it.text } == listOf("!?", "はい"), "got ${read.map { it.text }}")
         assertEquals(0, general.calls)

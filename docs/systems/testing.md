@@ -150,6 +150,22 @@ Found the hard way, each one having cost a wrong diagnosis:
   adb shell dumpsys accessibility | sed -n '/Bound services/,/Enabled services/p'
   ```
 
+- **`./gradlew build` does not compile the `androidTest` source set, and it rots
+  silently.** Found when the balloon-recall work needed `PageTextDumpTest`:
+  `:platform:capture`'s instrumentation sources had **15 compile errors**, left
+  behind when `MlKitTextRecognizer` gained a `script` parameter and
+  `BubbleRecognizer` gained a Korean engine. The main sources were updated, the
+  tests were not, and nothing complained for weeks. Four earlier attempts to run
+  that test were written up as an external-files problem; **the truth is it
+  could not compile**, and the earlier explanation was incomplete.
+
+  Add it to anything that claims to have checked the build:
+
+  ```
+  ./gradlew build
+  ./gradlew :platform:capture:assembleDebugAndroidTest
+  ```
+
 ## Testing the pipeline
 
 A collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.

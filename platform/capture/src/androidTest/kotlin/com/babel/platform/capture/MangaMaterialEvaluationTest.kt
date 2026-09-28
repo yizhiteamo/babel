@@ -74,7 +74,7 @@ class MangaMaterialEvaluationTest {
             return@runBlocking
         }
 
-        val recognizer = MlKitTextRecognizer(BabelLogger.NoOp)
+        val recognizer = MlKitTextRecognizer(BabelLogger.NoOp, MlKitTextRecognizer.Script.JAPANESE)
         val grouper = TextRegionGrouper()
 
         var enclosed = 0
