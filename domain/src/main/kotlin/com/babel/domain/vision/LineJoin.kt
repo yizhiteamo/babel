@@ -30,21 +30,39 @@ package com.babel.domain.vision
  * would be as wrong as one inside a vertical column.
  *
  * So the question is asked of the seam itself — do the two characters meeting
- * there belong to a script that writes spaces between words. Han, kana and
- * Hangul do not, and either side being one of them is enough to join with
- * nothing.
+ * there belong to a script that writes spaces between words. Han and kana do
+ * not, and either side being one of them is enough to join with nothing.
+ *
+ * ## Korean is not one of them, and used to be
+ *
+ * Hangul sat in that list by analogy with Han and kana, and the analogy is
+ * simply wrong: Korean separates words with spaces (띄어쓰기 is an orthographic
+ * rule, not a style). So `선생님` and `줄게` were glued into `선생님줄게` and
+ * handed to the translator as one unspaced run, which came back as the personal
+ * name 徐世尼 — a title read as somebody's name because the words had been
+ * welded together before anyone tried to read them (`docs/milestones/v2.md`).
+ *
+ * The recogniser was never the problem: it returns Korean already spaced —
+ * measured, one of `kr-mag-01`'s own lines is `사주고 싶어`, space included.
+ * This was the only place the spaces went missing.
+ *
+ * The cost of being wrong the other way: a long Korean word broken across lines
+ * by balloon width now gains a space it should not have. Measured on
+ * `kr-mag-01`, **all five** multi-line Korean regions break at word boundaries,
+ * and a stray space inside one word is a smaller loss than two words welded
+ * into one.
  *
  * Deliberately not built on [JapaneseScript], which answers a different
  * question. That one asks whether text *is* Japanese, and is careful to leave
  * Han-only text unclaimed because it is shared with Chinese. Here the sharing
- * is the point: Chinese does not write spaces either.
+ * is the point: Chinese does not write spaces either. Korean, which shares the
+ * region but not the habit, is handled the way Latin is.
  */
 object LineJoin {
 
     private val HIRAGANA = '぀'..'ゟ'
     private val KATAKANA = '゠'..'ヿ'
     private val HAN = '一'..'鿿'
-    private val HANGUL = '가'..'힣'
 
     /** Punctuation set in CJK text, which takes no space around it either. */
     private const val CJK_PUNCTUATION = "、。〈〉《》「」『』【】〔〕・！？：；，．－～"
@@ -73,10 +91,10 @@ object LineJoin {
         return !writesWithoutSpaces(before) && !writesWithoutSpaces(after)
     }
 
+    /** Hangul is deliberately absent — see the note on Korean above. */
     private fun writesWithoutSpaces(character: Char): Boolean =
         character in HIRAGANA ||
             character in KATAKANA ||
             character in HAN ||
-            character in HANGUL ||
             character in CJK_PUNCTUATION
 }

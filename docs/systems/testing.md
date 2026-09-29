@@ -166,6 +166,24 @@ Found the hard way, each one having cost a wrong diagnosis:
   ./gradlew :platform:capture:assembleDebugAndroidTest
   ```
 
+- **Git Bash rewrites the *remote* path in `adb push`, and reports success
+  anyway.** MSYS path conversion turns a leading `/sdcard/...` or
+  `/data/local/tmp/...` argument into a Windows path — `adb` was seen being
+  handed `C:/Users/…/Git/data/local/tmp/j10.jpg` — and the transfer then prints
+  a cheerful `1 file pushed, 0 skipped. 38.5 MB/s` while nothing arrives where
+  it was asked for. It cost two wrong diagnoses in one session: first "the
+  emulator's storage is broken", then "the phone's storage is broken". Export
+  `MSYS_NO_PATHCONV=1` for any shell that pushes, or double the leading slash
+  (`//sdcard/...`). `adb shell` is unaffected, which is what makes it
+  confusing — `cp` inside the device works while `push` into the same directory
+  does not.
+- **HyperOS can refuse an instrumentation APK with
+  `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`** even while the
+  app's own APK installs. It is the vendor's USB-install guard, and it needs a
+  confirmation on the phone rather than anything on the command line. The
+  emulator has no such guard, so a dump that only needs a recogniser is cheaper
+  to run there.
+
 ## Testing the pipeline
 
 A collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.

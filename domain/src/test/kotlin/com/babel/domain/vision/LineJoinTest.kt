@@ -81,7 +81,59 @@ class LineJoinTest {
     @Test
     fun `a seam with japanese on one side only takes no space`() {
         assertEquals("データbanana", LineJoin.join(listOf("データ", "banana")))
-        assertEquals("banana데이터", LineJoin.join(listOf("banana", "데이터")))
+        assertEquals("bananaデータ", LineJoin.join(listOf("banana", "データ")))
+    }
+
+    /**
+     * The defect this was reported as: `선생님` welded to `줄게`.
+     *
+     * The joined run went to the translator as `선생님줄게` and came back as
+     * the personal name 徐世尼 — a title read as a name because the words had
+     * been welded together first. Hangul used to sit in the no-space set beside
+     * Han and kana, which is simply wrong about the language.
+     */
+    @Test
+    fun `korean writes spaces between words`() {
+        assertEquals("선생님 줄게", LineJoin.join(listOf("선생님", "줄게")))
+    }
+
+    /** The rest of `kr-mag-01`'s multi-line balloons, as the engine read them. */
+    @Test
+    fun `measured korean balloons come back spaced`() {
+        assertEquals(
+            "아이스크림 가거를 사주고 싶어",
+            LineJoin.join(listOf("아이스크림", "가거를", "사주고 싶어")),
+        )
+        assertEquals(
+            "정확히, 반으로 가를거니까",
+            LineJoin.join(listOf("정확히,", "반으로", "가를거니까")),
+        )
+    }
+
+    /**
+     * A seam with Latin on one side.
+     *
+     * This used to assert `banana데이터` — the wrong behaviour written down as
+     * expected, and filed under "japanese on one side" although `데이터` is not
+     * Japanese at all. Two words in two space-writing scripts take a space.
+     */
+    @Test
+    fun `a korean and latin seam takes a space`() {
+        assertEquals("banana 데이터", LineJoin.join(listOf("banana", "데이터")))
+        assertEquals("데이터 banana", LineJoin.join(listOf("데이터", "banana")))
+    }
+
+    /**
+     * Korean meeting Han or kana still joins with nothing.
+     *
+     * The rule is unchanged — either side writing without spaces is enough —
+     * and only Hangul's membership moved. Pinned so that the fix is understood
+     * as narrow rather than as "Korean always takes a space".
+     */
+    @Test
+    fun `korean against a non-spacing script still joins with nothing`() {
+        assertEquals("데이터データ", LineJoin.join(listOf("데이터", "データ")))
+        assertEquals("先生선생님", LineJoin.join(listOf("先生", "선생님")))
     }
 
     @Test
