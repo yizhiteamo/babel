@@ -132,6 +132,20 @@ class BabelAccessibilityService : AccessibilityService() {
 
     private var generation = 0L
 
+    /**
+     * When the image path was last asked to look because something moved.
+     *
+     * The tick is a **fallback**, for apps that report no content change at
+     * all. It was competing with the event path instead of backing it up: a
+     * tick that lands mid-fling is doomed — the page is still moving — but it
+     * takes the scan lock for the second its settle loop runs, and the
+     * event-driven scan that arrives meanwhile is turned away with
+     * `a scan is already running`. Measured on a phone, that is where the
+     * second went (`docs/milestones/v2.md`).
+     */
+    @Volatile
+    private var lastImageRequestAt = 0L
+
     /** Identity of the window the last scan read, to detect a real app change. */
     private var lastWindowKey: String? = null
 
@@ -207,6 +221,18 @@ class BabelAccessibilityService : AccessibilityService() {
         val current = scope ?: return
         while (current.isActive) {
             delay(IMAGE_SCAN_INTERVAL_MS)
+
+            // Stand aside while the event path has it. A fallback that competes
+            // with the driver it backs up is worse than no fallback: this tick
+            // cannot know whether the page is still moving, and one that lands
+            // mid-fling spends a second failing to settle while holding the
+            // lock — during which the event-driven scan is turned away. The
+            // event path debounces on the *end* of the burst and so does know.
+            val since = System.currentTimeMillis() - lastImageRequestAt
+            if (since < IMAGE_SCAN_INTERVAL_MS) {
+                logger.debug(TAG, "image scan skipped: the event path has it (${since}ms ago)")
+                continue
+            }
             considerImageScan()
         }
     }
@@ -236,7 +262,17 @@ class BabelAccessibilityService : AccessibilityService() {
      */
     private suspend fun runImageEventLoop() {
         for (request in imageScanRequests) {
+            // Kept rather than trimmed: whether the debounce went quiet or hit
+            // its ceiling is the one thing that says if the burst outlived the
+            // budget, and it is two numbers rather than any screen content.
+            val waitStarted = System.currentTimeMillis()
             ScanDebounce.awaitQuiet(imageScanRequests, SCAN_DEBOUNCE_MS, SCAN_QUIET_LIMIT_MS)
+            val waited = System.currentTimeMillis() - waitStarted
+            logger.debug(
+                TAG,
+                "image scan from event: waited ${waited}ms" +
+                    if (waited >= SCAN_QUIET_LIMIT_MS) " (hit the limit)" else " (went quiet)",
+            )
             considerImageScan()
         }
     }
@@ -544,6 +580,7 @@ class BabelAccessibilityService : AccessibilityService() {
             }
 
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                lastImageRequestAt = System.currentTimeMillis()
                 scanRequests.trySend(Unit)
                 imageScanRequests.trySend(Unit)
                 // Cheap enough for the main thread: one volatile read, and the
@@ -672,6 +709,7 @@ class BabelAccessibilityService : AccessibilityService() {
          * short enough that text appears without feeling delayed.
          */
         const val SCAN_DEBOUNCE_MS = 250L
+
 
         /**
          * Manga mode has no event to react to — a comic page does not fire
