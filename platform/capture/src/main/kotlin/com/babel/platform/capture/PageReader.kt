@@ -2,6 +2,7 @@ package com.babel.platform.capture
 
 import android.graphics.Bitmap
 import com.babel.core.common.BabelLogger
+import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextOrientation
 import com.babel.domain.vision.ClippedBalloons
@@ -10,9 +11,11 @@ import com.babel.domain.vision.MangaReadingOrder
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.ScrolledBalloons
 import com.babel.domain.vision.SoundEffect
+import com.babel.domain.vision.Territories
 import com.babel.domain.vision.TextRegion
 import com.babel.domain.vision.TextRegionGrouper
 import javax.inject.Inject
+import java.util.IdentityHashMap
 import javax.inject.Singleton
 import kotlin.math.abs
 
@@ -201,6 +204,18 @@ internal class DetectingPageReader @Inject constructor(
         // read, which is the order a reader wants it to appear in.
         val ordered = bubbles.sortedWith(readingOrder(frame))
 
+        // Each balloon's share of the page, decided before any is read, so no
+        // translation grows over its neighbour's (`Territories`). Every box on
+        // screen takes part, the cut ones included: a balloon waiting for the
+        // next screen still occupies the space it is drawn in.
+        val frameBounds = TextBounds(0, 0, frame.width, frame.height, CoordinateSpace.SCREEN)
+        val territoryOf = IdentityHashMap<DetectedBubble, TextBounds>().apply {
+            val shares = Territories.of(
+                ordered.map { Territories.Item(it.text, it.balloon ?: Territories.openReach(it.text, frameBounds)) },
+            )
+            ordered.zip(shares).forEach { (bubble, share) -> put(bubble, share) }
+        }
+
         // How far the page moved since the last read, when it moved at all.
         //
         // Scrolling a webtoon used to read every balloon on the new screen from
@@ -310,7 +325,7 @@ internal class DetectingPageReader @Inject constructor(
             // Assembled from this frame's detection either way. Only the
             // reading is reused; the balloon outline, the placement and the
             // sound-effect test all come from what is on screen now.
-            val region = assemble(bubble, lines)
+            val region = assemble(bubble, lines, territoryOf[bubble])
             if (region != null && !onRegion(region)) {
                 // The screen this was being read from is gone. What has been
                 // read is still remembered below — it is the same page, and the
@@ -415,7 +430,11 @@ internal class DetectingPageReader @Inject constructor(
         }
     }
 
-    private fun assemble(bubble: DetectedBubble, lines: List<RecognizedLine>): TextRegion? {
+    private fun assemble(
+        bubble: DetectedBubble,
+        lines: List<RecognizedLine>,
+        territory: TextBounds?,
+    ): TextRegion? {
         // The one place free text is told apart from speech, and it has to be
         // here because the test is on the words rather than on the box. A
         // short katakana read inside a balloon is somebody speaking; the same
@@ -454,6 +473,7 @@ internal class DetectingPageReader @Inject constructor(
             bounds = lineUnion(ordered, bubble),
             orientation = orientation,
             enclosure = bubble.balloon,
+            territory = territory,
         )
     }
 

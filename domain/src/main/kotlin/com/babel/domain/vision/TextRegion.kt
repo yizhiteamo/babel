@@ -39,6 +39,13 @@ data class TextRegion(
      * version reverted (`docs/milestones/v2.md`).
      */
     val enclosure: TextBounds? = null,
+    /**
+     * How far this region's translation may grow once its neighbours on the
+     * page have had their share ([Territories]). Within [enclosure] when there
+     * is one. Null when nothing divided the page, and then [enclosure] alone
+     * is the limit, as before.
+     */
+    val territory: TextBounds? = null,
 ) {
     /**
      * The lines as one string, with whatever the script wants between them.

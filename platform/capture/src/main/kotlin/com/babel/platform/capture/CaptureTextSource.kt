@@ -258,8 +258,8 @@ class CaptureTextSource @Inject internal constructor(
             // the drawn boxes' areas rather than the lettering's.
             val language = languageFor(utterance.text, pageLanguage.verdict)
             val placed = utterance.regions.map { region ->
-                toElement(region, utterance.text, language, packageName, occurrences) { bounds, set, box ->
-                    val placement = placeIn(page, bounds, set, box)
+                toElement(region, utterance.text, language, packageName, occurrences) { bounds, set, box, share ->
+                    val placement = placeIn(page, bounds, set, box, share)
                     // Back to screen coordinates, which is the only space
                     // anything downstream knows about.
                     placement.copy(bounds = placement.bounds.movedBy(dx, dy))
@@ -425,6 +425,7 @@ class CaptureTextSource @Inject internal constructor(
         text: TextBounds,
         set: TextOrientation,
         enclosure: TextBounds?,
+        territory: TextBounds?,
     ): Placement {
         // How the source was set travels with how it looked: a renderer given
         // vertical dialogue can set the translation vertically too, which is
@@ -448,7 +449,18 @@ class CaptureTextSource @Inject internal constructor(
             // is why the cap does not affect enclosed regions.
             capOpenGrowth = enclosure == null,
         )
-        return Placement(bubble, style)
+
+        // Then cut back to this balloon's share of the page, so two balloons
+        // drawn touching do not cover each other (`Territories`). Afterwards
+        // rather than as the growth's limit: reaching the limit is how
+        // [BubbleBounds] learns there was no enclosure, and a share ending in
+        // the middle of a balloon would have it give up and return the bare
+        // lettering. And never smaller than the lettering: the share is drawn
+        // from the detector's box, the lettering from the recognised lines,
+        // and measured they can differ by a pixel — the translation has to
+        // cover what it replaces all the same.
+        val placed = territory?.let { bubble.cutTo(it).covering(text) } ?: bubble
+        return Placement(placed, style)
     }
 
     /**
@@ -505,6 +517,20 @@ class CaptureTextSource @Inject internal constructor(
         return thicknesses[thicknesses.size / 2]
     }
 
+    private fun TextBounds.cutTo(area: TextBounds): TextBounds = copy(
+        left = maxOf(left, area.left),
+        top = maxOf(top, area.top),
+        right = minOf(right, area.right),
+        bottom = minOf(bottom, area.bottom),
+    )
+
+    private fun TextBounds.covering(inner: TextBounds): TextBounds = copy(
+        left = minOf(left, inner.left),
+        top = minOf(top, inner.top),
+        right = maxOf(right, inner.right),
+        bottom = maxOf(bottom, inner.bottom),
+    )
+
     private data class Placement(val bounds: TextBounds, val style: SourceStyle)
 
     /**
@@ -526,7 +552,7 @@ class CaptureTextSource @Inject internal constructor(
         sourceLanguage: LanguageTag?,
         packageName: String?,
         occurrences: MutableMap<String, Int>,
-        place: (TextBounds, TextOrientation, TextBounds?) -> Placement,
+        place: (TextBounds, TextOrientation, TextBounds?, TextBounds?) -> Placement,
     ): TextElement {
         // Repair happens in the caller, once, where the recogniser's mistakes
         // are made: `......` is not how anybody writes `……`, and a provider
@@ -535,7 +561,7 @@ class CaptureTextSource @Inject internal constructor(
         // (`docs/systems/text-model.md`).
         val index = occurrences.getOrDefault(text, 0)
         occurrences[text] = index + 1
-        val placement = place(region.bounds, region.orientation, region.enclosure)
+        val placement = place(region.bounds, region.orientation, region.enclosure, region.territory)
         val style = placement.style.copy(glyphSizePx = region.glyphSizePx())
 
         return TextElement(
