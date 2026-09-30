@@ -49,6 +49,15 @@ inside its content area, an article reports 8. A page part-way through loading
 can briefly report 1–2, which is why the threshold sits in the gap rather than
 at 1.
 
+**The content area is the page, not its largest image** (`ContentArea`). A
+webtoon site serves a chapter as a column of `<img>` nodes, and the largest
+container is only whichever one shows the most of itself; an image half off
+screen is small enough to pass for a label. The column is followed from the
+largest container — same left and right edges, each node carrying it further up
+or down — and every node in it is page, whatever its size. Taking the single
+image instead left every balloon on its neighbours unread and broke scroll
+reuse (`docs/milestones/v2.md`).
+
 ### Scrolling takes the image path down
 
 The node path reads fresh bounds from the tree on every `TYPE_VIEW_SCROLLED`,

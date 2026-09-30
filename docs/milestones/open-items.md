@@ -42,32 +42,10 @@ that 1.7s shorter. Both are larger changes than the one already made.
 
 **The 1.7s is now broken down** (same section, *复测*): settling always takes a
 second look (~590ms), detection ~360ms, and whether `ScrolledBalloons` reuses
-the page decides ~840ms on its own. Why it misses is #19.
-
-### 19. Manga mode crops to the largest image, not the page
-
-`docs/milestones/v2.md` → *复用为什么丢：内容区每一帧都在跳*
-
-On a page built from several `<img>`s — how webtoon sites serve a chapter — the
-content area `readScreenLayout` picks is the single largest one on screen. Two
-defects follow, both measured in Edge with the true scroll position read over
-DevTools:
-
-- **Balloons on the other visible images are never read** until each becomes
-  the largest.
-- **Scroll reuse fails 9 of 15 flings** (`NO_PAIRS`): each time the crop jumps
-  down to the next image, every balloon read on the last screen now sits above
-  its top edge.
-
-- **Translations already shown are taken down** when the crop moves to the
-  next image, although the balloon is still on screen.
-- **A balloon touching an image's edge is never read**: `ClippedBalloons`
-  takes the crop edge for the viewport edge.
-
-Detector jitter and tied votes were measured and are not the cause. An audit of
-16 settled screens found ~62 untranslated dialogue balloons outside the crop and
-**one** inside it (the edge case above) — this is nearly all of what a reader
-sees left in Japanese.
+the page decides ~840ms on its own. The crop jumping between images was the
+first cause and is fixed (`v2.md` → *修掉：内容区取整页*); reuse now hits 9 of
+15 flings, and the misses left are detector jitter past the ±8px tolerance —
+which `CLAUDE.md` holds as an invariant, so it needs its own measurement.
 
 ### 14. Manga mode reads any app that does not expose its text
 

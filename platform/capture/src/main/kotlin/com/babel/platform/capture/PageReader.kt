@@ -44,8 +44,16 @@ internal interface PageReader {
      * the screen the user was actually looking at waited its turn. Nothing read
      * before the stop is wasted — it is remembered, which is why the re-read
      * that follows costs a fraction of the first.
+     *
+     * @param within the page, in [frame]'s coordinates, when the frame could not
+     *   be cropped to it. A reader that knows where a balloon is before reading
+     *   it skips what falls outside; the caller drops it afterwards either way.
      */
-    suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean)
+    suspend fun read(
+        frame: Bitmap,
+        within: TextBounds? = null,
+        onRegion: suspend (TextRegion) -> Boolean,
+    )
 
     /** Lets go of loaded models. Reading again afterwards reloads them. */
     suspend fun release() = Unit
@@ -72,7 +80,11 @@ internal class GroupingPageReader @Inject constructor(
      * over early. The streaming shape belongs to the caller, not to every
      * reader.
      */
-    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean) {
+    override suspend fun read(
+        frame: Bitmap,
+        within: TextBounds?,
+        onRegion: suspend (TextRegion) -> Boolean,
+    ) {
         val lines = recognizer.recognize(frame)
         if (lines.isEmpty()) return
         for (region in grouper.group(lines)) {
@@ -132,27 +144,39 @@ internal class DetectingPageReader @Inject constructor(
      */
     private data class ReadBalloon(val box: TextBounds, val lines: List<RecognizedLine>)
 
-    override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean) {
+    override suspend fun read(
+        frame: Bitmap,
+        within: TextBounds?,
+        onRegion: suspend (TextRegion) -> Boolean,
+    ) {
         // Unavailable used to be the normal state and is now the broken one:
         // the detector ships with the app (ADR 011), so this is false only when
         // a load has failed. The older path still works, which is what makes
         // that survivable. Finding *zero* balloons remains a different thing: a
         // page with no dialogue genuinely has none, and falling back there
         // would put the sound effects and the chrome straight back.
-        if (!detector.isAvailable) return fallback.read(frame, onRegion)
+        if (!detector.isAvailable) return fallback.read(frame, within, onRegion)
 
         // Which language's reader to use is a page-level question, and one the
         // balloon readers cannot answer for themselves (`BubbleRecognizer`).
         recognizer.startPage(frame)
 
-        val bubbles = detector.detect(frame)
-        logger.debug(TAG, "detector found ${bubbles.size} bubbles")
+        val detected = detector.detect(frame)
+        logger.debug(TAG, "detector found ${detected.size} bubbles")
+
+        // Outside the page, skipped before reading rather than after. The page
+        // is nearly the whole frame once it is a column of images, too much to
+        // be worth cropping to (`CaptureTextSource.CROP_WORTH_IT_PERCENT`) —
+        // and the status bar left in the frame is at the top, so reading order
+        // put its clock and icons first: measured, ~120ms each ahead of the
+        // first balloon on every scan. They would only have been dropped.
+        val bubbles = if (within == null) detected else detected.filter { it.text.centreIsIn(within) }
 
         // Asked again, because availability is only fully known after trying:
         // the model ships with the app now, so the answer above is yes until a
         // load actually fails. Without this the first page after such a failure
         // renders nothing at all before the check above starts catching it.
-        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, onRegion)
+        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, within, onRegion)
 
         // One at a time, and that is a measured choice rather than the obvious
         // one. Reading two balloons concurrently is genuinely faster — 3.3s to

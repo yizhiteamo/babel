@@ -125,7 +125,7 @@ capture (`BabelAccessibilityService.considerImageScan`):
 1. **Scope**, which is a **deny**-list: the launcher, the keyboard, Babel and
    SystemUI. Everything else is in scope (`docs/systems/scope.md`).
 2. **`imagePathOwnsScreen`** — fewer than `MIN_CONTENT_LABELS` (3) label-sized
-   nodes inside the largest container.
+   nodes inside the content area (`ContentArea`).
 
 So the condition is "not one of those four, and the accessibility tree barely
 exposes any text". A photo viewer showing one image, a full-screen video, a

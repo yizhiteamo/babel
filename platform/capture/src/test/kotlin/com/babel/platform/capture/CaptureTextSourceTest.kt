@@ -2,6 +2,7 @@ package com.babel.platform.capture
 
 import android.graphics.Bitmap
 import com.babel.core.model.LanguageTag
+import com.babel.core.model.TextBounds
 import com.babel.core.testing.RecordingLogger
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.vision.RecognizedLine
@@ -41,7 +42,11 @@ class CaptureTextSourceTest {
     /** Records whether a page was read at all; there is nothing to read here. */
     private class UnusedPageReader : PageReader {
         var called = false
-        override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean) {
+        override suspend fun read(
+            frame: Bitmap,
+            within: TextBounds?,
+            onRegion: suspend (TextRegion) -> Boolean,
+        ) {
             called = true
         }
     }

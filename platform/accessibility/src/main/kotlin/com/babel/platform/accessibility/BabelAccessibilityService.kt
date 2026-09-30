@@ -19,6 +19,7 @@ import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.translation.TranslationStartup
 import com.babel.domain.vision.CaptureState
+import com.babel.domain.vision.ContentArea
 import com.babel.domain.vision.ImageTextScanner
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -429,6 +430,9 @@ class BabelAccessibilityService : AccessibilityService() {
          * falls *inside* that container removes every kind of chrome at once —
          * tab strip, address bar, system bars — without naming any of them.
          *
+         * When the page is a column of images the container is only one of
+         * them, so the column is followed from it ([ContentArea]).
+         *
          * Null when no such container is found, in which case nothing is
          * restricted: a wrong guess here would silence the whole screen.
          */
@@ -457,9 +461,15 @@ class BabelAccessibilityService : AccessibilityService() {
     private fun readScreenLayout(): ScreenLayout {
         val screen = resources.displayMetrics.let { it.widthPixels.toLong() * it.heightPixels }
         val bounds = interfaceRoots().flatMap { extractor.extract(it) }.map { it.bounds }
-        val (labels, containers) = bounds.partition { it.isLabelSized(screen) }
+        val (sized, containers) = bounds.partition { it.isLabelSized(screen) }
 
-        val content = containers.maxByOrNull { it.width.toLong() * it.height }
+        // The page, not its largest image (`ContentArea`). The parts of the
+        // column that are small only because they are half off screen are
+        // page, not interface — counting them as labels excluded every balloon
+        // on them.
+        val page = ContentArea.of(containers, sized)
+        val content = page?.area
+        val labels = if (page == null) sized else sized - page.members.toSet()
         val inContent = when (content) {
             // No container to judge by, so every label counts: whatever the
             // tree exposed is text the node path can read.

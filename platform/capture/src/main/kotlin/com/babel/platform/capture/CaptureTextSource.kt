@@ -283,7 +283,7 @@ class CaptureTextSource @Inject internal constructor(
         }
 
         try {
-            pages.read(page) { region ->
+            pages.read(page, within = if (crop == null) within else null) { region ->
                 read += 1
                 // Cleared while this page was being read — the user has moved
                 // on. Answering false stops the reader: measured on a device,

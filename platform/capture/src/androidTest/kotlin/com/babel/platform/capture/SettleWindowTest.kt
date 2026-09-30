@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.LanguageTag
+import com.babel.core.model.TextBounds
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.TextRegion
 import com.babel.platform.screen.ScreenFrameSource
@@ -60,7 +61,11 @@ class SettleWindowTest {
         var reads = 0
             private set
 
-        override suspend fun read(frame: Bitmap, onRegion: suspend (TextRegion) -> Boolean) {
+        override suspend fun read(
+            frame: Bitmap,
+            within: TextBounds?,
+            onRegion: suspend (TextRegion) -> Boolean,
+        ) {
             reads += 1
         }
     }
