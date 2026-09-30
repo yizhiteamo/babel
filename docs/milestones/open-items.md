@@ -40,6 +40,11 @@ barely moved** and the reason is structural — neither dominant term was touche
 Anything further means starting to read before the page fully stops, or making
 that 1.7s shorter. Both are larger changes than the one already made.
 
+**The 1.7s is now broken down** (same section, *复测*): settling always takes a
+second look (~590ms), detection ~360ms, and whether `ScrolledBalloons` reuses
+the page decides ~840ms on its own — it missed 6 of 10 flings, cause not yet
+measured.
+
 ### 14. Manga mode reads any app that does not expose its text
 
 `docs/systems/privacy.md` → *Known, unfixed*
