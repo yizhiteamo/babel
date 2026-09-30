@@ -109,14 +109,6 @@ the user, not forgotten.)
 Nothing keeps the process alive; the home screen explains the power settings
 instead. That hands a platform problem to the user.
 
-### 15. `ChatPreset.label` is hardcoded English
-
-`domain/.../settings/ChatPreset.kt`
-
-`Custom` and `Ollama (local)` show in English inside a Chinese UI. `ChatPreset`
-lives in the pure-Kotlin `:domain`, which cannot reach Android resources, so
-this needs the label to move or the id to be mapped in `:app`.
-
 ---
 
 ## Not items

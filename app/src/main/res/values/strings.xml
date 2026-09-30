@@ -62,6 +62,8 @@
     <string name="remote_action_change">Change</string>
     <string name="remote_action_disable">Turn off</string>
     <string name="remote_dialog_title">Online translation</string>
+    <string name="remote_preset_custom">Custom</string>
+    <string name="remote_preset_ollama">Ollama (local)</string>
     <string name="remote_field_endpoint">Endpoint</string>
     <string name="remote_field_model">Model</string>
     <string name="remote_field_key">API key</string>

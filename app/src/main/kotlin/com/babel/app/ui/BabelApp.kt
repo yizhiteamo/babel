@@ -439,7 +439,7 @@ private fun RemoteTranslationDialog(
                                     }
                                     onProbeChanged()
                                 },
-                                label = { Text(option.label) },
+                                label = { Text(presetLabel(option)) },
                             )
                         }
                     }
@@ -603,6 +603,20 @@ private fun ProbeResult.messageRes(): Int = when (this) {
 private fun RemoteService.labelRes(): Int = when (this) {
     RemoteService.CHAT -> R.string.remote_service_chat
     RemoteService.DEEPL -> R.string.remote_service_deepl
+}
+
+/**
+ * A preset's name in the interface language.
+ *
+ * `ChatPreset` lives in the pure-Kotlin domain, which cannot reach resources,
+ * so the two names that are words rather than brands are mapped here by id.
+ * The rest are vendor names and are the same in every language.
+ */
+@Composable
+private fun presetLabel(preset: ChatPreset): String = when (preset.id) {
+    ChatPreset.CUSTOM.id -> stringResource(R.string.remote_preset_custom)
+    ChatPreset.OLLAMA.id -> stringResource(R.string.remote_preset_ollama)
+    else -> preset.label
 }
 
 /**

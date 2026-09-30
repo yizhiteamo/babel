@@ -59,6 +59,8 @@
     <string name="remote_action_change">修改</string>
     <string name="remote_action_disable">关闭</string>
     <string name="remote_dialog_title">联网翻译</string>
+    <string name="remote_preset_custom">自定义</string>
+    <string name="remote_preset_ollama">Ollama（本机）</string>
     <string name="remote_field_endpoint">接口地址</string>
     <string name="remote_field_model">模型</string>
     <string name="remote_field_key">API 密钥</string>
