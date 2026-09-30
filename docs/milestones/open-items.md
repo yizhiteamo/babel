@@ -59,7 +59,15 @@ DevTools:
   down to the next image, every balloon read on the last screen now sits above
   its top edge.
 
-Detector jitter and tied votes were measured and are not the cause.
+- **Translations already shown are taken down** when the crop moves to the
+  next image, although the balloon is still on screen.
+- **A balloon touching an image's edge is never read**: `ClippedBalloons`
+  takes the crop edge for the viewport edge.
+
+Detector jitter and tied votes were measured and are not the cause. An audit of
+16 settled screens found ~62 untranslated dialogue balloons outside the crop and
+**one** inside it (the edge case above) — this is nearly all of what a reader
+sees left in Japanese.
 
 ### 14. Manga mode reads any app that does not expose its text
 
