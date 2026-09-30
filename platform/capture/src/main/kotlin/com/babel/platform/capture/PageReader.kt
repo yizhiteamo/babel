@@ -224,9 +224,10 @@ internal class DetectingPageReader @Inject constructor(
         // screen has replaced it (see the end of this function).
         //
         // This is the whole of the zoom defence, and it is deliberately not a
-        // zoom detector. A zoom changes every width and height - 3% of a 300px
-        // balloon is already past the 8px tolerance - so no offset can be
-        // recovered, and this fires. Keeping the entries instead would leave a
+        // zoom detector. A zoom changes every width and height - 6% of a 300px
+        // balloon is already past the 16px tolerance - and moves every box by
+        // a different amount, so the pairs cannot agree on one offset, and
+        // this fires. Keeping the entries instead would leave a
         // set of page coordinates measured at the old scale; zoom back to it
         // later and one of them could match again at an offset that is no
         // longer true, which is how a balloon ends up with somebody else's

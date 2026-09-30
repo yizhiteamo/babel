@@ -319,7 +319,7 @@ class ScrollReuseTest {
 
         // Twenty small scrolls. Accumulating one recovered offset onto the last
         // would gather about a pixel of error each time and eventually walk out
-        // of the 8px tolerance; solving for the absolute offset against the
+        // of the tolerance; solving for the absolute offset against the
         // page memory every frame cannot.
         for (step in 1..20) {
             detector.bubbles = pageAt(step * 40)

@@ -27,8 +27,25 @@ import kotlin.math.abs
  * - **18 of the 20** balloons that stayed on screen were matched
  * - the shift was **recovered from the boxes alone** every time, so nothing has
  *   to be told how far the screen moved
- * - ±8px is the working tolerance: ±16 and ±32 gained nothing on the measured
- *   page and only widen the chance of pairing two different balloons
+ *
+ * ## The tolerance is 16px, and why it moved
+ *
+ * It was 8px, chosen on the emulator, where ±16 and ±32 gained nothing. A
+ * phone is not the emulator: the detector sees a 1440x3200 screen squashed to
+ * 640x640, and a balloon's width and height come back 10 and 13px apart at the
+ * 90th percentile. Measured against the true scroll position read over DevTools
+ * (`docs/milestones/v2.md`):
+ *
+ * - on a real chapter, 16px recovered the offset 37 times against 8px's 27,
+ *   with no pair and no offset wrong
+ * - on a page built to be the worst case — one balloon repeated at a fixed
+ *   pitch, rows of identical sizes — every tolerance tried gave the same
+ *   answers as 8px, the wrong ones included
+ *
+ * Those wrong ones are worth knowing about: when a page repeats at a pitch and
+ * the scroll lands near a multiple of it, the votes pick a shift one period
+ * off. Geometry alone cannot tell the two apart. That is a limit of voting,
+ * not of the tolerance, and tightening it back would not remove it.
  *
  * The memory is not limited to the previous screen. Balloons are kept in
  * **page** coordinates and each frame solves for its own absolute offset
@@ -143,6 +160,6 @@ object ScrolledBalloons {
             abs(a.height - b.height) <= TOLERANCE &&
             abs(a.left - b.left) <= TOLERANCE
 
-    private const val TOLERANCE = 8
+    private const val TOLERANCE = 16
     private const val MIN_VOTES = 2
 }

@@ -140,6 +140,24 @@ class ScrolledBalloonsTest {
         assertTrue(after.all { now -> page.any { ScrolledBalloons.isSame(it, now, -700) } })
     }
 
+    /**
+     * What the phone's detector really does: widths and heights 10 and 13px
+     * apart at the 90th percentile, on a screen squashed to 640x640.
+     */
+    @Test
+    fun `a balloon measured 13px differently is still the same balloon`() {
+        val then = box(120, 240, 300, 180)
+        assertTrue(ScrolledBalloons.isSame(then, box(125, -455, 287, 193), shift = 700))
+    }
+
+    /** Still a size difference, not jitter. */
+    @Test
+    fun `a balloon 20px another size is not`() {
+        val then = box(120, 240, 300, 180)
+        assertFalse(ScrolledBalloons.isSame(then, box(120, -460, 300, 200), shift = 700))
+        assertFalse(ScrolledBalloons.isSame(then, box(120, -460, 280, 180), shift = 700))
+    }
+
     // ---- saying why ----------------------------------------------------------
 
     private val three = listOf(box(100, 900, 200, 300), box(600, 1200, 180, 240), box(300, 1700, 220, 160))

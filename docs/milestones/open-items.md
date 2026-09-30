@@ -42,11 +42,23 @@ that 1.7s shorter. Both are larger changes than the one already made.
 
 **The 1.7s is now broken down** (same section, *复测*): settling always takes a
 second look (~590ms), detection ~360ms, and whether `ScrolledBalloons` reuses
-the page decides ~840ms on its own. Two causes are fixed — the crop jumping
-between images, and an abandoned scan emptying the memory — and reuse now hits
-**12 of 15** flings (`v2.md` → *剩下的两件*). A looser tolerance recovered more
-with no mismatch on this material, but the material has no row of identical
-balloons, which is where the invariant in `CLAUDE.md` bites; not changed.
+the page decides ~840ms on its own. Three causes are fixed — the crop jumping
+between images, an abandoned scan emptying the memory, and an 8px tolerance
+tighter than the phone's detector jitter — and reuse now places **16 of 16**
+flings on a real chapter (`v2.md` → *容差改为 16px*).
+
+### 20. A page that repeats at a pitch can be placed one period off
+
+`docs/milestones/v2.md` → *容差：补测最坏布局*
+
+Scroll reuse votes on geometry alone. When identical balloons repeat at a fixed
+pitch and a fling lands near a multiple of it, the winning shift is a period
+off — measured three times running on a built worst-case page, at every
+tolerance, until a tied vote broke the chain. Harmless there (the copies say
+the same thing); on a 4-koma with identical balloon templates it would put one
+strip's words in another. The lead is an independent hint: Edge's
+`scrollDeltaY` sums to 53–90% of the true distance, too loose to replace the
+vote, enough to rule out a candidate a whole period away.
 
 ### 14. Manga mode reads any app that does not expose its text
 
