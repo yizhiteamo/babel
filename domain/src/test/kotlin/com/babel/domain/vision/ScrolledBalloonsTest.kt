@@ -139,4 +139,55 @@ class ScrolledBalloonsTest {
         assertEquals(-700, ScrolledBalloons.shiftBetween(page, after))
         assertTrue(after.all { now -> page.any { ScrolledBalloons.isSame(it, now, -700) } })
     }
+
+    // ---- saying why ----------------------------------------------------------
+
+    private val three = listOf(box(100, 900, 200, 300), box(600, 1200, 180, 240), box(300, 1700, 220, 160))
+
+    @Test
+    fun `a recovered shift carries its votes`() {
+        val diagnosis = ScrolledBalloons.diagnose(three, scrolled(three, by = 700))
+
+        assertEquals(700, diagnosis.shift)
+        assertEquals(3, diagnosis.votes)
+        assertNull(diagnosis.failure)
+    }
+
+    @Test
+    fun `no box of the same shape is no pairs`() {
+        val diagnosis = ScrolledBalloons.diagnose(three, listOf(box(50, 50, 400, 90)))
+
+        assertNull(diagnosis.shift)
+        assertEquals(ScrolledBalloons.Failure.NO_PAIRS, diagnosis.failure)
+    }
+
+    @Test
+    fun `one matching balloon is too few votes`() {
+        val diagnosis = ScrolledBalloons.diagnose(three, scrolled(three.take(1), by = 700))
+
+        assertEquals(ScrolledBalloons.Failure.TOO_FEW_VOTES, diagnosis.failure)
+        assertEquals(1, diagnosis.votes)
+    }
+
+    @Test
+    fun `two answers with equal support are a tie`() {
+        // Two identical pairs of balloons, so every box matches two others and
+        // two shifts are equally supported.
+        val twins = listOf(
+            box(100, 0, 200, 100), box(500, 0, 200, 100),
+            box(100, 1000, 200, 100), box(500, 1000, 200, 100),
+        )
+        val diagnosis = ScrolledBalloons.diagnose(twins, scrolled(twins.take(2), by = -300))
+
+        assertEquals(ScrolledBalloons.Failure.TIED, diagnosis.failure)
+        assertNull(ScrolledBalloons.shiftBetween(twins, scrolled(twins.take(2), by = -300)))
+    }
+
+    @Test
+    fun `nothing remembered is nothing to compare`() {
+        assertEquals(
+            ScrolledBalloons.Failure.NOTHING_TO_COMPARE,
+            ScrolledBalloons.diagnose(emptyList(), three).failure,
+        )
+    }
 }

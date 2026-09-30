@@ -53,8 +53,34 @@ object ScrolledBalloons {
      * a new chapter, a different app — and the caller then reads everything, as
      * it did before any of this.
      */
-    fun shiftBetween(before: List<TextBounds>, after: List<TextBounds>): Int? {
-        if (before.isEmpty() || after.isEmpty()) return null
+    fun shiftBetween(before: List<TextBounds>, after: List<TextBounds>): Int? =
+        diagnose(before, after).shift
+
+    /**
+     * Why [shiftBetween] answered what it did.
+     *
+     * The answer alone was not enough to act on. Measured on a phone, six of
+     * ten flings came back null and the log could only say the page was lost —
+     * not whether no box matched, too few agreed, or two answers tied, and
+     * each of those has a different fix (`docs/milestones/v2.md`).
+     */
+    data class Diagnosis(
+        val shift: Int?,
+        /** Pairs of boxes whose shape matched, each one a vote. */
+        val pairs: Int,
+        /** Votes for the best shift, zero when there were no pairs. */
+        val votes: Int,
+        /** Votes for the strongest separate answer. */
+        val rivalVotes: Int,
+        val failure: Failure?,
+    )
+
+    enum class Failure { NOTHING_TO_COMPARE, NO_PAIRS, TOO_FEW_VOTES, TIED }
+
+    fun diagnose(before: List<TextBounds>, after: List<TextBounds>): Diagnosis {
+        if (before.isEmpty() || after.isEmpty()) {
+            return Diagnosis(null, 0, 0, 0, Failure.NOTHING_TO_COMPARE)
+        }
 
         val deltas = mutableListOf<Int>()
         for (old in before) {
@@ -62,7 +88,7 @@ object ScrolledBalloons {
                 if (sameShape(old, new)) deltas += old.top - new.top
             }
         }
-        if (deltas.isEmpty()) return null
+        if (deltas.isEmpty()) return Diagnosis(null, 0, 0, 0, Failure.NO_PAIRS)
 
         // The delta the most others agree with, where agreement means the same
         // tolerance used everywhere else.
@@ -79,20 +105,21 @@ object ScrolledBalloons {
         // One agreeing pair is a coincidence; two is a scroll. A single balloon
         // on screen therefore gets read again, which costs one recognition and
         // cannot show the wrong words.
-        if (winners.size < MIN_VOTES) return null
-
         // A second, separate group with just as much support means the boxes do
         // not agree on one answer. Saying so is the honest reply — the caller
         // then reads the screen, which is only slow. Picking one of them puts
         // somebody else's words in a balloon, which is wrong.
         val rival = deltas.filter { abs(it - best) > TOLERANCE }
             .maxOfOrNull { agreeing(deltas, it).size } ?: 0
-        if (rival >= winners.size) return null
+
+        fun failed(why: Failure) = Diagnosis(null, deltas.size, winners.size, rival, why)
+        if (winners.size < MIN_VOTES) return failed(Failure.TOO_FEW_VOTES)
+        if (rival >= winners.size) return failed(Failure.TIED)
 
         // The middle of what the winners actually said. A median rather than a
         // mean because one box landing badly should not drag the answer for the
         // rest of them.
-        return winners.sorted()[winners.size / 2]
+        return Diagnosis(winners.sorted()[winners.size / 2], deltas.size, winners.size, rival, null)
     }
 
     private fun agreeing(deltas: List<Int>, candidate: Int) =

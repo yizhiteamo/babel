@@ -188,7 +188,8 @@ internal class DetectingPageReader @Inject constructor(
         //
         // Null for a page that changed rather than moved, and then everything
         // below reads as it always did (`ScrolledBalloons`).
-        val shift = ScrolledBalloons.shiftBetween(pageMemory.map { it.box }, ordered.map { it.text })
+        val diagnosis = ScrolledBalloons.diagnose(pageMemory.map { it.box }, ordered.map { it.text })
+        val shift = diagnosis.shift
 
         // Where this screen sits on the page. Solved against the whole memory
         // rather than accumulated from the frame before, so it cannot drift.
@@ -207,7 +208,14 @@ internal class DetectingPageReader @Inject constructor(
         // words in it. The same reasoning covers a page turn, an app switch and
         // a rotation, none of which needs a case of its own.
         if (shift == null && pageMemory.isNotEmpty()) {
-            logger.debug(TAG, "lost the page; forgetting ${pageMemory.size} readings")
+            // Why, and not only that it happened: no pairs, too few votes and a
+            // tie are three different defects (`ScrolledBalloons.Diagnosis`).
+            logger.debug(
+                TAG,
+                "lost the page (${diagnosis.failure}: ${diagnosis.pairs} pairs, " +
+                    "${diagnosis.votes} votes, rival ${diagnosis.rivalVotes}); " +
+                    "forgetting ${pageMemory.size} readings",
+            )
             pageMemory = emptyList()
         }
 
