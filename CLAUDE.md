@@ -131,6 +131,9 @@ Use:
 - Product version definitions: `docs/features/`
 - Overall current state: `docs/roadmap.md`
 - Detailed active progress: `docs/milestones/`
+- What V1/V2 still owe: `docs/milestones/open-items.md` — a one-page index,
+  with a table of conclusions later disproven. Read it before re-deriving
+  anything about manga mode.
 - Architecture: `docs/architecture.md`
 - Technical systems: `docs/systems/`
 - Architectural rationale: `docs/decisions/`
