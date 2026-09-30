@@ -259,4 +259,25 @@ class VerticalTextLayoutTest {
         assertNotNull(result)
         assertTrue(result.glyphSizePx < 200, "stayed at the ceiling instead of fitting")
     }
+
+    // ---- which marks are turned on their side --------------------------------
+
+    /** The ones on nearly every Japanese page, and what a Chinese translation brings. */
+    @Test
+    fun `marks that run along the line are turned`() {
+        for (character in "ー〜～…‥—「」『』（）【】《》") {
+            assertTrue(VerticalTextLayout.isSideways(character), "'$character' should be turned")
+        }
+    }
+
+    /**
+     * The comma and full stop stay upright: vertical setting moves them within
+     * the cell, it does not turn them.
+     */
+    @Test
+    fun `characters and stops stay upright`() {
+        for (character in "漢字かなカナ、。，！？A1") {
+            assertFalse(VerticalTextLayout.isSideways(character), "'$character' should stay upright")
+        }
+    }
 }

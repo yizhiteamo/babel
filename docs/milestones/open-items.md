@@ -27,13 +27,6 @@ two screens, so every fling — even a single short one — ends pinned against 
 end stop. The state never produced is a page *coasting to a halt in the
 middle*, which is the only place a scan of a still-moving tree is possible.
 
-### 7. Vertical punctuation is not rotated
-
-`platform/overlay/.../VerticalTranslationView.kt` (class doc)
-
-`ー`, `「`, `」` should turn 90° in real vertical setting. They do not, so they
-look wrong on every Japanese page. Self-contained: the change is in the drawing.
-
 ### 13. First bubble after a fling takes ~3.6s on a phone
 
 `docs/milestones/v2.md` → *真机出泡慢：三个假说全错，真因是后备定时器在抢锁*

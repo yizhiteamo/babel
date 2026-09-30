@@ -85,6 +85,25 @@ internal object VerticalTextLayout {
     }
 
     /**
+     * Whether this character is drawn turned a quarter clockwise in a column.
+     *
+     * Vertical setting turns the marks whose shape runs *along* the line: a
+     * long vowel, a dash or an ellipsis drawn upright crosses the column
+     * instead of following it, and an upright `「` opens to the side rather
+     * than downwards. Everything else — Han, kana, and the comma and full
+     * stop — stays upright.
+     *
+     * Rotation rather than the Unicode vertical presentation forms (`︵`,
+     * `﹁`, `︙` …), because there is no such form for `ー` or `〜`, and those
+     * are the two that appear on nearly every Japanese page.
+     */
+    fun isSideways(character: Char): Boolean = character in SIDEWAYS
+
+    private const val SIDEWAYS =
+        "ー〜～~…‥—―–‐-－" +
+            "（）()「」『』【】〔〕〈〉《》［］[]｛｝{}"
+
+    /**
      * Whether vertical setting can show this at all, in a box of this size.
      *
      * Asked **before** the view is chosen, because a balloon that cannot take

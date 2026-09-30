@@ -18,10 +18,11 @@ import com.babel.domain.vision.ColorAnalysis
  * Drawing one character at a time is the whole trick, and the arithmetic
  * deciding where they go lives in [VerticalTextLayout] where it can be tested.
  *
- * **Punctuation is not rotated.** Real vertical typesetting turns `ー`, `「`,
- * `」` and friends on their side. This does not, so those characters look wrong
- * — a known gap recorded in `docs/milestones/v2.md` rather than a thing to
- * discover later.
+ * **Marks that run along the line are turned on their side** — `ー`, `〜`,
+ * dashes, ellipses and brackets ([VerticalTextLayout.isSideways]), as real
+ * vertical setting does. What is still not done: Japanese sets `、` and `。` in
+ * the top-right corner of their cell, and here they sit where a horizontal
+ * line would put them.
  */
 internal class VerticalTranslationView(context: Context) : View(context), TranslationView {
 
@@ -102,7 +103,23 @@ internal class VerticalTranslationView(context: Context) : View(context), Transl
             var y = (height - columnHeight) / 2f - metrics.ascent
 
             column.forEach { character ->
-                canvas.drawText(character.toString(), centreX, y, paint)
+                if (VerticalTextLayout.isSideways(character)) {
+                    // Turned about the centre of its own cell, so it still
+                    // occupies exactly one advance and the column arithmetic
+                    // in [VerticalTextLayout] holds unchanged.
+                    val centreY = y + metrics.ascent + advance / 2f
+                    canvas.save()
+                    canvas.rotate(90f, centreX, centreY)
+                    canvas.drawText(
+                        character.toString(),
+                        centreX,
+                        centreY - (metrics.ascent + metrics.descent) / 2f,
+                        paint,
+                    )
+                    canvas.restore()
+                } else {
+                    canvas.drawText(character.toString(), centreX, y, paint)
+                }
                 y += advance
             }
         }
