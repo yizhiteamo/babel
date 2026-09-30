@@ -422,6 +422,39 @@ class ScrollReuseTest {
         assertEquals(3, engine.calls, "having read only the one it never got to")
     }
 
+    /**
+     * An unplaced screen replaces the memory only once it has been read to
+     * the end. Measured on a phone, clearing on the spot and then being
+     * abandoned left one entry behind, and the re-read of the same screen a
+     * moment later had nothing to vote with: 5 of the 6 misses left after the
+     * content-area fix were this chain.
+     */
+    @Test
+    fun anAbandonedScanOfAnUnplacedScreenKeepsTheOldMemory() = runBlocking {
+        val engine = CountingEngine()
+        val detector = StagedDetector(screen.map { bubble(it) })
+        val reader = readerFor(detector, engine)
+        reader.read(frame()) { true }
+        assertEquals(3, engine.calls)
+
+        // Nothing in common with the memory, and abandoned after one balloon.
+        detector.bubbles = listOf(
+            box(80, 190, 190, 410),
+            box(430, 715, 520, 95),
+        ).map { bubble(it) }
+        reader.read(frame()) { false }
+        assertEquals(4, engine.calls)
+
+        // The first screen, scrolled. The old memory is still there to place
+        // it, so nothing on it is read again.
+        detector.bubbles = scrolled(by = 700).map { bubble(it) }
+        val placed = mutableListOf<TextRegion>()
+        reader.read(frame()) { placed += it; true }
+
+        assertEquals(4, engine.calls, "the abandoned scan should not have cost the memory")
+        assertEquals(3, placed.size)
+    }
+
     private companion object {
         const val WIDTH = 1080
         const val HEIGHT = 1700

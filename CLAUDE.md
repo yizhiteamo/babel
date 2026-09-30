@@ -319,7 +319,9 @@ Behavioral invariants that must survive any change:
   (measured: 18 of 20 at 8px, and 16px found no more).
 - The reader's memory is in **page** coordinates and every frame solves for its
   own absolute offset, so nothing drifts. When no offset can be recovered the
-  whole memory is dropped — that one rule is the entire defence against a zoom,
+  whole memory is dropped — replaced once that screen has been read to the end,
+  kept if the read is abandoned, and used only through a recovered offset in
+  between. That one rule is the entire defence against a zoom,
   a page turn, an app switch and a rotation, and removing it would let a stale
   offset match a balloon to another balloon's words.
 - A balloon the viewport cuts is not read (`ClippedBalloons`); it waits for the

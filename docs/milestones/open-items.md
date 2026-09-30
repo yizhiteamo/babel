@@ -42,10 +42,11 @@ that 1.7s shorter. Both are larger changes than the one already made.
 
 **The 1.7s is now broken down** (same section, *复测*): settling always takes a
 second look (~590ms), detection ~360ms, and whether `ScrolledBalloons` reuses
-the page decides ~840ms on its own. The crop jumping between images was the
-first cause and is fixed (`v2.md` → *修掉：内容区取整页*); reuse now hits 9 of
-15 flings, and the misses left are detector jitter past the ±8px tolerance —
-which `CLAUDE.md` holds as an invariant, so it needs its own measurement.
+the page decides ~840ms on its own. Two causes are fixed — the crop jumping
+between images, and an abandoned scan emptying the memory — and reuse now hits
+**12 of 15** flings (`v2.md` → *剩下的两件*). A looser tolerance recovered more
+with no mismatch on this material, but the material has no row of identical
+balloons, which is where the invariant in `CLAUDE.md` bites; not changed.
 
 ### 14. Manga mode reads any app that does not expose its text
 
@@ -67,6 +68,12 @@ entered after it is switched on.
 On `kr-mag-01`, two of the three regions that read as nothing are **drawn facial
 expressions**, not lettering. The recogniser declining them is correct; the
 detector offering them is not. Each costs one OCR call.
+
+The opposite also happens: **unboxed text is missed on a tall frame.** A
+1440×3200 screen squashed to 640×640 scores it 0.1–0.3 lower than two square
+tiles do, which puts it on the 0.5 floor, so it comes and goes between frames.
+Tiling fixes all measured cases but one two-character line, at the cost of a
+second detector pass (~360ms). `v2.md` → *剩下的两件*.
 
 ---
 

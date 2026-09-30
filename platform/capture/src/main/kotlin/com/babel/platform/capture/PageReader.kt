@@ -220,7 +220,8 @@ internal class DetectingPageReader @Inject constructor(
         val offset = shift ?: 0
 
         // The chain from here back to the frames the memory was built on is
-        // broken, so the memory is thrown away rather than carried.
+        // broken, so the memory is thrown away rather than carried — once this
+        // screen has replaced it (see the end of this function).
         //
         // This is the whole of the zoom defence, and it is deliberately not a
         // zoom detector. A zoom changes every width and height - 3% of a 300px
@@ -231,16 +232,16 @@ internal class DetectingPageReader @Inject constructor(
         // longer true, which is how a balloon ends up with somebody else's
         // words in it. The same reasoning covers a page turn, an app switch and
         // a rotation, none of which needs a case of its own.
-        if (shift == null && pageMemory.isNotEmpty()) {
+        val lost = shift == null && pageMemory.isNotEmpty()
+        if (lost) {
             // Why, and not only that it happened: no pairs, too few votes and a
             // tie are three different defects (`ScrolledBalloons.Diagnosis`).
             logger.debug(
                 TAG,
                 "lost the page (${diagnosis.failure}: ${diagnosis.pairs} pairs, " +
                     "${diagnosis.votes} votes, rival ${diagnosis.rivalVotes}); " +
-                    "forgetting ${pageMemory.size} readings",
+                    "${pageMemory.size} readings held until this screen is read",
             )
-            pageMemory = emptyList()
         }
 
         // Balloons the viewport has cut in half are left for the screen that
@@ -318,7 +319,26 @@ internal class DetectingPageReader @Inject constructor(
                 break
             }
         }
-        remember(thisPage, offset, frame.height)
+        when {
+            !lost -> remember(thisPage, offset, frame.height)
+
+            // Replaced only by a screen read to the end. Clearing on the spot
+            // left a stopped read holding one entry, and the re-read that
+            // follows — same screen, moments later — then had nothing to vote
+            // with and lost the page again: measured, 5 of the 6 misses left
+            // after the content-area fix were this chain (`docs/milestones/v2.md`).
+            //
+            // Keeping the old entries a little longer cannot put them on the
+            // wrong balloon. They are used only through a shift, and a shift
+            // takes two agreeing pairs; until one is found every balloon is
+            // read afresh, as on any unplaced screen.
+            stopped -> Unit
+
+            else -> {
+                pageMemory = emptyList()
+                remember(thisPage, offset, frame.height)
+            }
+        }
 
         if (shift != null && !stopped) {
             logger.debug(
