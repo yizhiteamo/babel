@@ -66,6 +66,7 @@ class CaptureTextSource @Inject internal constructor(
      * caused it: the results arrive afterwards and put the old screen's
      * translations back, where nothing is left to take them down again.
      */
+    @Volatile
     private var clears = 0L
 
     /** Signature of the last frame actually recognised; null before the first. */
@@ -283,7 +284,14 @@ class CaptureTextSource @Inject internal constructor(
         }
 
         try {
-            pages.read(page, within = if (crop == null) within else null) { region ->
+            pages.read(
+                page,
+                within = if (crop == null) within else null,
+                // Read without the lock on purpose: a stale answer costs one
+                // detector pass, and waiting for the lock here would cost the
+                // scroll that is trying to take it.
+                stillWanted = { clears == startedAfter },
+            ) { region ->
                 read += 1
                 // Cleared while this page was being read — the user has moved
                 // on. Answering false stops the reader: measured on a device,

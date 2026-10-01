@@ -51,10 +51,14 @@ internal interface PageReader {
      * @param within the page, in [frame]'s coordinates, when the frame could not
      *   be cropped to it. A reader that knows where a balloon is before reading
      *   it skips what falls outside; the caller drops it afterwards either way.
+     * @param stillWanted whether the screen being read is still the one on
+     *   display. Asked before work that happens with nothing to hand over,
+     *   where [onRegion] is never called and so cannot say no.
      */
     suspend fun read(
         frame: Bitmap,
         within: TextBounds? = null,
+        stillWanted: () -> Boolean = { true },
         onRegion: suspend (TextRegion) -> Boolean,
     )
 
@@ -86,6 +90,7 @@ internal class GroupingPageReader @Inject constructor(
     override suspend fun read(
         frame: Bitmap,
         within: TextBounds?,
+        stillWanted: () -> Boolean,
         onRegion: suspend (TextRegion) -> Boolean,
     ) {
         val lines = recognizer.recognize(frame)
@@ -150,6 +155,7 @@ internal class DetectingPageReader @Inject constructor(
     override suspend fun read(
         frame: Bitmap,
         within: TextBounds?,
+        stillWanted: () -> Boolean,
         onRegion: suspend (TextRegion) -> Boolean,
     ) {
         // Unavailable used to be the normal state and is now the broken one:
@@ -158,7 +164,7 @@ internal class DetectingPageReader @Inject constructor(
         // that survivable. Finding *zero* balloons remains a different thing: a
         // page with no dialogue genuinely has none, and falling back there
         // would put the sound effects and the chrome straight back.
-        if (!detector.isAvailable) return fallback.read(frame, within, onRegion)
+        if (!detector.isAvailable) return fallback.read(frame, within, stillWanted, onRegion)
 
         // Which language's reader to use is a page-level question, and one the
         // balloon readers cannot answer for themselves (`BubbleRecognizer`).
@@ -179,7 +185,7 @@ internal class DetectingPageReader @Inject constructor(
         // the model ships with the app now, so the answer above is yes until a
         // load actually fails. Without this the first page after such a failure
         // renders nothing at all before the check above starts catching it.
-        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, within, onRegion)
+        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, within, stillWanted, onRegion)
 
         // One at a time, and that is a measured choice rather than the obvious
         // one. Reading two balloons concurrently is genuinely faster — 3.3s to
@@ -285,7 +291,9 @@ internal class DetectingPageReader @Inject constructor(
         val thisPage = ArrayList<ReadBalloon>(readable.size)
         var reused = 0
         var stopped = false
-        for (bubble in readable) {
+
+        /** Reads one balloon and hands it over; false once the screen is gone. */
+        suspend fun readOne(bubble: DetectedBubble, territory: TextBounds?): Boolean {
             val remembered = shift?.let { moved ->
                 pageMemory.firstOrNull { ScrolledBalloons.isSame(it.box, bubble.text, moved) }
             }
@@ -315,7 +323,7 @@ internal class DetectingPageReader @Inject constructor(
                     TAG,
                     "read nothing: ${bubble.text.width}x${bubble.text.height} onArt=${bubble.onArt}",
                 )
-                continue
+                return true
             }
 
             // Stored where it sits on the page, not on this screen, so one
@@ -325,16 +333,46 @@ internal class DetectingPageReader @Inject constructor(
             // Assembled from this frame's detection either way. Only the
             // reading is reused; the balloon outline, the placement and the
             // sound-effect test all come from what is on screen now.
-            val region = assemble(bubble, lines, territoryOf[bubble])
+            val region = assemble(bubble, lines, territory)
             if (region != null && !onRegion(region)) {
                 // The screen this was being read from is gone. What has been
                 // read is still remembered below — it is the same page, and the
                 // scan that replaces this one will reuse it.
                 logger.debug(TAG, "stopped after $reused reused of ${readable.size}")
+                return false
+            }
+            return true
+        }
+
+        for (bubble in readable) {
+            if (!readOne(bubble, territoryOf[bubble])) {
                 stopped = true
                 break
             }
         }
+
+        // Then what the whole-frame pass could not see, once everything it
+        // could see is on screen ([supplement]). Each extra balloon's share is
+        // taken from what is left beside the ones already drawn.
+        if (!stopped) {
+            val extra = supplement(frame, detected, within, shift != null, stillWanted)
+            if (extra == null) {
+                stopped = true
+            } else if (extra.isNotEmpty()) {
+                val shares = Territories.of(
+                    (ordered + extra).map {
+                        Territories.Item(it.text, it.balloon ?: Territories.openReach(it.text, frameBounds))
+                    },
+                ).drop(ordered.size)
+                for ((bubble, share) in extra.zip(shares)) {
+                    if (!stillWanted() || !readOne(bubble, share)) {
+                        stopped = true
+                        break
+                    }
+                }
+            }
+        }
+
         when {
             !lost -> remember(thisPage, offset, frame.height)
 
@@ -363,6 +401,75 @@ internal class DetectingPageReader @Inject constructor(
                     "${pageMemory.size} readings held",
             )
         }
+    }
+
+    /**
+     * Lettering the whole-frame pass missed, found by detecting the frame again
+     * in two halves; null when the screen went away while looking.
+     *
+     * A phone screen is 1440x3200 and the detector sees it at 640x640, squashed
+     * five times vertically and two and a quarter across. Unboxed lettering, a
+     * chapter title or a caption on black, then scores 0.1 to 0.3 lower than
+     * in a squarer input, which puts it on the 0.5 floor, and it comes and goes
+     * between frames. Measured on sixteen screens (`docs/milestones/v2.md`):
+     * the halves find 8 pieces of real lettering the whole frame did not, and
+     * nothing that is not lettering. Lowering the floor instead found two more
+     * and also boxes with nothing in them, which manga-ocr, since it never
+     * declines, would have read and drawn.
+     *
+     * After the main pass rather than instead of it, so nothing the whole
+     * frame finds waits for this: the halves on their own also lost 4 boxes
+     * the whole frame had, and would put a detector pass before the first
+     * balloon. A frame not much taller than it is wide is not squashed enough
+     * to gain, and is left alone.
+     */
+    private suspend fun supplement(
+        frame: Bitmap,
+        found: List<DetectedBubble>,
+        within: TextBounds?,
+        placed: Boolean,
+        stillWanted: () -> Boolean,
+    ): List<DetectedBubble>? {
+        if (frame.height < frame.width * TALL_RATIO) return emptyList()
+
+        val started = System.currentTimeMillis()
+        val half = (frame.height + TILE_OVERLAP) / 2
+        val extra = mutableListOf<DetectedBubble>()
+        for (top in listOf(0, frame.height - half)) {
+            if (!stillWanted()) return null
+            val tile = Bitmap.createBitmap(frame, 0, top, frame.width, half)
+            val boxes = try {
+                detector.detect(tile)
+            } finally {
+                tile.recycle()
+            }
+            for (bubble in boxes) {
+                val moved = bubble.copy(
+                    text = bubble.text.movedBy(0, top),
+                    balloon = bubble.balloon?.movedBy(0, top),
+                )
+                if ((found + extra).none { alreadyFound(it.text, moved.text) }) extra += moved
+            }
+        }
+
+        val kept = extra
+            .filter { within == null || it.text.centreIsIn(within) }
+            .filterNot { placed && ClippedBalloons.waitsForMore(it.text, frame.height) }
+            .sortedWith(readingOrder(frame))
+        logger.debug(
+            TAG,
+            "supplement: ${kept.size} new from tiles (${System.currentTimeMillis() - started}ms)",
+        )
+        return kept
+    }
+
+    /** The same lettering when they overlap by half of the smaller box. */
+    private fun alreadyFound(a: TextBounds, b: TextBounds): Boolean {
+        val width = minOf(a.right, b.right) - maxOf(a.left, b.left)
+        val height = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+        if (width <= 0 || height <= 0) return false
+        val smaller = minOf(a.width.toLong() * a.height, b.width.toLong() * b.height)
+        return width.toLong() * height * 2 >= smaller
     }
 
     /**
@@ -548,5 +655,15 @@ internal class DetectingPageReader @Inject constructor(
 
         /** A hard cap, for a page denser than any of the sample material. */
         const val LIMIT = 120
+
+        /**
+         * How much taller than wide a frame has to be before the halves are
+         * worth detecting ([supplement]). Measured at 3200/1440, 2.2; a single
+         * cropped page at 1841/1440 is left as it was.
+         */
+        const val TALL_RATIO = 1.6
+
+        /** Rows shared by the two halves, so lettering across the seam is whole in one. */
+        const val TILE_OVERLAP = 200
     }
 }

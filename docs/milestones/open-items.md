@@ -71,8 +71,10 @@ detector offering them is not. Each costs one OCR call.
 The opposite also happens: **unboxed text is missed on a tall frame.** A
 1440×3200 screen squashed to 640×640 scores it 0.1–0.3 lower than two square
 tiles do, which puts it on the 0.5 floor, so it comes and goes between frames.
-Tiling fixes all measured cases but one two-character line, at the cost of a
-second detector pass (~360ms). `v2.md` → *剩下的两件*.
+Now read a second time in two halves once the page is on screen, which found
+19 such pieces on two audits and nothing that was not lettering, without
+moving the first balloon (`v2.md` → *实现 D 并真机验收*). Lettering that scores
+near the floor in both can still come and go.
 
 ---
 

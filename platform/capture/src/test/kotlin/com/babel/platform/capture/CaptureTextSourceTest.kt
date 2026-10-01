@@ -45,6 +45,7 @@ class CaptureTextSourceTest {
         override suspend fun read(
             frame: Bitmap,
             within: TextBounds?,
+            stillWanted: () -> Boolean,
             onRegion: suspend (TextRegion) -> Boolean,
         ) {
             called = true

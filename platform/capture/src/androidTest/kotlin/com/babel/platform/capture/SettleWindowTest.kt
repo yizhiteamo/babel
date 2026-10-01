@@ -64,6 +64,7 @@ class SettleWindowTest {
         override suspend fun read(
             frame: Bitmap,
             within: TextBounds?,
+            stillWanted: () -> Boolean,
             onRegion: suspend (TextRegion) -> Boolean,
         ) {
             reads += 1

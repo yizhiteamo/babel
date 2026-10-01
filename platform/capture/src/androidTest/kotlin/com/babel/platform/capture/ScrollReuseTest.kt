@@ -455,8 +455,108 @@ class ScrollReuseTest {
         assertEquals(3, placed.size)
     }
 
+    // ---- the second look, in halves ------------------------------------------
+
+    /**
+     * Answers the whole frame and each half differently, the way the real
+     * detector does on a tall screen: the halves see lettering the squashed
+     * whole frame scores under the floor.
+     */
+    private class TallDetector(
+        val whole: List<DetectedBubble>,
+        val upper: List<DetectedBubble> = emptyList(),
+        val lower: List<DetectedBubble> = emptyList(),
+    ) : TextDetector {
+        override val isAvailable = true
+        var calls = 0
+        override suspend fun detect(frame: Bitmap): List<DetectedBubble> {
+            calls += 1
+            return when {
+                frame.height == TALL || frame.height == HEIGHT -> whole
+                calls == 2 -> upper
+                else -> lower
+            }
+        }
+    }
+
+    private fun tallFrame() = Bitmap.createBitmap(WIDTH, TALL, Bitmap.Config.ARGB_8888)
+
+    /** Where the lower half starts, in frame rows: halves of (2400 + 200) / 2. */
+    private val lowerTop = TALL - (TALL + 200) / 2
+
+    @Test
+    fun letteringOnlyTheHalvesFindIsReadAfterEverythingElse() = runBlocking {
+        val engine = CountingEngine()
+        val detector = TallDetector(
+            whole = screen.map { bubble(it) },
+            // In the lower half's own coordinates.
+            lower = listOf(bubble(box(600, 1900 - lowerTop, 200, 120))),
+        )
+        val reader = readerFor(detector, engine)
+
+        val handed = mutableListOf<TextRegion>()
+        reader.read(tallFrame()) { handed += it; true }
+
+        assertEquals(3, detector.calls, "the whole frame, then each half")
+        assertEquals(4, handed.size)
+        // Back in frame coordinates, and last.
+        assertEquals(1900, handed.last().bounds.top)
+    }
+
+    @Test
+    fun letteringBothPassesFoundIsReadOnce() = runBlocking {
+        val engine = CountingEngine()
+        val detector = TallDetector(
+            whole = screen.map { bubble(it) },
+            upper = listOf(bubble(box(122, 902, 296, 178))),
+        )
+        val reader = readerFor(detector, engine)
+
+        reader.read(tallFrame()) { true }
+
+        assertEquals(3, engine.calls, "the box both passes found is the same lettering")
+    }
+
+    @Test
+    fun anAbandonedReadDoesNotLookAgain() = runBlocking {
+        val engine = CountingEngine()
+        val detector = TallDetector(whole = screen.map { bubble(it) })
+        val reader = readerFor(detector, engine)
+
+        reader.read(tallFrame()) { false }
+
+        assertEquals(1, detector.calls)
+    }
+
+    /** A scroll landing between the halves frees the scan rather than finishing them. */
+    @Test
+    fun aScreenNoLongerWantedStopsBetweenHalves() = runBlocking {
+        val engine = CountingEngine()
+        val detector = TallDetector(whole = screen.map { bubble(it) })
+        val reader = readerFor(detector, engine)
+
+        var asked = 0
+        reader.read(tallFrame(), stillWanted = { ++asked < 2 }) { true }
+
+        assertEquals(2, detector.calls, "the whole frame and the upper half, and no more")
+    }
+
+    @Test
+    fun aFrameNotMuchTallerThanWideIsLookedAtOnce() = runBlocking {
+        val engine = CountingEngine()
+        val detector = TallDetector(whole = screen.map { bubble(it) })
+        val reader = readerFor(detector, engine)
+
+        // 1700 is not 1.6 times 1080, so no halves: the frame is not squashed
+        // enough for them to find anything.
+        reader.read(frame()) { true }
+
+        assertEquals(1, detector.calls)
+    }
+
     private companion object {
         const val WIDTH = 1080
         const val HEIGHT = 1700
+        const val TALL = 2400
     }
 }
