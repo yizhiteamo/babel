@@ -6,6 +6,6 @@
 
     <string name="manga_indicator_channel">漫画模式</string>
     <string name="manga_indicator_title">漫画模式已开启</string>
-    <string name="manga_indicator_text">Babel 正在以图像方式读取屏幕。翻译在本机进行。</string>
+    <string name="manga_indicator_text">Babel 正在以图像方式读取屏幕。截图只在本机处理。</string>
 
 </resources>

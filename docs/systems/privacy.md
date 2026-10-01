@@ -177,9 +177,16 @@ Recorded so the next attempt does not re-derive them:
 - **A content gate** — attractive and, as measured above, **not reliable**;
   worse, it only fires after the screenshot and the OCR, which is the step that
   matters most here.
+- **Translate this screen once** — a gesture (a tile, a button) that reads the
+  current screen a single time. The only option that serves a comic turning up
+  inside another app, where every per-app gate fails; and every screen read is
+  one the user asked for.
 
-Untouched for now by the user's decision: the risk is recorded, the code is not
-changed.
+The options serve two different situations — an app that is all comics, and
+a comic appearing inside some other app — and a real product probably wants one
+of each. Untouched for now by the user's decision, until there is use to say
+which matters more: the risk is recorded, the code is not changed, and it must
+be settled before any release (`docs/milestones/open-items.md` #14).
 
 ## Visibility of screen reading
 

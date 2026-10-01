@@ -60,19 +60,6 @@ strip's words in another. The lead is an independent hint: Edge's
 `scrollDeltaY` sums to 53–90% of the true distance, too loose to replace the
 vote, enough to rule out a candidate a whole period away.
 
-### 14. Manga mode reads any app that does not expose its text
-
-`docs/systems/privacy.md` → *Known, unfixed*
-
-Two gates stand between a foreground app and a full-screen capture: a deny-list
-of four packages, and "fewer than 3 label-sized nodes". A photo viewer, a
-full-screen video, a game, a map, an ID photo all pass both. The mode also
-restores itself after a process death.
-
-**Recorded rather than fixed by an explicit decision.** The options and their
-costs are listed with it; the cheapest is binding the mode to the first app
-entered after it is switched on.
-
 ### 18. The detector calls drawn faces text
 
 `docs/milestones/v2.md` → *气泡漏读：量完之后，两条已记录的结论都被推翻*
@@ -134,6 +121,24 @@ the user, not forgotten.)
 
 Nothing keeps the process alive; the home screen explains the power settings
 instead. That hands a platform problem to the user.
+
+### 14. Manga mode reads any app that does not expose its text
+
+`docs/systems/privacy.md` → *Known, unfixed*
+
+Two gates stand between a foreground app and a full-screen capture: a deny-list
+of four packages, and "fewer than 3 label-sized nodes". A photo viewer, a
+full-screen video, a game, a map, an ID photo all pass both. The mode also
+restores itself after a process death.
+
+**Not to be fixed before it is used for real, by an explicit decision.** Two
+real scenarios want opposite things: an app that is all comics wants the mode
+on for the whole app (an allow-list, or binding to the app), while a comic
+turning up inside another app — a chat, a feed — defeats any per-app gate and
+wants a "translate this screen once" gesture instead. Which one dominates is a
+usage question with no data yet, so the choice waits for it. Every option
+starts with the same gate after the scope check in `considerImageScan`, so
+waiting costs no code. The options and their costs are in `privacy.md`.
 
 ---
 

@@ -16,6 +16,6 @@
 
     <string name="manga_indicator_channel">Manga mode</string>
     <string name="manga_indicator_title">Manga mode is on</string>
-    <string name="manga_indicator_text">Babel is reading the screen as images. Translation happens on this device.</string>
+    <string name="manga_indicator_text">Babel is reading the screen as images. The pictures never leave this device.</string>
 
 </resources>
