@@ -286,7 +286,7 @@ class BabelAccessibilityService : AccessibilityService() {
      * over artwork they had nothing to do with, while the untranslated bubbles
      * that had scrolled into view sat beside them untouched.
      *
-     * Nothing here restores them — [ImageTextScanner.clear] resets the frame it
+     * Nothing here restores them — [ImageTextScanner.scrolled] resets the frame it
      * last recognised, so the next settled frame is rescanned and they come back
      * where they belong. The translations themselves are cached, so coming back
      * costs no provider call: that matters more now that a provider can be
@@ -294,7 +294,7 @@ class BabelAccessibilityService : AccessibilityService() {
      */
     private suspend fun runImageScrollLoop() {
         for (signal in imageScrollSignals) {
-            imageScanner.clear()
+            imageScanner.scrolled()
         }
     }
 

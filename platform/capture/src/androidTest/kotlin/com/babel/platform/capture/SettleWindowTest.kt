@@ -49,7 +49,11 @@ class SettleWindowTest {
         var handed = 0
             private set
 
+        /** Runs before the look with this 1-based number is handed out. */
+        var beforeLook: Pair<Int, suspend () -> Unit>? = null
+
         override suspend fun latestFrame(): Bitmap {
+            beforeLook?.let { (look, action) -> if (look == handed + 1) action() }
             val shade = shades[minOf(handed, shades.lastIndex)]
             handed += 1
             return Bitmap.createBitmap(WIDTH, HEIGHT, Bitmap.Config.ARGB_8888)
@@ -61,6 +65,12 @@ class SettleWindowTest {
         var reads = 0
             private set
 
+        /** Whether the scan still wanted its page when [read] was called. */
+        var wantedAtRead: Boolean? = null
+
+        /** Runs as [read] starts, before it asks `stillWanted`. */
+        var onRead: (suspend () -> Unit)? = null
+
         override suspend fun read(
             frame: Bitmap,
             within: TextBounds?,
@@ -68,6 +78,8 @@ class SettleWindowTest {
             onRegion: suspend (TextRegion) -> Boolean,
         ) {
             reads += 1
+            onRead?.invoke()
+            wantedAtRead = stillWanted()
         }
     }
 
@@ -130,6 +142,54 @@ class SettleWindowTest {
         val (pages, _) = scan(listOf(BLACK, WHITE, BLACK, WHITE, BLACK, WHITE, BLACK, WHITE, BLACK))
 
         assertEquals(0, pages.reads, "a screen still moving should not be read")
+    }
+
+    // ---- a scroll reported while the scan waits ---------------------------------
+
+    /**
+     * The event Edge sends ~280ms after a fling's last moving one, just past
+     * the quiet window: it lands while the scan is already looking, and the
+     * look that follows shows the page where it stopped. That look is what is
+     * read, so the scroll is already in it and must not throw the scan away —
+     * measured, it did 7 times in 32 flings, each costing a re-scan.
+     */
+    @Test
+    fun aScrollBeforeTheSettledLookDoesNotAbandonTheRead() = runBlocking {
+        val frames = StagedFrames(listOf(BLACK, WHITE, WHITE))
+        val pages = RecordingReader()
+        val source = CaptureTextSource(frames, pages, UnusedRecognizer(), BabelLogger.NoOp)
+        frames.beforeLook = 2 to { source.scrolled() }
+
+        source.scanOnce(packageName = "com.example.reader")
+
+        assertEquals(1, pages.reads)
+        assertEquals(true, pages.wantedAtRead, "the scroll is already in the frame being read")
+    }
+
+    /** One after the settled look means the page moved under the reading. */
+    @Test
+    fun aScrollAfterTheSettledLookAbandonsIt() = runBlocking {
+        val frames = StagedFrames(listOf(BLACK, WHITE, WHITE))
+        val pages = RecordingReader()
+        val source = CaptureTextSource(frames, pages, UnusedRecognizer(), BabelLogger.NoOp)
+        pages.onRead = { source.scrolled() }
+
+        source.scanOnce(packageName = "com.example.reader")
+
+        assertEquals(false, pages.wantedAtRead)
+    }
+
+    /** Any other clear still ends the scan, whenever it comes. */
+    @Test
+    fun aClearBeforeTheSettledLookStillAbandonsIt() = runBlocking {
+        val frames = StagedFrames(listOf(BLACK, WHITE, WHITE))
+        val pages = RecordingReader()
+        val source = CaptureTextSource(frames, pages, UnusedRecognizer(), BabelLogger.NoOp)
+        frames.beforeLook = 2 to { source.clear() }
+
+        source.scanOnce(packageName = "com.example.reader")
+
+        assertEquals(false, pages.wantedAtRead, "standing down is not a scroll")
     }
 
     private companion object {

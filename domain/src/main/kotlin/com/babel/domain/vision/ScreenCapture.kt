@@ -96,6 +96,20 @@ interface ImageTextScanner : TextSource {
     suspend fun clear()
 
     /**
+     * The page moved: everything drawn is now over the wrong pixels and comes
+     * down, as with [clear].
+     *
+     * Separate because a scroll says something narrower than a clear. It
+     * invalidates frames taken **before** it and nothing after, so a scan
+     * whose frame was captured, and shown still, after the scroll is reading
+     * the moved page and stays valid. Measured on a phone: Edge reports the
+     * end of a fling with one more scroll event ~280ms after the last moving
+     * one, just past the quiet window, and treating it as a clear threw away
+     * the scan already reading the settled page, 7 times in 32 flings.
+     */
+    suspend fun scrolled() = clear()
+
+    /**
      * Lets go of anything expensive being held to be able to read at all.
      *
      * Separate from [clear], and called far less often: clearing happens on

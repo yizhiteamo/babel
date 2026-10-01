@@ -69,6 +69,14 @@ class CaptureTextSource @Inject internal constructor(
     @Volatile
     private var clears = 0L
 
+    /**
+     * How many times the page has been reported moved ([scrolled]). Kept apart
+     * from [clears] because a scroll only invalidates frames captured before
+     * it, while every other clear invalidates the whole scan.
+     */
+    @Volatile
+    private var scrolls = 0L
+
     /** Signature of the last frame actually recognised; null before the first. */
     private var lastRecognized: IntArray? = null
 
@@ -93,6 +101,10 @@ class CaptureTextSource @Inject internal constructor(
         within: TextBounds?,
     ) {
         var startedAfter = lock.withLock { clears }
+        // Scrolls reported before the frame that is finally read was captured
+        // are already in that frame; only later ones make it stale.
+        var scrollsAtFrame = scrolls
+        var scrollsBeforeLook: Long
         val captureStarted = System.currentTimeMillis()
 
         // Wait for the screen to stop moving, checking often.
@@ -109,18 +121,25 @@ class CaptureTextSource @Inject internal constructor(
         var frame: Bitmap? = null
         var signature: IntArray? = null
         var looks = 0
+        // Compared look to look here rather than through [lastSeen], which a
+        // scroll resets: the scroll that ends a fling arrives while this loop
+        // runs, and losing the previous look to it cost a whole extra look.
+        var previousLook = lastSeen
         for (attempt in 0 until SETTLE_ATTEMPTS) {
             if (attempt > 0) delay(SETTLE_RECHECK_MS)
 
+            scrollsBeforeLook = scrolls
             val candidate = frames.latestFrame() ?: return
             looks += 1
             val candidateSignature = FrameSignature.of(candidate)
-            val settled = FrameChangeDetector.hasSettled(lastSeen, candidateSignature)
+            val settled = FrameChangeDetector.hasSettled(previousLook, candidateSignature)
+            previousLook = candidateSignature
             lastSeen = candidateSignature
 
             if (settled) {
                 frame = candidate
                 signature = candidateSignature
+                scrollsAtFrame = scrollsBeforeLook
                 // Only when it took more than one look. Every scan settles,
                 // so logging the ordinary case would bury everything else at
                 // one line per 1.5s tick; what is worth seeing is how long a
@@ -189,6 +208,7 @@ class CaptureTextSource @Inject internal constructor(
             delay(SETTLE_RECHECK_MS)
 
             frame.recycle()
+            scrollsAtFrame = scrolls
             frame = frames.latestFrame()
             signature = frame?.let { FrameSignature.of(it) }
             if (frame == null || signature == null) {
@@ -275,7 +295,7 @@ class CaptureTextSource @Inject internal constructor(
                 val shared = if (!utterance.isShared) element
                 else element.copy(share = TextShare(index = index, weights = weights))
                 currentIds += shared.id
-                if (!publishOne(shared, startedAfter)) {
+                if (!publishOne(shared, startedAfter, scrollsAtFrame)) {
                     published = false
                     break
                 }
@@ -290,7 +310,7 @@ class CaptureTextSource @Inject internal constructor(
                 // Read without the lock on purpose: a stale answer costs one
                 // detector pass, and waiting for the lock here would cost the
                 // scroll that is trying to take it.
-                stillWanted = { clears == startedAfter },
+                stillWanted = { clears == startedAfter && scrolls == scrollsAtFrame },
             ) { region ->
                 read += 1
                 // Cleared while this page was being read — the user has moved
@@ -366,7 +386,7 @@ class CaptureTextSource @Inject internal constructor(
                 "${System.currentTimeMillis() - readStarted}ms)",
         )
 
-        if (!abandoned) finishPublishing(currentIds, startedAfter, signature)
+        if (!abandoned) finishPublishing(currentIds, startedAfter, scrollsAtFrame, signature)
     }
 
     override suspend fun release() {
@@ -378,11 +398,24 @@ class CaptureTextSource @Inject internal constructor(
     override suspend fun clear() {
         lock.withLock {
             clears += 1
-            previousIds = emptySet()
-            lastRecognized = null
-            lastSeen = null
+            forget()
         }
         events.emit(TextSourceEvent.Cleared(sourceType))
+    }
+
+    override suspend fun scrolled() {
+        lock.withLock {
+            scrolls += 1
+            forget()
+        }
+        events.emit(TextSourceEvent.Cleared(sourceType))
+    }
+
+    /** What both kinds of clear take down. Called under [lock]. */
+    private fun forget() {
+        previousIds = emptySet()
+        lastRecognized = null
+        lastSeen = null
     }
 
     /** Whether this region sits on something the text path already sees. */
@@ -602,8 +635,8 @@ class CaptureTextSource @Inject internal constructor(
      * @return false when the page was cleared mid-read, which is the caller's
      *   signal to stop publishing the rest of it.
      */
-    private suspend fun publishOne(element: TextElement, startedAfter: Long): Boolean {
-        val stillHere = lock.withLock { clears == startedAfter }
+    private suspend fun publishOne(element: TextElement, startedAfter: Long, scrollsAtFrame: Long): Boolean {
+        val stillHere = lock.withLock { clears == startedAfter && scrolls == scrollsAtFrame }
         if (!stillHere) {
             // Cleared while this scan ran, so it is a reading of a screen the
             // user has already left. Publishing it would undo the clear.
@@ -627,10 +660,11 @@ class CaptureTextSource @Inject internal constructor(
     private suspend fun finishPublishing(
         currentIds: Set<TextElementId>,
         startedAfter: Long,
+        scrollsAtFrame: Long,
         signature: IntArray,
     ) {
         val removed = lock.withLock {
-            if (clears != startedAfter) {
+            if (clears != startedAfter || scrolls != scrollsAtFrame) {
                 logger.debug(TAG, "dropped a scan of a screen that is gone")
                 return
             }
