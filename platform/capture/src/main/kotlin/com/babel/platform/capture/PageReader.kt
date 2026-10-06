@@ -8,6 +8,7 @@ import com.babel.core.model.TextOrientation
 import com.babel.domain.vision.ClippedBalloons
 import com.babel.domain.vision.LineJoin
 import com.babel.domain.vision.MangaReadingOrder
+import com.babel.domain.vision.PageMotion
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.ScrolledBalloons
 import com.babel.domain.vision.SoundEffect
@@ -158,6 +159,12 @@ internal class DetectingPageReader @Inject constructor(
     @Volatile
     private var pageMemory: List<ReadBalloon> = emptyList()
 
+    /** The last frame read, reduced, and where it sat on the page. */
+    @Volatile
+    private var lastProfile: PlacedProfile? = null
+
+    private class PlacedProfile(val profile: PageMotion.Profile, val offset: Int)
+
     /**
      * A balloon already read, kept against the chance that it comes back.
      *
@@ -249,7 +256,25 @@ internal class DetectingPageReader @Inject constructor(
         // Null for a page that changed rather than moved, and then everything
         // below reads as it always did (`ScrolledBalloons`).
         val diagnosis = ScrolledBalloons.diagnose(pageMemory.map { it.box }, ordered.map { it.text })
-        val shift = diagnosis.shift
+
+        // And then the picture has to agree. Geometry alone puts a page of
+        // repeating balloons one period off (`PageMotion`); the artwork around
+        // them does not repeat. Without a previous frame to compare against —
+        // the first screen, or one after an abandoned read — geometry decides
+        // alone, as it always did.
+        val profile = profileOf(frame)
+        val before = lastProfile
+        val shift = if (before == null || diagnosis.candidates.isEmpty()) diagnosis.shift else {
+            PageMotion.choose(before.profile, profile, before.offset, diagnosis.shift, diagnosis.candidates).also { chosen ->
+                if (chosen != diagnosis.shift) {
+                    logger.debug(
+                        TAG,
+                        "picture overruled the balloons: ${diagnosis.shift} -> $chosen " +
+                            "of ${diagnosis.candidates.size} candidates",
+                    )
+                }
+            }
+        }
 
         // Where this screen sits on the page. Solved against the whole memory
         // rather than accumulated from the frame before, so it cannot drift.
@@ -275,7 +300,7 @@ internal class DetectingPageReader @Inject constructor(
             // tie are three different defects (`ScrolledBalloons.Diagnosis`).
             logger.debug(
                 TAG,
-                "lost the page (${diagnosis.failure}: ${diagnosis.pairs} pairs, " +
+                "lost the page (${diagnosis.failure ?: "PICTURE"}: ${diagnosis.pairs} pairs, " +
                     "${diagnosis.votes} votes, rival ${diagnosis.rivalVotes}); " +
                     "${pageMemory.size} readings held until this screen is read",
             )
@@ -387,6 +412,12 @@ internal class DetectingPageReader @Inject constructor(
                 }
             }
         }
+
+        // This frame is what the next one is compared against — only when its
+        // offset means something in the memory's coordinates. After an
+        // abandoned read of an unplaced screen the memory is the old one and
+        // this frame's offset is not in it, so nothing is kept to compare.
+        lastProfile = if (lost && stopped) null else PlacedProfile(profile, offset)
 
         when {
             !lost -> remember(thisPage, offset, frame.height)
@@ -523,6 +554,7 @@ internal class DetectingPageReader @Inject constructor(
         // new screen, and the alternative is reusing a reading of whatever was
         // in front of the user before they switched it off.
         pageMemory = emptyList()
+        lastProfile = null
         detector.release()
         recognizer.release()
     }
@@ -655,6 +687,28 @@ internal class DetectingPageReader @Inject constructor(
         return Bitmap.createBitmap(this, left, top, right - left, bottom - top)
     }
 
+    /**
+     * [frame] reduced for [PageMotion]: mean brightness in a grid of
+     * [PROFILE_ROWS] by [PROFILE_BANDS] cells, eight samples a cell. Cheap —
+     * 12,800 pixel reads on a frame of 4.6 million.
+     */
+    private fun profileOf(frame: Bitmap): PageMotion.Profile {
+        val cells = ByteArray(PROFILE_ROWS * PROFILE_BANDS)
+        val samples = PROFILE_BANDS * PROFILE_SAMPLES
+        for (row in 0 until PROFILE_ROWS) {
+            val y = (row * frame.height / PROFILE_ROWS).coerceAtMost(frame.height - 1)
+            for (band in 0 until PROFILE_BANDS) {
+                var sum = 0
+                for (s in 0 until PROFILE_SAMPLES) {
+                    val px = frame.getPixel((band * PROFILE_SAMPLES + s) * frame.width / samples, y)
+                    sum += ((px shr 16 and 0xFF) + (px shr 8 and 0xFF) + (px and 0xFF)) / 3
+                }
+                cells[row * PROFILE_BANDS + band] = (sum / PROFILE_SAMPLES).toByte()
+            }
+        }
+        return PageMotion.Profile(cells, PROFILE_ROWS, PROFILE_BANDS, frame.height)
+    }
+
     private fun TextBounds.movedBy(dx: Int, dy: Int) =
         copy(left = left + dx, top = top + dy, right = right + dx, bottom = bottom + dy)
 
@@ -683,5 +737,10 @@ internal class DetectingPageReader @Inject constructor(
 
         /** Rows shared by the two halves, so lettering across the seam is whole in one. */
         const val TILE_OVERLAP = 200
+
+        /** The grid [PageMotion] was measured with: 16px rows on a phone screen. */
+        const val PROFILE_ROWS = 200
+        const val PROFILE_BANDS = 8
+        const val PROFILE_SAMPLES = 8
     }
 }

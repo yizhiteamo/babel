@@ -201,6 +201,18 @@ class ScrolledBalloonsTest {
         assertNull(ScrolledBalloons.shiftBetween(twins, scrolled(twins.take(2), by = -300)))
     }
 
+    /** The losing side of a tie is still offered, for something else to decide. */
+    @Test
+    fun `a tie still lists both candidates`() {
+        val twins = listOf(
+            box(100, 0, 200, 100), box(500, 0, 200, 100),
+            box(100, 1000, 200, 100), box(500, 1000, 200, 100),
+        )
+        val diagnosis = ScrolledBalloons.diagnose(twins, scrolled(twins.take(2), by = -300))
+
+        assertEquals(2, diagnosis.candidates.size)
+    }
+
     @Test
     fun `nothing remembered is nothing to compare`() {
         assertEquals(

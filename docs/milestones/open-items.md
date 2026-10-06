@@ -54,19 +54,6 @@ stopped page. First bubble median 2.1–2.2s → 1.9s (`v2.md` → *扫描读到
 then ~1.75s once the balloons are detected while waiting for the second look
 (`v2.md` → *等第二眼时预先检测*).
 
-### 20. A page that repeats at a pitch can be placed one period off
-
-`docs/milestones/v2.md` → *容差：补测最坏布局*
-
-Scroll reuse votes on geometry alone. When identical balloons repeat at a fixed
-pitch and a fling lands near a multiple of it, the winning shift is a period
-off — measured three times running on a built worst-case page, at every
-tolerance, until a tied vote broke the chain. Harmless there (the copies say
-the same thing); on a 4-koma with identical balloon templates it would put one
-strip's words in another. The lead is an independent hint: Edge's
-`scrollDeltaY` sums to 53–90% of the true distance, too loose to replace the
-vote, enough to rule out a candidate a whole period away.
-
 ### 18. The detector calls drawn faces text
 
 `docs/milestones/v2.md` → *气泡漏读：量完之后，两条已记录的结论都被推翻*

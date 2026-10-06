@@ -319,7 +319,10 @@ Behavioral invariants that must survive any change:
   worst-case page gave identical answers at every tolerance). Dropping to one
   vote is what puts one balloon's words in another. Geometry alone is blind to
   a page that repeats at a pitch when the scroll lands near a multiple of it —
-  it picks a shift one period off, at any tolerance (`docs/milestones/v2.md`).
+  it picks a shift one period off, at any tolerance — so the screenshots must
+  also agree (`PageMotion`): the picture may veto a shift or pick the one
+  candidate it fits, never guess. It reads no scroll events, which a
+  self-drawn reader may never send (`docs/milestones/v2.md`).
 - The reader's memory is in **page** coordinates and every frame solves for its
   own absolute offset, so nothing drifts. When no offset can be recovered the
   whole memory is dropped — replaced once that screen has been read to the end,

@@ -90,6 +90,13 @@ object ScrolledBalloons {
         /** Votes for the strongest separate answer. */
         val rivalVotes: Int,
         val failure: Failure?,
+        /**
+         * Every shift at least two pairs agree on, the strongest first — the
+         * answer included when there is one. A tie leaves no answer but two
+         * candidates, and something other than geometry may still tell them
+         * apart (`PageMotion`).
+         */
+        val candidates: List<Int> = emptyList(),
     )
 
     enum class Failure { NOTHING_TO_COMPARE, NO_PAIRS, TOO_FEW_VOTES, TIED }
@@ -129,14 +136,22 @@ object ScrolledBalloons {
         val rival = deltas.filter { abs(it - best) > TOLERANCE }
             .maxOfOrNull { agreeing(deltas, it).size } ?: 0
 
-        fun failed(why: Failure) = Diagnosis(null, deltas.size, winners.size, rival, why)
+        val candidates = mutableListOf<Int>()
+        for (delta in deltas.sortedByDescending { agreeing(deltas, it).size }) {
+            val group = agreeing(deltas, delta)
+            if (group.size < MIN_VOTES) break
+            val middle = group.sorted()[group.size / 2]
+            if (candidates.none { abs(it - middle) <= TOLERANCE }) candidates += middle
+        }
+
+        fun failed(why: Failure) = Diagnosis(null, deltas.size, winners.size, rival, why, candidates)
         if (winners.size < MIN_VOTES) return failed(Failure.TOO_FEW_VOTES)
         if (rival >= winners.size) return failed(Failure.TIED)
 
         // The middle of what the winners actually said. A median rather than a
         // mean because one box landing badly should not drag the answer for the
         // rest of them.
-        return Diagnosis(winners.sorted()[winners.size / 2], deltas.size, winners.size, rival, null)
+        return Diagnosis(winners.sorted()[winners.size / 2], deltas.size, winners.size, rival, null, candidates)
     }
 
     private fun agreeing(deltas: List<Int>, candidate: Int) =
