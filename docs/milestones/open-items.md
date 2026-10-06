@@ -71,6 +71,20 @@ Now read a second time in two halves once the page is on screen, which found
 moving the first balloon (`v2.md` → *实现 D 并真机验收*). Lettering that scores
 near the floor in both can still come and go.
 
+### 21. The same balloon reads differently from different scroll positions
+
+`docs/milestones/v2.md` → *同一气泡每次读得不一样*
+
+Why one title was seen translated two ways. Not the translation layer: the
+cache is keyed on the text, so the text itself differed. Read through 82 fresh
+windows, a stylised title gave **24 readings in 24**, a Latin logo 9 in 12, and
+an ordinary balloon was one character wrong in 20 of 49 — the detector's box
+height wanders by up to 80px, and the crop with it. Clean lettering reads the
+same every time.
+
+A reader sees it only when the page memory is dropped and a balloon is read
+again. Four directions are listed there, cheapest first; none chosen.
+
 ---
 
 ## B. Measured, deliberately not acted on
