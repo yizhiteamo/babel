@@ -50,7 +50,9 @@ flings on a real chapter (`v2.md` → *容差改为 16px*).
 The scan read part-way and thrown away on 5–8 of 16 flings is fixed: Edge
 reports a fling's end ~290ms after its last moving event, just past the quiet
 window, and that scroll invalidated a scan whose frame already showed the
-stopped page. First bubble median 2.1–2.2s → 1.9s (`v2.md` → *扫描读到一半被放弃*).
+stopped page. First bubble median 2.1–2.2s → 1.9s (`v2.md` → *扫描读到一半被放弃*),
+then ~1.75s once the balloons are detected while waiting for the second look
+(`v2.md` → *等第二眼时预先检测*).
 
 ### 20. A page that repeats at a pitch can be placed one period off
 

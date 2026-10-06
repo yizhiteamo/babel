@@ -26,6 +26,10 @@ import com.babel.domain.vision.UtteranceGrouper
 import com.babel.platform.screen.ScreenFrameSource
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -120,44 +124,117 @@ class CaptureTextSource @Inject internal constructor(
         // re-check learns nothing.
         var frame: Bitmap? = null
         var signature: IntArray? = null
+        var predetected: List<DetectedBubble>? = null
         var looks = 0
+        var noFrame = false
+
         // Compared look to look here rather than through [lastSeen], which a
         // scroll resets: the scroll that ends a fling arrives while this loop
         // runs, and losing the previous look to it cost a whole extra look.
         var previousLook = lastSeen
-        for (attempt in 0 until SETTLE_ATTEMPTS) {
-            if (attempt > 0) delay(SETTLE_RECHECK_MS)
 
-            scrollsBeforeLook = scrolls
-            val candidate = frames.latestFrame() ?: return
-            looks += 1
-            val candidateSignature = FrameSignature.of(candidate)
-            val settled = FrameChangeDetector.hasSettled(previousLook, candidateSignature)
-            previousLook = candidateSignature
-            lastSeen = candidateSignature
+        // The balloons are looked for during the wait for the next look.
+        //
+        // After a scroll the first look always differs from the frame before
+        // the scroll, so a second look [SETTLE_RECHECK_MS] later is always
+        // needed — measured, every one of ten flings — and detection then
+        // started only after it: about 360ms more. Nothing is done during
+        // that wait but wait for the platform's screenshot throttle. A look
+        // that the next one agrees with *is* the settled screen, so detecting
+        // on it while waiting gives the same answer, sooner.
+        //
+        // Not while our own translations are still drawn: they are about to
+        // be taken down and the screen re-captured, and on this frame the
+        // detector would take them for balloons.
+        val mayLookAhead = lock.withLock { previousIds.isEmpty() }
+        coroutineScope {
+            var held: Bitmap? = null
+            var heldSignature: IntArray? = null
+            var ahead: Deferred<List<DetectedBubble>?>? = null
 
-            if (settled) {
-                frame = candidate
-                signature = candidateSignature
-                scrollsAtFrame = scrollsBeforeLook
-                // Only when it took more than one look. Every scan settles,
-                // so logging the ordinary case would bury everything else at
-                // one line per 1.5s tick; what is worth seeing is how long a
-                // moving screen actually takes, which is the number
-                // [SETTLE_ATTEMPTS] has to cover.
-                if (looks > 1) {
-                    logger.debug(
-                        TAG,
-                        "settled on look $looks after " +
-                            "${System.currentTimeMillis() - captureStarted}ms",
-                    )
+            for (attempt in 0 until SETTLE_ATTEMPTS) {
+                if (attempt > 0) delay(SETTLE_RECHECK_MS)
+
+                scrollsBeforeLook = scrolls
+                val candidate = frames.latestFrame()
+                if (candidate == null) {
+                    ahead?.cancel()
+                    held?.recycle()
+                    noFrame = true
+                    break
                 }
-                break
+                looks += 1
+                val candidateSignature = FrameSignature.of(candidate)
+                val settled = FrameChangeDetector.hasSettled(previousLook, candidateSignature)
+                previousLook = candidateSignature
+                lastSeen = candidateSignature
+
+                if (settled) {
+                    if (held != null && ahead != null) {
+                        // The look the detector has been working on is the
+                        // one this look agrees with, so it is the one read.
+                        candidate.recycle()
+                        frame = held
+                        signature = heldSignature
+                        predetected = ahead.await()
+                    } else {
+                        frame = candidate
+                        signature = candidateSignature
+                    }
+                    // Counted up to this look even when the look before it is
+                    // the one read: the two agree, so nothing reported between
+                    // them moved the page.
+                    scrollsAtFrame = scrollsBeforeLook
+                    // Only when it took more than one look. Every scan settles,
+                    // so logging the ordinary case would bury everything else
+                    // at one line per 1.5s tick; what is worth seeing is how
+                    // long a moving screen actually takes, which is the number
+                    // [SETTLE_ATTEMPTS] has to cover.
+                    if (looks > 1) {
+                        logger.debug(
+                            TAG,
+                            "settled on look $looks after " +
+                                "${System.currentTimeMillis() - captureStarted}ms" +
+                                if (predetected != null) ", balloons found while waiting" else "",
+                        )
+                    }
+                    break
+                }
+
+                // Still moving. The bitmap is the largest object here, so the
+                // one before it goes now rather than at the end of the loop.
+                ahead?.cancel()
+                held?.recycle()
+                held = null
+                ahead = null
+                if (mayLookAhead && attempt < SETTLE_ATTEMPTS - 1) {
+                    held = candidate
+                    heldSignature = candidateSignature
+                    // Its own copy: the look it came from may be recycled
+                    // while the detector is still reading it.
+                    val copy = pageOf(candidate, within).first.let {
+                        if (it === candidate) candidate.copy(Bitmap.Config.ARGB_8888, false) else it
+                    }
+                    ahead = async {
+                        try {
+                            pages.detect(copy)
+                        } catch (failure: Exception) {
+                            if (failure is CancellationException) throw failure
+                            null
+                        } finally {
+                            copy.recycle()
+                        }
+                    }
+                } else {
+                    candidate.recycle()
+                }
             }
-            // Still moving. The bitmap is the largest object here, so it goes
-            // now rather than at the end of the loop.
-            candidate.recycle()
+            if (frame == null && !noFrame) {
+                ahead?.cancel()
+                held?.recycle()
+            }
         }
+        if (noFrame) return
 
         // Never came to rest — an animation, a video, a page still loading.
         // Leave it to the next tick rather than reading a smear.
@@ -217,6 +294,7 @@ class CaptureTextSource @Inject internal constructor(
             }
             // Our own clear moved the counter the drop guard compares against.
             startedAfter = lock.withLock { clears }
+            predetected = null
         }
 
         // Read only the app's content area.
@@ -231,10 +309,7 @@ class CaptureTextSource @Inject internal constructor(
         // which is what makes it safe to do before reading rather than after.
         // The narrower frame also keeps [BubbleBounds] from growing a bubble up
         // into the toolbar, and lowers the peak memory of doubling the frame.
-        val crop = within?.clippedTo(frame)
-        val page = crop?.let {
-            Bitmap.createBitmap(frame, it.left, it.top, it.width, it.height)
-        } ?: frame
+        val (page, crop) = pageOf(frame, within)
         val dx = crop?.left ?: 0
         val dy = crop?.top ?: 0
         val exclusionsInPage = if (crop == null) exclusions else exclusions.map { it.movedBy(-dx, -dy) }
@@ -311,6 +386,7 @@ class CaptureTextSource @Inject internal constructor(
                 // detector pass, and waiting for the lock here would cost the
                 // scroll that is trying to take it.
                 stillWanted = { clears == startedAfter && scrolls == scrollsAtFrame },
+                predetected = predetected,
             ) { region ->
                 read += 1
                 // Cleared while this page was being read — the user has moved
@@ -435,6 +511,15 @@ class CaptureTextSource @Inject internal constructor(
      * copying the bitmap costs more than the recognition it saves. The caller
      * then reads the whole frame, which is what it did before this existed.
      */
+    /**
+     * The part of [frame] that is the page, and where it was cut from; the
+     * frame itself when it was not worth cutting.
+     */
+    private fun pageOf(frame: Bitmap, within: TextBounds?): Pair<Bitmap, TextBounds?> {
+        val crop = within?.clippedTo(frame) ?: return frame to null
+        return Bitmap.createBitmap(frame, crop.left, crop.top, crop.width, crop.height) to crop
+    }
+
     private fun TextBounds.clippedTo(frame: Bitmap): TextBounds? {
         val clipped = copy(
             left = left.coerceIn(0, frame.width),

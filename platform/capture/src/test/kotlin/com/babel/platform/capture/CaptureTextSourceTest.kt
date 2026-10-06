@@ -46,6 +46,7 @@ class CaptureTextSourceTest {
             frame: Bitmap,
             within: TextBounds?,
             stillWanted: () -> Boolean,
+            predetected: List<DetectedBubble>?,
             onRegion: suspend (TextRegion) -> Boolean,
         ) {
             called = true

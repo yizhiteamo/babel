@@ -54,13 +54,26 @@ internal interface PageReader {
      * @param stillWanted whether the screen being read is still the one on
      *   display. Asked before work that happens with nothing to hand over,
      *   where [onRegion] is never called and so cannot say no.
+     * @param predetected what [detect] already found on this very frame, so it
+     *   is not looked for twice.
      */
     suspend fun read(
         frame: Bitmap,
         within: TextBounds? = null,
         stillWanted: () -> Boolean = { true },
+        predetected: List<DetectedBubble>? = null,
         onRegion: suspend (TextRegion) -> Boolean,
     )
+
+    /**
+     * Where the balloons are on [page], ahead of [read], or null when this
+     * reader does not work that way.
+     *
+     * Exists so the caller can find them while it waits for the screen to be
+     * shown still — time spent waiting on the platform's screenshot throttle,
+     * with the processor idle (`CaptureTextSource`).
+     */
+    suspend fun detect(page: Bitmap): List<DetectedBubble>? = null
 
     /** Lets go of loaded models. Reading again afterwards reloads them. */
     suspend fun release() = Unit
@@ -91,6 +104,7 @@ internal class GroupingPageReader @Inject constructor(
         frame: Bitmap,
         within: TextBounds?,
         stillWanted: () -> Boolean,
+        predetected: List<DetectedBubble>?,
         onRegion: suspend (TextRegion) -> Boolean,
     ) {
         val lines = recognizer.recognize(frame)
@@ -156,6 +170,7 @@ internal class DetectingPageReader @Inject constructor(
         frame: Bitmap,
         within: TextBounds?,
         stillWanted: () -> Boolean,
+        predetected: List<DetectedBubble>?,
         onRegion: suspend (TextRegion) -> Boolean,
     ) {
         // Unavailable used to be the normal state and is now the broken one:
@@ -164,13 +179,13 @@ internal class DetectingPageReader @Inject constructor(
         // that survivable. Finding *zero* balloons remains a different thing: a
         // page with no dialogue genuinely has none, and falling back there
         // would put the sound effects and the chrome straight back.
-        if (!detector.isAvailable) return fallback.read(frame, within, stillWanted, onRegion)
+        if (!detector.isAvailable) return fallback.read(frame, within, stillWanted, onRegion = onRegion)
 
         // Which language's reader to use is a page-level question, and one the
         // balloon readers cannot answer for themselves (`BubbleRecognizer`).
         recognizer.startPage(frame)
 
-        val detected = detector.detect(frame)
+        val detected = predetected ?: detector.detect(frame)
         logger.debug(TAG, "detector found ${detected.size} bubbles")
 
         // Outside the page, skipped before reading rather than after. The page
@@ -185,7 +200,7 @@ internal class DetectingPageReader @Inject constructor(
         // the model ships with the app now, so the answer above is yes until a
         // load actually fails. Without this the first page after such a failure
         // renders nothing at all before the check above starts catching it.
-        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, within, stillWanted, onRegion)
+        if (bubbles.isEmpty() && !detector.isAvailable) return fallback.read(frame, within, stillWanted, onRegion = onRegion)
 
         // One at a time, and that is a measured choice rather than the obvious
         // one. Reading two balloons concurrently is genuinely faster — 3.3s to
@@ -402,6 +417,9 @@ internal class DetectingPageReader @Inject constructor(
             )
         }
     }
+
+    override suspend fun detect(page: Bitmap): List<DetectedBubble>? =
+        if (detector.isAvailable) detector.detect(page) else null
 
     /**
      * Lettering the whole-frame pass missed, found by detecting the frame again

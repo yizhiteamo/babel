@@ -3,6 +3,7 @@ package com.babel.platform.capture
 import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.babel.core.common.BabelLogger
+import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.TextBounds
 import com.babel.domain.vision.RecognizedLine
@@ -71,15 +72,36 @@ class SettleWindowTest {
         /** Runs as [read] starts, before it asks `stillWanted`. */
         var onRead: (suspend () -> Unit)? = null
 
+        /** The shade of every frame [detect] was asked about, in order. */
+        val detectedOn = mutableListOf<Int>()
+
+        /** What [read] was handed, and the shade of the frame it read. */
+        var handed: List<DetectedBubble>? = null
+        var readShade: Int? = null
+
         override suspend fun read(
             frame: Bitmap,
             within: TextBounds?,
             stillWanted: () -> Boolean,
+            predetected: List<DetectedBubble>?,
             onRegion: suspend (TextRegion) -> Boolean,
         ) {
             reads += 1
             onRead?.invoke()
             wantedAtRead = stillWanted()
+            handed = predetected
+            readShade = frame.getPixel(0, 0)
+        }
+
+        override suspend fun detect(page: Bitmap): List<DetectedBubble> {
+            val shade = page.getPixel(0, 0)
+            detectedOn += shade
+            return listOf(
+                DetectedBubble(
+                    text = TextBounds(shade and 0xFF, 0, 10, 10, CoordinateSpace.SCREEN),
+                    balloon = null,
+                ),
+            )
         }
     }
 
@@ -190,6 +212,49 @@ class SettleWindowTest {
         source.scanOnce(packageName = "com.example.reader")
 
         assertEquals(false, pages.wantedAtRead, "standing down is not a scroll")
+    }
+
+    // ---- finding the balloons while waiting ------------------------------------
+
+    /**
+     * The ordinary scroll: the first look differs from the frame before it, the
+     * second agrees. The balloons were found on the first look during the wait,
+     * and that look is the one read.
+     */
+    @Test
+    fun theBalloonsFoundWhileWaitingAreTheOnesRead() = runBlocking {
+        val (pages, frames) = scan(listOf(BLACK, WHITE, WHITE))
+
+        assertEquals(3, frames.handed)
+        assertEquals(listOf(BLACK, WHITE), pages.detectedOn, "each moving look was looked at once")
+        assertEquals(WHITE, pages.readShade, "the look the detector worked on is the look read")
+        assertEquals(WHITE and 0xFF, pages.handed?.single()?.text?.left, "and its balloons came with it")
+    }
+
+    @Test
+    fun aLookTheNextDisagreesWithIsNotUsed() = runBlocking {
+        val (pages, _) = scan(listOf(BLACK, WHITE, BLACK, WHITE, WHITE))
+
+        assertEquals(0, pages.reads, "still moving after three looks, so nothing is read")
+    }
+
+    /**
+     * A page that did not move needs no wait, so nothing is looked for during
+     * one: the tick on an unchanged page settles on its first look.
+     */
+    @Test
+    fun aScreenAlreadyStillIsNotLookedAtAhead() = runBlocking {
+        val frames = StagedFrames(listOf(WHITE))
+        val pages = RecordingReader()
+        val source = CaptureTextSource(frames, pages, UnusedRecognizer(), BabelLogger.NoOp)
+
+        runBlocking { source.scanOnce(packageName = "com.example.reader") }
+        val before = pages.detectedOn.size
+        val looksBefore = frames.handed
+        runBlocking { source.scanOnce(packageName = "com.example.reader") }
+
+        assertEquals(looksBefore + 1, frames.handed, "one look, already still")
+        assertEquals(before, pages.detectedOn.size, "and nothing looked at ahead")
     }
 
     private companion object {
