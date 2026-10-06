@@ -51,16 +51,32 @@ class TerritoriesTest {
         assertEquals(listOf(a.reach, b.reach), Territories.of(listOf(a, b)))
     }
 
-    /** A territory never shrinks past its own lettering, so the original stays covered. */
+    /**
+     * Two columns of one balloon set diagonally: their lettering boxes overlap
+     * by a thin strip, measured 4 to 17px on six of seven such pairs. Each
+     * gives up half the strip, so the translations meet instead of overlapping.
+     */
     @Test
-    fun `lettering that overlaps keeps its whole reach`() {
+    fun `lettering that overlaps by a strip is split down its middle`() {
+        val reach = box(0, 0, 600, 600)
+        val right = Territories.Item(box(300, 100, 400, 300), reach)
+        val left = Territories.Item(box(186, 210, 316, 450), reach)
+
+        val (r, l) = Territories.of(listOf(right, left))
+
+        assertEquals(308, r.left)
+        assertEquals(308, l.right)
+        assertTrue(!r.overlaps(l))
+    }
+
+    /** The same lettering reported twice is not cut through the middle of its words. */
+    @Test
+    fun `lettering that overlaps by more than half is left alone`() {
         val reach = box(0, 0, 400, 400)
         val a = Territories.Item(box(100, 100, 220, 300), reach)
-        val b = Territories.Item(box(200, 150, 320, 350), reach)
+        val b = Territories.Item(box(140, 150, 260, 350), reach)
 
-        val territories = Territories.of(listOf(a, b))
-
-        assertEquals(listOf(reach, reach), territories)
+        assertEquals(listOf(reach, reach), Territories.of(listOf(a, b)))
     }
 
     @Test

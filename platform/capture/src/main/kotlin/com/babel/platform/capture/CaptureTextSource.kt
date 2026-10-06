@@ -581,11 +581,14 @@ class CaptureTextSource @Inject internal constructor(
         // rather than as the growth's limit: reaching the limit is how
         // [BubbleBounds] learns there was no enclosure, and a share ending in
         // the middle of a balloon would have it give up and return the bare
-        // lettering. And never smaller than the lettering: the share is drawn
-        // from the detector's box, the lettering from the recognised lines,
-        // and measured they can differ by a pixel — the translation has to
-        // cover what it replaces all the same.
-        val placed = territory?.let { bubble.cutTo(it).covering(text) } ?: bubble
+        // lettering. And never smaller than the lettering inside the share:
+        // the share is drawn from the detector's box, the lettering from the
+        // recognised lines, and measured they can differ by a pixel, hence the
+        // slack. Outside it is only where two lettering boxes overlap, and
+        // there the neighbour has the other half (`Territories`).
+        val placed = territory?.let {
+            bubble.cutTo(it).covering(text.cutTo(it.grownBy(SHARE_SLACK_PX)))
+        } ?: bubble
         return Placement(placed, style)
     }
 
@@ -649,6 +652,9 @@ class CaptureTextSource @Inject internal constructor(
         right = minOf(right, area.right),
         bottom = minOf(bottom, area.bottom),
     )
+
+    private fun TextBounds.grownBy(px: Int): TextBounds =
+        copy(left = left - px, top = top - px, right = right + px, bottom = bottom + px)
 
     private fun TextBounds.covering(inner: TextBounds): TextBounds = copy(
         left = minOf(left, inner.left),
@@ -763,6 +769,9 @@ class CaptureTextSource @Inject internal constructor(
     }
 
     private companion object {
+        /** How far a translation may stray past its share to cover its own lettering. */
+        const val SHARE_SLACK_PX = 2
+
         private val JAPANESE = LanguageTag("ja")
         private val KOREAN = LanguageTag("ko")
 
