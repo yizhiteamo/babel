@@ -83,7 +83,11 @@ height wanders by up to 80px, and the crop with it. Clean lettering reads the
 same every time.
 
 A reader sees it only when the page memory is dropped and a balloon is read
-again. Four directions are listed there, cheapest first; none chosen.
+again. Re-edging the crop to the ink was measured and **rejected**: it steadied
+the stylised titles (319 → 333 of 401 right) and unsettled clean dialogue,
+which the current crop reads 97.5% the same (→ 93.2%, with new wrong
+characters). What is left — trusting lettering on the art less, or keeping a
+re-read balloon's old translation — waits for a reader to ask.
 
 ---
 
