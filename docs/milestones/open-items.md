@@ -15,17 +15,18 @@ and saying so where its evidence lives.
 
 ## A. Defects a reader would notice
 
-### 1. Stale overlays after a fast fling, seen once in 34 runs
+### 1. Stale overlays after a fast fling, seen once in 114 runs
 
 `docs/milestones/v1.md` → *Open: stale overlays after rapid scrolling*
 
-Seen once, then **33 attempts failed to reproduce it** across four gesture
-shapes, two orientations and two timings.
+Seen once on the emulator, then **113 attempts failed to reproduce it** —
+including the lead this entry used to name: 80 runs on a 30-screen page on a
+real phone, flings coasting to a halt mid-page, checked against the page's real
+element positions, manga mode on and off. None stale.
 
-**Next lead: a much longer page.** `docs/testing/reading-sample.html` is about
-two screens, so every fling — even a single short one — ends pinned against the
-end stop. The state never produced is a page *coasting to a halt in the
-middle*, which is the only place a scan of a still-moving tree is possible.
+**No lead left.** Kept open only because it was seen; do not change rendering
+for it. If it is seen again, capture overlay geometry against DevTools element
+positions at that moment (`v1.md` describes the probe).
 
 ### 13. First bubble after a fling takes ~3.6s on a phone
 
