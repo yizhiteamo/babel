@@ -80,6 +80,9 @@ data class HomeUiState(
 
     val readyToTranslate: Boolean get() = accessibilityGranted && overlayGranted
 
+    /** What the top switch and the quick-settings tile both show (`MasterSwitch`). */
+    val translationOn: Boolean get() = MasterSwitch.isOn(runtimeState, captureState)
+
     /**
      * Whether a translation, once made, would actually appear on screen.
      *
@@ -247,7 +250,11 @@ class HomeViewModel @Inject constructor(
         if (added) tilePresence.report(added = true)
     }
 
-    /** The home screen's way back from the quick-settings switch. */
+    /** The top switch, which does what the quick-settings tile does. */
+    fun turnTranslationOff() {
+        viewModelScope.launch { MasterSwitch.turnOff(coordinator, screenCapture, settingsRepository) }
+    }
+
     fun turnTranslationOn() {
         viewModelScope.launch { MasterSwitch.turnOn(coordinator, screenCapture, settingsRepository) }
     }

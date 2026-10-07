@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -31,6 +33,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,96 +117,34 @@ fun BabelApp(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // First, because it explains a screen where nothing is translating
-            // although every permission below says yes.
-            if (state.settings.switchedOff != null) {
-                SwitchedOffCard(onTurnOn = viewModel::turnTranslationOn)
+            // Setup first while anything is missing: nothing below works yet.
+            // Once both are granted they fold into one line further down.
+            if (!state.readyToTranslate) {
+                PermissionCard(
+                    title = stringResource(R.string.permission_accessibility_title),
+                    explanation = stringResource(R.string.permission_accessibility_explanation),
+                    granted = state.accessibilityGranted,
+                    onOpenSettings = { context.openAccessibilitySettings() },
+                )
+                PermissionCard(
+                    title = stringResource(R.string.permission_overlay_title),
+                    explanation = stringResource(R.string.permission_overlay_explanation),
+                    granted = state.overlayGranted,
+                    onOpenSettings = { context.openOverlaySettings() },
+                )
             }
 
-            PermissionCard(
-                title = stringResource(R.string.permission_accessibility_title),
-                explanation = stringResource(R.string.permission_accessibility_explanation),
-                granted = state.accessibilityGranted,
-                onOpenSettings = { context.openAccessibilitySettings() },
-            )
-
-            PermissionCard(
-                title = stringResource(R.string.permission_overlay_title),
-                explanation = stringResource(R.string.permission_overlay_explanation),
-                granted = state.overlayGranted,
-                onOpenSettings = { context.openOverlaySettings() },
-            )
-
-            // Only once the service is on. Before that it is one more thing to
-            // read on a screen already asking for two permissions, and it
-            // describes a symptom nobody has met yet.
+            // On top because it is the control used most, and it is the same
+            // switch as the quick-settings tile — which is introduced here
+            // rather than in a card of its own.
             if (state.accessibilityGranted) {
-                QuickSettingsCard(
-                    added = state.tileAdded,
-                    onAnswered = viewModel::onTileRequestAnswered,
+                MasterSwitchCard(
+                    on = state.translationOn,
+                    tileAdded = state.tileAdded,
+                    onTurnOn = viewModel::turnTranslationOn,
+                    onTurnOff = viewModel::turnTranslationOff,
+                    onTileAnswered = viewModel::onTileRequestAnswered,
                 )
-                BackgroundSurvivalCard(
-                    autoRestore = state.autoRestore,
-                    grantCommand = "adb shell pm grant ${context.packageName} " +
-                        "android.permission.WRITE_SECURE_SETTINGS",
-                    onOpenBattery = { context.openBatterySettings() },
-                    onOpenAppSettings = { context.openAppSettings() },
-                )
-            }
-
-            // Before the target, because a reader asks "what language is this"
-            // before "translate it into what".
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.source_language_title),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = when (val mode = state.settings.sourceLanguageMode) {
-                            is SourceLanguageMode.Manual -> mode.language.value
-                            SourceLanguageMode.AutoDetect ->
-                                stringResource(R.string.source_language_auto_value)
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.source_language_explanation),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedButton(onClick = { showSourcePicker = true }) {
-                        Text(stringResource(R.string.language_action_change))
-                    }
-                }
-            }
-
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.language_section_title),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = state.targetLanguage?.value
-                            ?: stringResource(R.string.language_none_selected),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.language_explanation),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedButton(onClick = { showLanguagePicker = true }) {
-                        Text(stringResource(R.string.language_action_change))
-                    }
-                }
             }
 
             RuntimeCard(
@@ -227,11 +168,39 @@ fun BabelApp(
                 onOpenOverlaySettings = { context.openOverlaySettings() },
             )
 
+            LanguageCard(
+                source = when (val mode = state.settings.sourceLanguageMode) {
+                    is SourceLanguageMode.Manual -> mode.language.value
+                    SourceLanguageMode.AutoDetect -> stringResource(R.string.source_language_auto_value)
+                },
+                target = state.targetLanguage?.value ?: stringResource(R.string.language_none_selected),
+                onChangeSource = { showSourcePicker = true },
+                onChangeTarget = { showLanguagePicker = true },
+            )
+
+            if (state.readyToTranslate) {
+                PermissionSummaryCard(
+                    onOpenAccessibility = { context.openAccessibilitySettings() },
+                    onOpenOverlay = { context.openOverlaySettings() },
+                )
+            }
+
             RemoteTranslationCard(
                 settings = state.settings,
                 onConfigure = { showRemoteSetup = true },
                 onDisable = viewModel::disableRemoteTranslation,
             )
+
+            // Low: it matters once, after the first clean, and then it is read.
+            if (state.accessibilityGranted) {
+                BackgroundSurvivalCard(
+                    autoRestore = state.autoRestore,
+                    grantCommand = "adb shell pm grant ${context.packageName} " +
+                        "android.permission.WRITE_SECURE_SETTINGS",
+                    onOpenBattery = { context.openBatterySettings() },
+                    onOpenAppSettings = { context.openAppSettings() },
+                )
+            }
 
             // Last, and quiet. It exists because the app redistributes somebody
             // else's model and owes them attribution where a user can find it,
@@ -1044,15 +1013,37 @@ private fun BackgroundSurvivalCard(
     onOpenBattery: () -> Unit,
     onOpenAppSettings: () -> Unit,
 ) {
+    // Folded by default: the gist fits in a line, and the detail — buttons, a
+    // command for a computer — is for the one time somebody needs it.
+    var expanded by rememberSaveable { mutableStateOf(false) }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = stringResource(R.string.background_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.background_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                TextButton(onClick = { expanded = !expanded }) {
+                    Text(stringResource(if (expanded) R.string.action_collapse else R.string.action_expand))
+                }
+            }
+            if (!expanded) {
+                Text(
+                    text = stringResource(
+                        if (autoRestore) R.string.background_summary_restore_on else R.string.background_summary_restore_off,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                return@Column
+            }
             Text(
                 text = stringResource(R.string.background_explanation),
                 style = MaterialTheme.typography.bodySmall,
@@ -1093,17 +1084,23 @@ private fun BackgroundSurvivalCard(
 }
 
 /**
- * Says the quick-settings tile exists, where it is, and offers to add it.
+ * All of translation, on or off — the same switch as the quick-settings tile.
  *
- * Measured the hard way: the tile was in the control centre and the user did
- * not find it — HyperOS shows tiles without names, and its glyph reads as the
- * system's own translate. Below Android 13 the system cannot be asked to add
- * it, so the card only says where to look.
+ * The tile is introduced here because it was missed where it lived: HyperOS's
+ * control centre shows tiles without names, and its glyph reads as the
+ * system's own translate. No app can remove its own tile, so once the tile has
+ * reported itself added (`TilePresence`) the card says how to remove it
+ * instead of offering a button.
  */
 @Composable
-private fun QuickSettingsCard(added: Boolean, onAnswered: (Boolean) -> Unit) {
+private fun MasterSwitchCard(
+    on: Boolean,
+    tileAdded: Boolean,
+    onTurnOn: () -> Unit,
+    onTurnOff: () -> Unit,
+    onTileAnswered: (Boolean) -> Unit,
+) {
     val context = LocalContext.current
-    var result by remember { mutableStateOf<TileRequestResult?>(null) }
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1115,93 +1112,153 @@ private fun QuickSettingsCard(added: Boolean, onAnswered: (Boolean) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(R.string.tile_card_title),
+                    text = stringResource(R.string.master_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (added) {
-                    Text(
-                        text = stringResource(R.string.tile_card_added),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    text = stringResource(if (on) R.string.master_state_on else R.string.master_state_off),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Text(
-                text = stringResource(R.string.tile_card_explanation),
+                text = stringResource(R.string.master_explanation),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Button(onClick = if (on) onTurnOff else onTurnOn) {
+                Text(stringResource(if (on) R.string.master_action_off else R.string.master_action_on))
+            }
             Text(
-                text = stringResource(R.string.tile_card_where),
+                text = stringResource(if (tileAdded) R.string.tile_hint_added else R.string.tile_hint_missing),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (added) {
-                // No button: Android lets no app remove its own tile, so the
-                // card says how instead of offering something it cannot do.
-                Text(
-                    text = stringResource(R.string.tile_card_remove),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                result?.let {
-                    Text(
-                        text = stringResource(
-                            when (it) {
-                                TileRequestResult.ADDED -> R.string.tile_result_added
-                                TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
-                                TileRequestResult.DECLINED -> R.string.tile_result_declined
-                                TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                if (canRequestTile) {
-                    OutlinedButton(
-                        onClick = {
-                            context.requestAddBabelTile {
-                                result = it
-                                onAnswered(
-                                    it == TileRequestResult.ADDED || it == TileRequestResult.ALREADY_ADDED,
-                                )
-                            }
-                        },
-                    ) {
-                        Text(stringResource(R.string.tile_card_action))
-                    }
+            if (!tileAdded && canRequestTile) {
+                OutlinedButton(
+                    onClick = {
+                        context.requestAddBabelTile { result ->
+                            // A passing word, not a line that stays on the card.
+                            Toast.makeText(context, result.messageRes(), Toast.LENGTH_SHORT).show()
+                            onTileAnswered(
+                                result == TileRequestResult.ADDED || result == TileRequestResult.ALREADY_ADDED,
+                            )
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.tile_card_action))
                 }
             }
         }
     }
 }
 
+private fun TileRequestResult.messageRes(): Int = when (this) {
+    TileRequestResult.ADDED -> R.string.tile_result_added
+    TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
+    TileRequestResult.DECLINED -> R.string.tile_result_declined
+    TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
+}
+
 /**
- * Says that translation is off on purpose, and offers the way back.
+ * Both languages in one card. Set once and rarely touched, so a row each
+ * rather than a card each with a full-width button.
  *
- * Without it the screen contradicts itself: every permission granted, and
- * nothing being translated, because a tile outside the app turned it off.
+ * Source before target, because a reader asks "what language is this" before
+ * "translate it into what".
  */
 @Composable
-private fun SwitchedOffCard(onTurnOn: () -> Unit) {
+private fun LanguageCard(
+    source: String,
+    target: String,
+    onChangeSource: () -> Unit,
+    onChangeTarget: () -> Unit,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = stringResource(R.string.switched_off_title),
+                text = stringResource(R.string.language_card_title),
                 style = MaterialTheme.typography.titleMedium,
             )
+            SettingRow(
+                label = stringResource(R.string.source_language_title),
+                value = source,
+                action = stringResource(R.string.language_action_change),
+                onAction = onChangeSource,
+            )
             Text(
-                text = stringResource(R.string.switched_off_text),
+                text = stringResource(R.string.source_language_explanation),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onTurnOn) {
-                Text(stringResource(R.string.switched_off_action))
-            }
+            SettingRow(
+                label = stringResource(R.string.language_section_title),
+                value = target,
+                action = stringResource(R.string.language_action_change),
+                onAction = onChangeTarget,
+            )
+            Text(
+                text = stringResource(R.string.language_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * The two permissions once both are granted: one line each, still with a way
+ * to system settings — turning the service off is only possible there, and
+ * without a route the app would offer a switch with no off.
+ */
+@Composable
+private fun PermissionSummaryCard(onOpenAccessibility: () -> Unit, onOpenOverlay: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.permission_summary_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            SettingRow(
+                label = stringResource(R.string.permission_accessibility_title),
+                value = stringResource(R.string.permission_state_granted),
+                action = stringResource(R.string.permission_action_manage_short),
+                onAction = onOpenAccessibility,
+            )
+            SettingRow(
+                label = stringResource(R.string.permission_overlay_title),
+                value = stringResource(R.string.permission_state_granted),
+                action = stringResource(R.string.permission_action_manage_short),
+                onAction = onOpenOverlay,
+            )
+        }
+    }
+}
+
+/** A label over its value, with a quiet action at the end of the line. */
+@Composable
+private fun SettingRow(label: String, value: String, action: String, onAction: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(text = value, style = MaterialTheme.typography.bodyLarge)
+        }
+        TextButton(onClick = onAction) {
+            Text(action)
         }
     }
 }
