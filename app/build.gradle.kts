@@ -20,14 +20,44 @@ android {
         applicationId = "com.yizhiteamo.babel"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // One APK per CPU family. ML Kit and ONNX Runtime ship native code for four
+    // of them, and one APK holding all four measured 197MB — three quarters of
+    // it libraries the phone installing it cannot run. Almost every phone is
+    // arm64-v8a; the others are for older 32-bit phones and emulators.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
+    }
+
+    // Release signing comes from Gradle properties outside the repository
+    // (`~/.gradle/gradle.properties`): the keystore and its password are never
+    // committed. Without them a release build is simply left unsigned. The same
+    // key must sign every release, or an installed copy cannot be updated.
+    val releaseStore = providers.gradleProperty("BABEL_RELEASE_STORE_FILE").orNull
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = providers.gradleProperty("BABEL_RELEASE_STORE_PASSWORD").get()
+                keyAlias = providers.gradleProperty("BABEL_RELEASE_KEY_ALIAS").get()
+                keyPassword = providers.gradleProperty("BABEL_RELEASE_KEY_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (releaseStore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
