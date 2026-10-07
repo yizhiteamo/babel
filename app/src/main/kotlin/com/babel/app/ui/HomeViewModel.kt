@@ -12,7 +12,6 @@ import com.babel.domain.language.LanguageResolver
 import com.babel.app.tile.TilePresence
 import com.babel.domain.runtime.AccessibilityRecovery
 import com.babel.domain.runtime.CapabilityChecker
-import com.babel.domain.runtime.MasterSwitch
 import com.babel.core.model.ApiKey
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
@@ -79,9 +78,6 @@ data class HomeUiState(
         get() = capabilities[Capability.OVERLAY_WINDOW] == CapabilityStatus.AVAILABLE
 
     val readyToTranslate: Boolean get() = accessibilityGranted && overlayGranted
-
-    /** What the top switch and the quick-settings tile both show (`MasterSwitch`). */
-    val translationOn: Boolean get() = MasterSwitch.isOn(runtimeState, captureState)
 
     /**
      * Whether a translation, once made, would actually appear on screen.
@@ -248,15 +244,6 @@ class HomeViewModel @Inject constructor(
     /** What the system's add-tile dialog answered; both yeses mean it is there. */
     fun onTileRequestAnswered(added: Boolean) {
         if (added) tilePresence.report(added = true)
-    }
-
-    /** The top switch, which does what the quick-settings tile does. */
-    fun turnTranslationOff() {
-        viewModelScope.launch { MasterSwitch.turnOff(coordinator, screenCapture, settingsRepository) }
-    }
-
-    fun turnTranslationOn() {
-        viewModelScope.launch { MasterSwitch.turnOn(coordinator, screenCapture, settingsRepository) }
     }
 
     /**

@@ -142,9 +142,6 @@ fun BabelApp(
             // rather than one more full-width card with its own paragraph.
             TranslationSection(
                 state = state,
-                onMasterChange = { on ->
-                    if (on) viewModel.turnTranslationOn() else viewModel.turnTranslationOff()
-                },
                 onTextChange = { on ->
                     if (on) viewModel.resumeTranslation() else viewModel.pauseTranslation()
                 },
@@ -780,18 +777,17 @@ private fun RowNotice(text: String, action: String? = null, onAction: () -> Unit
 }
 
 /**
- * The switch for everything, then one per path.
+ * One switch per path, then the quick-settings tile.
  *
- * Together on purpose. The top switch puts back what it took down, which read
- * as a bug while the two paths sat in cards further down: it said "on" and
- * text translation stayed paused. With the three side by side, what it did is
- * on the screen. It is also the quick-settings tile, which is introduced here
- * because it was missed where it lived — HyperOS shows tiles without names.
+ * There was a switch for everything above the two, mirroring the tile; with
+ * each path on its own switch it said nothing they did not, so the home screen
+ * kept only these. The tile stays — it is the switch for when Babel is not on
+ * screen — and is introduced here because it was missed where it lived:
+ * HyperOS shows tiles without names.
  */
 @Composable
 private fun TranslationSection(
     state: HomeUiState,
-    onMasterChange: (Boolean) -> Unit,
     onTextChange: (Boolean) -> Unit,
     onMangaChange: (Boolean) -> Unit,
     onTileAnswered: (Boolean) -> Unit,
@@ -802,35 +798,6 @@ private fun TranslationSection(
 ) {
     val context = LocalContext.current
     Section(title = stringResource(R.string.section_translation)) {
-        if (state.accessibilityGranted) {
-            SwitchRow(
-                title = stringResource(R.string.master_title),
-                supporting = stringResource(
-                    if (state.tileAdded) R.string.tile_hint_added else R.string.tile_hint_missing,
-                ),
-                checked = state.translationOn,
-                onCheckedChange = onMasterChange,
-                extra = {
-                    // No remove button once added: no app can remove its own tile.
-                    if (!state.tileAdded && canRequestTile) {
-                        TextButton(
-                            onClick = {
-                                context.requestAddBabelTile { result ->
-                                    Toast.makeText(context, result.messageRes(), Toast.LENGTH_SHORT).show()
-                                    onTileAnswered(
-                                        result == TileRequestResult.ADDED ||
-                                            result == TileRequestResult.ALREADY_ADDED,
-                                    )
-                                }
-                            },
-                        ) {
-                            Text(stringResource(R.string.tile_card_action))
-                        }
-                    }
-                },
-            )
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-        }
 
         // Text: "pause" underneath, and the switch only while there is a
         // running pipeline to act on — resuming a stopped coordinator would
@@ -922,6 +889,41 @@ private fun TranslationSection(
                 }
             },
         )
+
+        // The tile only works with the service on, so it is offered only then.
+        if (state.accessibilityGranted) {
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                Text(text = stringResource(R.string.tile_row_title), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = stringResource(
+                        if (state.tileAdded) R.string.tile_hint_added else R.string.tile_hint_missing,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // No remove button once added: no app can remove its own tile.
+                if (!state.tileAdded && canRequestTile) {
+                    TextButton(
+                        onClick = {
+                            context.requestAddBabelTile { result ->
+                                Toast.makeText(context, result.messageRes(), Toast.LENGTH_SHORT).show()
+                                onTileAnswered(
+                                    result == TileRequestResult.ADDED ||
+                                        result == TileRequestResult.ALREADY_ADDED,
+                                )
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.tile_card_action))
+                    }
+                }
+            }
+        }
     }
 }
 

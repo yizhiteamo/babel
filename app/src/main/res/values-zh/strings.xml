@@ -107,9 +107,8 @@
     <string name="tile_result_already">已经在快捷开关里了。</string>
     <string name="tile_result_declined">未添加。</string>
     <string name="tile_result_unsupported">这台手机不支持从这里添加，请在控制中心的「编辑」里手动添加「Babel」。</string>
-    <string name="master_title">全部翻译</string>
-    <string name="tile_hint_added">也可用下拉快捷开关里的「Babel」（文A 图标）。不需要时在控制中心点「编辑」移除。</string>
-    <string name="tile_hint_missing">添加到下拉快捷开关，在任何界面都能一键切换。</string>
+    <string name="tile_hint_added">已添加。在任何界面下拉控制中心，点「Babel」（文A 图标）即可暂停或恢复以上翻译。不需要时在控制中心「编辑」里移除。</string>
+    <string name="tile_hint_missing">添加后，不用打开 Babel，在任何界面下拉就能暂停或恢复以上翻译。</string>
     <string name="background_summary_restore_on">手机清理会关掉无障碍，在最近任务里锁定 Babel 可以避免。自动恢复已开启。</string>
     <string name="background_summary_restore_off">手机清理会关掉无障碍，在最近任务里锁定 Babel 可以避免。自动恢复未开启。</string>
     <string name="section_translation">翻译</string>
@@ -118,4 +117,5 @@
     <string name="text_row_paused">已暂停——已显示的译文保留到页面变化为止</string>
     <string name="manga_row_idle">以图像方式读取屏幕，翻译图片里的文字</string>
     <string name="remote_row_off">未开启——全部在本机翻译。开启后译得好得多，代价是识别出的文字会发送到你指定的服务。</string>
+    <string name="tile_row_title">下拉快捷开关</string>
 </resources>
