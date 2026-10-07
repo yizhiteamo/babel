@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -118,7 +122,7 @@ fun BabelApp(
             )
 
             // Setup first while anything is missing: nothing below works yet.
-            // Once both are granted they fold into one line further down.
+            // Once both are granted they become two rows under "system".
             if (!state.readyToTranslate) {
                 PermissionCard(
                     title = stringResource(R.string.permission_accessibility_title),
@@ -134,72 +138,67 @@ fun BabelApp(
                 )
             }
 
-            // On top because it is the control used most, and it is the same
-            // switch as the quick-settings tile — which is introduced here
-            // rather than in a card of its own.
-            if (state.accessibilityGranted) {
-                MasterSwitchCard(
-                    on = state.translationOn,
-                    tileAdded = state.tileAdded,
-                    onTurnOn = viewModel::turnTranslationOn,
-                    onTurnOff = viewModel::turnTranslationOff,
-                    onTileAnswered = viewModel::onTileRequestAnswered,
-                )
-            }
-
-            RuntimeCard(
+            // Sections of rows, so a later phase adds a row or a section
+            // rather than one more full-width card with its own paragraph.
+            TranslationSection(
                 state = state,
-                onPause = viewModel::pauseTranslation,
-                onResume = viewModel::resumeTranslation,
+                onMasterChange = { on ->
+                    if (on) viewModel.turnTranslationOn() else viewModel.turnTranslationOff()
+                },
+                onTextChange = { on ->
+                    if (on) viewModel.resumeTranslation() else viewModel.pauseTranslation()
+                },
+                onMangaChange = { on ->
+                    if (on) viewModel.startMangaMode() else viewModel.stopMangaMode()
+                },
+                onTileAnswered = viewModel::onTileRequestAnswered,
                 onUseLocal = viewModel::disableRemoteTranslation,
-                onOpenOverlaySettings = { context.openOverlaySettings() },
-            )
-
-            CaptureCard(
-                state = state.captureState,
-                unseen = state.capturingButUnseen,
-                model = state.recognizerModel,
-                modelBytes = state.recognizerModelBytes,
-                metered = state.meteredConnection,
-                onStart = viewModel::startMangaMode,
-                onStop = viewModel::stopMangaMode,
                 onDownloadModel = viewModel::downloadRecognizerModel,
                 onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
                 onOpenOverlaySettings = { context.openOverlaySettings() },
             )
 
-            LanguageCard(
-                source = when (val mode = state.settings.sourceLanguageMode) {
-                    is SourceLanguageMode.Manual -> mode.language.value
-                    SourceLanguageMode.AutoDetect -> stringResource(R.string.source_language_auto_value)
-                },
-                target = state.targetLanguage?.value ?: stringResource(R.string.language_none_selected),
-                onChangeSource = { showSourcePicker = true },
-                onChangeTarget = { showLanguagePicker = true },
-            )
-
-            if (state.readyToTranslate) {
-                PermissionSummaryCard(
-                    onOpenAccessibility = { context.openAccessibilitySettings() },
-                    onOpenOverlay = { context.openOverlaySettings() },
+            Section(title = stringResource(R.string.section_settings)) {
+                ValueRow(
+                    title = stringResource(R.string.source_language_title),
+                    value = when (val mode = state.settings.sourceLanguageMode) {
+                        is SourceLanguageMode.Manual -> mode.language.value
+                        SourceLanguageMode.AutoDetect -> stringResource(R.string.source_language_auto_value)
+                    },
+                    onClick = { showSourcePicker = true },
+                )
+                ValueRow(
+                    title = stringResource(R.string.language_section_title),
+                    value = state.targetLanguage?.value ?: stringResource(R.string.language_none_selected),
+                    onClick = { showLanguagePicker = true },
+                )
+                RemoteTranslationRow(
+                    on = state.settings.usesRemoteTranslation,
+                    onConfigure = { showRemoteSetup = true },
+                    onDisable = viewModel::disableRemoteTranslation,
                 )
             }
 
-            RemoteTranslationCard(
-                settings = state.settings,
-                onConfigure = { showRemoteSetup = true },
-                onDisable = viewModel::disableRemoteTranslation,
-            )
-
-            // Low: it matters once, after the first clean, and then it is read.
-            if (state.accessibilityGranted) {
-                BackgroundSurvivalCard(
-                    autoRestore = state.autoRestore,
-                    grantCommand = "adb shell pm grant ${context.packageName} " +
-                        "android.permission.WRITE_SECURE_SETTINGS",
-                    onOpenBattery = { context.openBatterySettings() },
-                    onOpenAppSettings = { context.openAppSettings() },
-                )
+            if (state.readyToTranslate) {
+                Section(title = stringResource(R.string.section_system)) {
+                    ValueRow(
+                        title = stringResource(R.string.permission_accessibility_title),
+                        value = stringResource(R.string.permission_state_granted),
+                        onClick = { context.openAccessibilitySettings() },
+                    )
+                    ValueRow(
+                        title = stringResource(R.string.permission_overlay_title),
+                        value = stringResource(R.string.permission_state_granted),
+                        onClick = { context.openOverlaySettings() },
+                    )
+                    BackgroundSurvivalRow(
+                        autoRestore = state.autoRestore,
+                        grantCommand = "adb shell pm grant ${context.packageName} " +
+                            "android.permission.WRITE_SECURE_SETTINGS",
+                        onOpenBattery = { context.openBatterySettings() },
+                        onOpenAppSettings = { context.openAppSettings() },
+                    )
+                }
             }
 
             // Last, and quiet. It exists because the app redistributes somebody
@@ -214,6 +213,7 @@ fun BabelApp(
     if (showSourcePicker) {
         LanguagePickerDialog(
             title = stringResource(R.string.source_language_title),
+            explanation = stringResource(R.string.source_language_explanation),
             defaultLabel = stringResource(R.string.source_language_auto),
             languages = viewModel.supportedLanguages(),
             onSelect = {
@@ -227,6 +227,7 @@ fun BabelApp(
     if (showLanguagePicker) {
         LanguagePickerDialog(
             title = stringResource(R.string.language_section_title),
+            explanation = stringResource(R.string.language_explanation),
             defaultLabel = stringResource(R.string.language_follow_system),
             languages = viewModel.supportedLanguages(),
             onSelect = {
@@ -257,81 +258,6 @@ fun BabelApp(
                 showRemoteSetup = false
             },
         )
-    }
-}
-
-/**
- * The switch that lets recognised text leave the device.
- *
- * Written to be refused as easily as accepted. On-device translation was
- * measured against a hosted model and tops out around half the distance
- * (`docs/milestones/v2.md`), so the offer is a real one — but what it costs is
- * the whole privacy posture of the app, and the card says so in the same breath
- * rather than in a settings screen nobody opens (ADR 010).
- */
-@Composable
-private fun RemoteTranslationCard(
-    settings: BabelSettings,
-    onConfigure: () -> Unit,
-    onDisable: () -> Unit,
-) {
-    val on = settings.usesRemoteTranslation
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.remote_section_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(
-                        if (on) R.string.remote_state_on else R.string.remote_state_off,
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Text(
-                text = stringResource(R.string.remote_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (on) {
-                // Shown only while it applies. A standing warning about
-                // something that is switched off teaches people to skip
-                // warnings.
-                Text(
-                    text = stringResource(R.string.remote_warning),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = onConfigure) {
-                    Text(
-                        stringResource(
-                            if (on) {
-                                R.string.remote_action_change
-                            } else {
-                                R.string.remote_action_configure
-                            },
-                        ),
-                    )
-                }
-                if (on) {
-                    OutlinedButton(onClick = onDisable) {
-                        Text(stringResource(R.string.remote_action_disable))
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -757,284 +683,307 @@ private fun LicencesDialog(onDismiss: () -> Unit) {
 }
 
 /**
- * Pausing translation.
+ * A titled group of rows: the unit the home screen is built from.
  *
- * The coordinator has had `pause`/`start` since V1; nothing in the interface
- * ever called them, so the only way to stop translating was to switch the
- * accessibility service off in system settings.
- *
- * "Pause" rather than "off" because that is what happens: translations already
- * drawn stay until the content changes. A label promising a clear screen would
- * be worse than no switch.
+ * Every control used to be a card of its own with a paragraph and a full-width
+ * button, which made the screen long and put the switches people use most at
+ * the bottom. Rows keep each control to a line or two, and a later phase adds
+ * a row or a section here rather than another card.
  */
 @Composable
-private fun RuntimeCard(
-    state: HomeUiState,
-    onPause: () -> Unit,
-    onResume: () -> Unit,
-    onUseLocal: () -> Unit,
-    onOpenOverlaySettings: () -> Unit,
+private fun Section(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) { content() }
+        }
+    }
+}
+
+/** A switch with a title and a line under it; [extra] holds whatever needs more. */
+@Composable
+private fun SwitchRow(
+    title: String,
+    supporting: String?,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+    supportingColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    extra: @Composable () -> Unit = {},
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.runtime_section_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(
-                        when {
-                            // Asked before the others: a paused or running
-                            // coordinator that cannot draw is neither, from
-                            // where the user is sitting.
-                            state.translatingButUnseen -> R.string.runtime_state_unseen
-                            state.translationPaused -> R.string.runtime_state_paused
-                            state.canTogglePause -> R.string.runtime_state_running
-                            else -> R.string.runtime_state_off
-                        },
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Text(
-                text = stringResource(R.string.runtime_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // Which engine is actually answering. Two services can now both be
-            // configured, and `service` alone decides which one runs — without
-            // saying so, the only way to find out is to read a translation and
-            // guess at its style.
-            Text(
-                text = stringResource(state.settings.activeRouteRes()),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // A failure that will not fix itself, named. Here and nowhere else:
-            // not over other apps, not a notification, not a toast — somebody
-            // only needs this at the moment they open Babel wondering why
-            // nothing is being translated. One success takes it away again.
-            state.providerFailure?.let { failure ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                if (supporting != null) {
                     Text(
-                        text = stringResource(probeResultOf(failure).messageRes()),
+                        text = supporting,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.weight(1f),
-                    )
-                    // Offered rather than taken: falling back on its own would
-                    // change the translation quality silently, which is the
-                    // problem this line exists to end. It is also not certain
-                    // to work — the on-device engine may have no model for this
-                    // language, which is a failure of its own.
-                    if (state.settings.usesRemoteTranslation) {
-                        TextButton(onClick = onUseLocal) {
-                            Text(stringResource(R.string.runtime_failure_action_local))
-                        }
-                    }
-                }
-            }
-            if (state.translatingButUnseen) {
-                // Says that the work is happening and being discarded, rather
-                // than the vaguer "not ready" — which reads as "not running"
-                // and sends people looking in the wrong place.
-                Text(
-                    text = stringResource(R.string.overlay_missing_explanation),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                OutlinedButton(onClick = onOpenOverlaySettings) {
-                    Text(stringResource(R.string.overlay_missing_action))
-                }
-            }
-            // No button unless there is a running pipeline to act on: resuming
-            // a stopped coordinator would start it with no text source.
-            if (state.canTogglePause) {
-                OutlinedButton(onClick = if (state.translationPaused) onResume else onPause) {
-                    Text(
-                        stringResource(
-                            if (state.translationPaused) {
-                                R.string.runtime_action_resume
-                            } else {
-                                R.string.runtime_action_pause
-                            },
-                        ),
+                        color = supportingColor,
                     )
                 }
             }
+            Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        }
+        extra()
+    }
+}
+
+/** A setting and its current value; the whole row opens it. */
+@Composable
+private fun ValueRow(title: String, value: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = " ›",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** A warning or error under a row, with the one thing that fixes it. */
+@Composable
+private fun RowNotice(text: String, action: String? = null, onAction: () -> Unit = {}) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.weight(1f),
+        )
+        if (action != null) {
+            TextButton(onClick = onAction) { Text(action) }
         }
     }
 }
 
 /**
- * Manga mode. Separate from the permission cards because it is a mode the user
- * turns on here, not a permission granted in system settings.
+ * The switch for everything, then one per path.
  *
- * It used to be a session with a consent dialog in front of it. Taking pictures
- * through the already-authorised accessibility service removed the dialog, the
- * recording indicator and the foreground service along with it (ADR 009), which
- * is why this is now just a button.
+ * Together on purpose. The top switch puts back what it took down, which read
+ * as a bug while the two paths sat in cards further down: it said "on" and
+ * text translation stayed paused. With the three side by side, what it did is
+ * on the screen. It is also the quick-settings tile, which is introduced here
+ * because it was missed where it lived — HyperOS shows tiles without names.
  */
 @Composable
-private fun CaptureCard(
-    state: CaptureState,
-    unseen: Boolean,
-    model: RecognizerModelState,
-    modelBytes: Long,
-    metered: Boolean,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
+private fun TranslationSection(
+    state: HomeUiState,
+    onMasterChange: (Boolean) -> Unit,
+    onTextChange: (Boolean) -> Unit,
+    onMangaChange: (Boolean) -> Unit,
+    onTileAnswered: (Boolean) -> Unit,
+    onUseLocal: () -> Unit,
     onDownloadModel: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onOpenOverlaySettings: () -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.capture_section_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(
-                        when {
-                            // Same reason as the text card: reading a page and
-                            // translating it is not "on" if none of it lands.
-                            unseen -> R.string.capture_state_unseen
-                            state == CaptureState.IDLE -> R.string.capture_state_idle
-                            state == CaptureState.ACTIVE -> R.string.capture_state_active
-                            state == CaptureState.UNAVAILABLE ->
-                                R.string.capture_state_unavailable
-                            state == CaptureState.UNSUPPORTED ->
-                                R.string.capture_state_unsupported
-                            else -> R.string.capture_state_failed
-                        },
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Text(
-                text = stringResource(R.string.capture_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    val context = LocalContext.current
+    Section(title = stringResource(R.string.section_translation)) {
+        if (state.accessibilityGranted) {
+            SwitchRow(
+                title = stringResource(R.string.master_title),
+                supporting = stringResource(
+                    if (state.tileAdded) R.string.tile_hint_added else R.string.tile_hint_missing,
+                ),
+                checked = state.translationOn,
+                onCheckedChange = onMasterChange,
+                extra = {
+                    // No remove button once added: no app can remove its own tile.
+                    if (!state.tileAdded && canRequestTile) {
+                        TextButton(
+                            onClick = {
+                                context.requestAddBabelTile { result ->
+                                    Toast.makeText(context, result.messageRes(), Toast.LENGTH_SHORT).show()
+                                    onTileAnswered(
+                                        result == TileRequestResult.ADDED ||
+                                            result == TileRequestResult.ALREADY_ADDED,
+                                    )
+                                }
+                            },
+                        ) {
+                            Text(stringResource(R.string.tile_card_action))
+                        }
+                    }
+                },
             )
-            val blocked = state == CaptureState.UNAVAILABLE || state == CaptureState.UNSUPPORTED
-            if (!blocked) {
-                RecognizerModelRow(
-                    model = model,
-                    modelBytes = modelBytes,
-                    metered = metered,
-                    onDownload = onDownloadModel,
-                )
-            }
-            if (blocked) {
-                // Named separately: one of these is fixed by a visit to system
-                // settings and the other cannot be fixed at all, and a single
-                // sentence covering both put a version requirement first on
-                // every device that already satisfies it.
-                Text(
-                    text = stringResource(
-                        if (state == CaptureState.UNSUPPORTED) {
-                            R.string.capture_unsupported_reason
-                        } else {
-                            R.string.capture_unavailable_reason
-                        },
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                if (state == CaptureState.UNAVAILABLE) {
-                    OutlinedButton(onClick = onOpenAccessibilitySettings) {
-                        Text(stringResource(R.string.capture_action_open_settings))
-                    }
-                }
-            } else if (state == CaptureState.ACTIVE) {
-                if (unseen) {
-                    Text(
-                        text = stringResource(R.string.overlay_missing_explanation),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    OutlinedButton(onClick = onOpenOverlaySettings) {
-                        Text(stringResource(R.string.overlay_missing_action))
-                    }
-                }
-                OutlinedButton(onClick = onStop) {
-                    Text(stringResource(R.string.capture_action_stop))
-                }
-            } else {
-                OutlinedButton(onClick = onStart) {
-                    Text(stringResource(R.string.capture_action_start))
-                }
-            }
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
         }
+
+        // Text: "pause" underneath, and the switch only while there is a
+        // running pipeline to act on — resuming a stopped coordinator would
+        // start it with no text source.
+        SwitchRow(
+            title = stringResource(R.string.runtime_section_title),
+            supporting = stringResource(
+                when {
+                    state.translatingButUnseen -> R.string.runtime_state_unseen
+                    state.translationPaused -> R.string.text_row_paused
+                    state.canTogglePause -> state.settings.activeRouteRes()
+                    else -> R.string.runtime_state_off
+                },
+            ),
+            checked = state.canTogglePause && !state.translationPaused,
+            enabled = state.canTogglePause,
+            onCheckedChange = onTextChange,
+            extra = {
+                // Named here and nowhere else: somebody needs it at the moment
+                // they open Babel wondering why nothing is being translated.
+                state.providerFailure?.let { failure ->
+                    RowNotice(
+                        text = stringResource(probeResultOf(failure).messageRes()),
+                        action = if (state.settings.usesRemoteTranslation) {
+                            stringResource(R.string.runtime_failure_action_local)
+                        } else {
+                            null
+                        },
+                        onAction = onUseLocal,
+                    )
+                }
+                if (state.translatingButUnseen) {
+                    RowNotice(
+                        text = stringResource(R.string.overlay_missing_explanation),
+                        action = stringResource(R.string.overlay_missing_action),
+                        onAction = onOpenOverlaySettings,
+                    )
+                }
+            },
+        )
+
+        val capture = state.captureState
+        val blocked = capture == CaptureState.UNAVAILABLE || capture == CaptureState.UNSUPPORTED
+        SwitchRow(
+            title = stringResource(R.string.capture_section_title),
+            supporting = stringResource(
+                when {
+                    state.capturingButUnseen -> R.string.capture_state_unseen
+                    capture == CaptureState.ACTIVE -> R.string.capture_state_active
+                    capture == CaptureState.IDLE -> R.string.manga_row_idle
+                    capture == CaptureState.UNAVAILABLE -> R.string.capture_state_unavailable
+                    capture == CaptureState.UNSUPPORTED -> R.string.capture_state_unsupported
+                    else -> R.string.capture_state_failed
+                },
+            ),
+            checked = capture == CaptureState.ACTIVE,
+            enabled = !blocked,
+            onCheckedChange = onMangaChange,
+            extra = {
+                when {
+                    // Two different things: one is fixed in system settings,
+                    // the other cannot be fixed on this device at all.
+                    capture == CaptureState.UNSUPPORTED ->
+                        RowNotice(text = stringResource(R.string.capture_unsupported_reason))
+                    capture == CaptureState.UNAVAILABLE -> RowNotice(
+                        text = stringResource(R.string.capture_unavailable_reason),
+                        action = stringResource(R.string.capture_action_open_settings),
+                        onAction = onOpenAccessibilitySettings,
+                    )
+                    else -> {
+                        // Installed says nothing worth a line; anything else
+                        // needs the user.
+                        if (state.recognizerModel != RecognizerModelState.Installed) {
+                            RecognizerModelRow(
+                                model = state.recognizerModel,
+                                modelBytes = state.recognizerModelBytes,
+                                metered = state.meteredConnection,
+                                onDownload = onDownloadModel,
+                            )
+                        }
+                        if (state.capturingButUnseen) {
+                            RowNotice(
+                                text = stringResource(R.string.overlay_missing_explanation),
+                                action = stringResource(R.string.overlay_missing_action),
+                                onAction = onOpenOverlaySettings,
+                            )
+                        }
+                    }
+                }
+            },
+        )
     }
 }
 
+private fun TileRequestResult.messageRes(): Int = when (this) {
+    TileRequestResult.ADDED -> R.string.tile_result_added
+    TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
+    TileRequestResult.DECLINED -> R.string.tile_result_declined
+    TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
+}
+
 /**
- * Staying alive in the background, which some ROMs do not grant by default.
+ * The switch that lets recognised text leave the device.
  *
- * Not a permission and not something the app can ask for: it is a pair of
- * switches the manufacturer puts in its own settings, and without them the
- * process is killed as soon as another app comes to the front — taking the
- * accessibility service with it, so translation stops and the service reads as
- * switched off. Reported from a real device.
- *
- * Phrased as a symptom first. "Allow background activity" means nothing to
- * somebody who has not yet watched translation stop the moment they opened a
- * comic; "otherwise it stops when you switch apps" does.
- *
- * Two buttons because one intent does not cover it: battery has a standard one,
- * autostart has none, and pretending otherwise would send people to a page that
- * does not have the switch they were promised.
+ * On-device translation tops out around half the distance of a hosted model
+ * (`docs/milestones/v2.md`), so the offer is real — but it costs the app's
+ * privacy posture, and the row says so in the same breath while it applies,
+ * rather than in a screen nobody opens (ADR 010). Switching on opens the setup,
+ * because a remote route with no endpoint would send nothing.
  */
 @Composable
-private fun BackgroundSurvivalCard(
+private fun RemoteTranslationRow(on: Boolean, onConfigure: () -> Unit, onDisable: () -> Unit) {
+    SwitchRow(
+        title = stringResource(R.string.remote_section_title),
+        supporting = stringResource(if (on) R.string.remote_warning else R.string.remote_row_off),
+        supportingColor = if (on) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        checked = on,
+        onCheckedChange = { wanted -> if (wanted) onConfigure() else onDisable() },
+        extra = {
+            if (on) {
+                TextButton(onClick = onConfigure) { Text(stringResource(R.string.remote_action_change)) }
+            }
+        },
+    )
+}
+
+/**
+ * Staying alive and coming back, folded into a row.
+ *
+ * Phrased as a symptom first: "a cleaner turns accessibility off" means
+ * something to somebody who has just watched translation stop; "allow
+ * background activity" does not. The detail — two buttons, because battery has
+ * a standard intent and autostart has none, and a command for a computer — is
+ * for the one time somebody needs it.
+ */
+@Composable
+private fun BackgroundSurvivalRow(
     autoRestore: Boolean,
     grantCommand: String,
     onOpenBattery: () -> Unit,
     onOpenAppSettings: () -> Unit,
 ) {
-    // Folded by default: the gist fits in a line, and the detail — buttons, a
-    // command for a computer — is for the one time somebody needs it.
     var expanded by rememberSaveable { mutableStateOf(false) }
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.background_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(stringResource(if (expanded) R.string.action_collapse else R.string.action_expand))
-                }
-            }
-            if (!expanded) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = stringResource(R.string.background_title), style = MaterialTheme.typography.bodyLarge)
                 Text(
                     text = stringResource(
                         if (autoRestore) R.string.background_summary_restore_on else R.string.background_summary_restore_off,
@@ -1042,27 +991,26 @@ private fun BackgroundSurvivalCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                return@Column
             }
             Text(
-                text = stringResource(R.string.background_explanation),
-                style = MaterialTheme.typography.bodySmall,
+                text = if (expanded) " ˄" else " ˅",
+                style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (expanded) {
             Text(
                 text = stringResource(R.string.background_steps),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = stringResource(
-                    if (autoRestore) R.string.background_restore_on else R.string.background_restore_off,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // Selectable, because it is meant to be copied to a computer.
             if (!autoRestore) {
+                Text(
+                    text = stringResource(R.string.background_restore_off),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Selectable, because it is meant to be copied to a computer.
                 SelectionContainer {
                     Text(
                         text = grantCommand,
@@ -1079,186 +1027,6 @@ private fun BackgroundSurvivalCard(
                     Text(stringResource(R.string.background_action_app))
                 }
             }
-        }
-    }
-}
-
-/**
- * All of translation, on or off — the same switch as the quick-settings tile.
- *
- * The tile is introduced here because it was missed where it lived: HyperOS's
- * control centre shows tiles without names, and its glyph reads as the
- * system's own translate. No app can remove its own tile, so once the tile has
- * reported itself added (`TilePresence`) the card says how to remove it
- * instead of offering a button.
- */
-@Composable
-private fun MasterSwitchCard(
-    on: Boolean,
-    tileAdded: Boolean,
-    onTurnOn: () -> Unit,
-    onTurnOff: () -> Unit,
-    onTileAnswered: (Boolean) -> Unit,
-) {
-    val context = LocalContext.current
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.master_title),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(if (on) R.string.master_state_on else R.string.master_state_off),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Text(
-                text = stringResource(R.string.master_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = if (on) onTurnOff else onTurnOn) {
-                Text(stringResource(if (on) R.string.master_action_off else R.string.master_action_on))
-            }
-            Text(
-                text = stringResource(if (tileAdded) R.string.tile_hint_added else R.string.tile_hint_missing),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!tileAdded && canRequestTile) {
-                OutlinedButton(
-                    onClick = {
-                        context.requestAddBabelTile { result ->
-                            // A passing word, not a line that stays on the card.
-                            Toast.makeText(context, result.messageRes(), Toast.LENGTH_SHORT).show()
-                            onTileAnswered(
-                                result == TileRequestResult.ADDED || result == TileRequestResult.ALREADY_ADDED,
-                            )
-                        }
-                    },
-                ) {
-                    Text(stringResource(R.string.tile_card_action))
-                }
-            }
-        }
-    }
-}
-
-private fun TileRequestResult.messageRes(): Int = when (this) {
-    TileRequestResult.ADDED -> R.string.tile_result_added
-    TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
-    TileRequestResult.DECLINED -> R.string.tile_result_declined
-    TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
-}
-
-/**
- * Both languages in one card. Set once and rarely touched, so a row each
- * rather than a card each with a full-width button.
- *
- * Source before target, because a reader asks "what language is this" before
- * "translate it into what".
- */
-@Composable
-private fun LanguageCard(
-    source: String,
-    target: String,
-    onChangeSource: () -> Unit,
-    onChangeTarget: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.language_card_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            SettingRow(
-                label = stringResource(R.string.source_language_title),
-                value = source,
-                action = stringResource(R.string.language_action_change),
-                onAction = onChangeSource,
-            )
-            Text(
-                text = stringResource(R.string.source_language_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SettingRow(
-                label = stringResource(R.string.language_section_title),
-                value = target,
-                action = stringResource(R.string.language_action_change),
-                onAction = onChangeTarget,
-            )
-            Text(
-                text = stringResource(R.string.language_explanation),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * The two permissions once both are granted: one line each, still with a way
- * to system settings — turning the service off is only possible there, and
- * without a route the app would offer a switch with no off.
- */
-@Composable
-private fun PermissionSummaryCard(onOpenAccessibility: () -> Unit, onOpenOverlay: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.permission_summary_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            SettingRow(
-                label = stringResource(R.string.permission_accessibility_title),
-                value = stringResource(R.string.permission_state_granted),
-                action = stringResource(R.string.permission_action_manage_short),
-                onAction = onOpenAccessibility,
-            )
-            SettingRow(
-                label = stringResource(R.string.permission_overlay_title),
-                value = stringResource(R.string.permission_state_granted),
-                action = stringResource(R.string.permission_action_manage_short),
-                onAction = onOpenOverlay,
-            )
-        }
-    }
-}
-
-/** A label over its value, with a quiet action at the end of the line. */
-@Composable
-private fun SettingRow(label: String, value: String, action: String, onAction: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(text = value, style = MaterialTheme.typography.bodyLarge)
-        }
-        TextButton(onClick = onAction) {
-            Text(action)
         }
     }
 }
@@ -1348,6 +1116,7 @@ private fun PermissionCard(
  */
 private fun LanguagePickerDialog(
     title: String,
+    explanation: String,
     defaultLabel: String,
     languages: List<LanguageTag>,
     onSelect: (LanguageTag?) -> Unit,
@@ -1358,6 +1127,13 @@ private fun LanguagePickerDialog(
         title = { Text(title) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                // Here rather than on the home screen: it answers the question
+                // somebody has while choosing, and nobody else reads it.
+                Text(
+                    text = explanation,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 TextButton(onClick = { onSelect(null) }) {
                     Text(defaultLabel)
                 }

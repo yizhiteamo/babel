@@ -17,12 +17,7 @@
 
     <!-- 暂停翻译（V1） -->
     <string name="runtime_section_title">文字翻译</string>
-    <string name="runtime_state_running">进行中</string>
-    <string name="runtime_state_paused">已暂停</string>
     <string name="runtime_state_off">未运行</string>
-    <string name="runtime_explanation">暂停后不再翻译新出现的文字。已经显示的译文会保留到页面内容变化为止。漫画模式是独立开关，不受影响。</string>
-    <string name="runtime_action_pause">暂停</string>
-    <string name="runtime_action_resume">继续</string>
 
     <!-- 源语言 -->
     <string name="source_language_title">原文语言</string>
@@ -34,16 +29,11 @@
     <string name="language_section_title">译入语言</string>
     <string name="language_none_selected">—</string>
     <string name="language_explanation">默认跟随系统语言。这是文字被译成的语言，不是本应用的界面语言。</string>
-    <string name="language_action_change">更改</string>
     <string name="language_follow_system">跟随系统语言</string>
     <string name="language_action_cancel">取消</string>
 
     <!-- 漫画模式（V2） -->
     <string name="capture_section_title">漫画模式</string>
-    <string name="capture_explanation">以图像方式读取屏幕，从而翻译图片中的文字。使用你已经授予的无障碍权限，不再单独询问。</string>
-    <string name="capture_action_start">开启</string>
-    <string name="capture_action_stop">停止</string>
-    <string name="capture_state_idle">未开启</string>
     <string name="capture_state_unavailable">不可用</string>
     <string name="capture_unavailable_reason">Babel 无障碍服务没有在运行。漫画模式要通过它读取屏幕。</string>
     <string name="capture_state_active">正在读取屏幕</string>
@@ -51,13 +41,8 @@
 
     <!-- 联网翻译（默认关闭；ADR 010） -->
     <string name="remote_section_title">联网翻译</string>
-    <string name="remote_state_off">未开启</string>
-    <string name="remote_state_on">已开启</string>
-    <string name="remote_explanation">本机翻译能力有限。联网模型能读懂整个气泡，译得好得多——代价是屏幕上的文字会被发送到你指定的服务。不开启则不会发送。</string>
     <string name="remote_warning">开启期间，识别出的文字会离开你的设备。Babel 的其余功能不向任何地方发送数据。</string>
-    <string name="remote_action_configure">设置</string>
     <string name="remote_action_change">修改</string>
-    <string name="remote_action_disable">关闭</string>
     <string name="remote_dialog_title">联网翻译</string>
     <string name="remote_preset_custom">自定义</string>
     <string name="remote_preset_ollama">Ollama（本机）</string>
@@ -109,11 +94,9 @@
     <string name="overlay_missing_explanation">文字正在被读取和翻译，但没法画到屏幕上：Babel 没有「显示在其他应用上层」的权限，译文都被丢掉了。</string>
     <string name="overlay_missing_action">授予权限</string>
     <string name="background_title">让它一直运行</string>
-    <string name="background_explanation">手机的「清理」会强行停止 Babel，无障碍服务也会随之被系统关掉，只能再去设置里打开。</string>
-    <string name="background_steps">在最近任务里长按 Babel 卡片并「锁定」，清理时就会跳过它。不需要翻译时，用顶部的总开关或下拉快捷开关关掉，不必清理。省电策略设为「无限制」。</string>
+    <string name="background_steps">在最近任务里长按 Babel 卡片并「锁定」，清理时就会跳过它。不需要翻译时，用上面的开关或下拉快捷开关关掉，不必清理。省电策略设为「无限制」。</string>
     <string name="background_action_battery">电池设置</string>
     <string name="background_action_app">应用设置</string>
-    <string name="background_restore_on">自动恢复已开启：被强行停止后，打开一次 Babel，无障碍会自动重新开启。</string>
     <string name="background_restore_off">自动恢复未开启。用电脑执行一次下面的命令，之后被强行停止时，打开一次 Babel，无障碍会自动重新开启：</string>
     <string name="tile_label">Babel</string>
     <string name="tile_on">翻译中</string>
@@ -124,19 +107,15 @@
     <string name="tile_result_already">已经在快捷开关里了。</string>
     <string name="tile_result_declined">未添加。</string>
     <string name="tile_result_unsupported">这台手机不支持从这里添加，请在控制中心的「编辑」里手动添加「Babel」。</string>
-    <string name="master_title">翻译</string>
-    <string name="master_state_on">已开启</string>
-    <string name="master_state_off">已关闭</string>
-    <string name="master_explanation">一次暂停或恢复下面全部翻译。无障碍保持开启，不必为了关翻译去清理应用。</string>
-    <string name="master_action_on">打开</string>
-    <string name="master_action_off">全部关闭</string>
-    <string name="tile_hint_added">下拉快捷开关里的「Babel」（文A 图标）也能一键切换。不需要时，在控制中心点「编辑」移除。</string>
+    <string name="master_title">全部翻译</string>
+    <string name="tile_hint_added">也可用下拉快捷开关里的「Babel」（文A 图标）。不需要时在控制中心点「编辑」移除。</string>
     <string name="tile_hint_missing">添加到下拉快捷开关，在任何界面都能一键切换。</string>
-    <string name="language_card_title">语言</string>
-    <string name="permission_summary_title">权限</string>
     <string name="background_summary_restore_on">手机清理会关掉无障碍，在最近任务里锁定 Babel 可以避免。自动恢复已开启。</string>
     <string name="background_summary_restore_off">手机清理会关掉无障碍，在最近任务里锁定 Babel 可以避免。自动恢复未开启。</string>
-    <string name="action_expand">展开</string>
-    <string name="action_collapse">收起</string>
-    <string name="permission_action_manage_short">管理</string>
+    <string name="section_translation">翻译</string>
+    <string name="section_settings">设置</string>
+    <string name="section_system">系统</string>
+    <string name="text_row_paused">已暂停——已显示的译文保留到页面变化为止</string>
+    <string name="manga_row_idle">以图像方式读取屏幕，翻译图片里的文字</string>
+    <string name="remote_row_off">未开启——全部在本机翻译。开启后译得好得多，代价是识别出的文字会发送到你指定的服务。</string>
 </resources>

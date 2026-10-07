@@ -20,12 +20,7 @@
 
     <!-- Pausing translation (V1) -->
     <string name="runtime_section_title">Translation</string>
-    <string name="runtime_state_running">Running</string>
-    <string name="runtime_state_paused">Paused</string>
     <string name="runtime_state_off">Not running</string>
-    <string name="runtime_explanation">Pausing stops new text being translated. What is already on screen stays until the content changes. Manga mode is separate and keeps working.</string>
-    <string name="runtime_action_pause">Pause</string>
-    <string name="runtime_action_resume">Resume</string>
 
     <!-- Source language -->
     <string name="source_language_title">Translate from</string>
@@ -37,16 +32,11 @@
     <string name="language_section_title">Translate into</string>
     <string name="language_none_selected">—</string>
     <string name="language_explanation">Follows the system language. This is what text is translated into, not the language of this app.</string>
-    <string name="language_action_change">Change</string>
     <string name="language_follow_system">Follow system language</string>
     <string name="language_action_cancel">Cancel</string>
 
     <!-- Manga mode (V2) -->
     <string name="capture_section_title">Manga mode</string>
-    <string name="capture_explanation">Reads the screen as an image so text inside pictures can be translated. Uses the accessibility permission you have already granted.</string>
-    <string name="capture_action_start">Start</string>
-    <string name="capture_action_stop">Stop</string>
-    <string name="capture_state_idle">Off</string>
     <string name="capture_state_unavailable">Unavailable</string>
     <string name="capture_unavailable_reason">The Babel accessibility service is not running. Manga mode reads the screen through it.</string>
     <string name="capture_state_active">Reading the screen</string>
@@ -54,13 +44,8 @@
 
     <!-- Remote translation (off by default; ADR 010) -->
     <string name="remote_section_title">Online translation</string>
-    <string name="remote_state_off">Off</string>
-    <string name="remote_state_on">On</string>
-    <string name="remote_explanation">On-device translation is limited. A hosted model reads the whole balloon and translates it far better — but the text on your screen has to be sent to the service you name. Off unless you turn it on.</string>
     <string name="remote_warning">While this is on, recognised text leaves your device. Nothing else about Babel sends anything anywhere.</string>
-    <string name="remote_action_configure">Set up</string>
     <string name="remote_action_change">Change</string>
-    <string name="remote_action_disable">Turn off</string>
     <string name="remote_dialog_title">Online translation</string>
     <string name="remote_preset_custom">Custom</string>
     <string name="remote_preset_ollama">Ollama (local)</string>
@@ -112,11 +97,9 @@
     <string name="overlay_missing_explanation">Text is being read and translated, but nothing can be drawn on top of it: Babel does not have permission to appear over other apps. The translations are being discarded.</string>
     <string name="overlay_missing_action">Grant the permission</string>
     <string name="background_title">Keeping it running</string>
-    <string name="background_explanation">Phone cleaners force-stop Babel, and a force stop switches its accessibility service off — then it has to be switched on again in system settings.</string>
-    <string name="background_steps">In recent apps, long-press Babel and lock it, so cleaning skips it. When you do not need translation, use the switch at the top or the quick settings tile instead of clearing the app. Battery: set Babel to unrestricted.</string>
+    <string name="background_steps">In recent apps, long-press Babel and lock it, so cleaning skips it. When you do not need translation, switch it off above or with the quick settings tile instead of clearing the app. Battery: set Babel to unrestricted.</string>
     <string name="background_action_battery">Battery</string>
     <string name="background_action_app">App settings</string>
-    <string name="background_restore_on">Automatic recovery is on: after a force stop, opening Babel once switches the accessibility service back on.</string>
     <string name="background_restore_off">Automatic recovery is off. Run this once from a computer, and after a force stop opening Babel once switches the accessibility service back on:</string>
     <string name="tile_label">Babel</string>
     <string name="tile_on">Translating</string>
@@ -127,19 +110,15 @@
     <string name="tile_result_already">It is already in quick settings.</string>
     <string name="tile_result_declined">Not added.</string>
     <string name="tile_result_unsupported">This phone does not offer to add it from here. Add \"Babel\" by hand through Edit in the control centre.</string>
-    <string name="master_title">Translation</string>
-    <string name="master_state_on">On</string>
-    <string name="master_state_off">Off</string>
-    <string name="master_explanation">Pauses or resumes everything below at once. The accessibility service stays on, so there is no need to clear the app to stop it.</string>
-    <string name="master_action_on">Turn on</string>
-    <string name="master_action_off">Turn all off</string>
-    <string name="tile_hint_added">The Babel tile in quick settings (the 文A icon) does the same. To remove it, tap Edit in the control centre.</string>
+    <string name="master_title">All translation</string>
+    <string name="tile_hint_added">Also the Babel tile in quick settings (the 文A icon). To remove it, tap Edit in the control centre.</string>
     <string name="tile_hint_missing">Add it to quick settings to switch it from anywhere.</string>
-    <string name="language_card_title">Languages</string>
-    <string name="permission_summary_title">Permissions</string>
     <string name="background_summary_restore_on">A phone cleaner turns accessibility off; lock Babel in recent apps to prevent it. Automatic recovery is on.</string>
     <string name="background_summary_restore_off">A phone cleaner turns accessibility off; lock Babel in recent apps to prevent it. Automatic recovery is off.</string>
-    <string name="action_expand">More</string>
-    <string name="action_collapse">Less</string>
-    <string name="permission_action_manage_short">Manage</string>
+    <string name="section_translation">Translation</string>
+    <string name="section_settings">Settings</string>
+    <string name="section_system">System</string>
+    <string name="text_row_paused">Paused — translations already shown stay until the page changes</string>
+    <string name="manga_row_idle">Reads the screen as a picture, to translate text in images</string>
+    <string name="remote_row_off">Off — everything is translated on this device. On translates much better, at the cost of sending recognised text to the service you name.</string>
 </resources>
