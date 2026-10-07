@@ -102,6 +102,7 @@ internal const val OWN_WINDOW_FLAGS =
 internal class OverlayWindow(
     private val context: Context,
     private val trusted: com.babel.platform.screen.TrustedWindows? = null,
+    private val taps: com.babel.platform.screen.TapForwarder? = null,
 ) {
 
     private val windowManager =
@@ -129,6 +130,85 @@ internal class OverlayWindow(
         return true
     }
 
+    /**
+     * A game's translation: a short tap goes on to the game, a long press
+     * shows the original until release (`docs/features/v3-game-translation.md`).
+     *
+     * The window turns untouchable **at touch-down**. The rest of a touch that
+     * began on a window still comes to that window, so press and release are
+     * both seen here; only the tap handed on afterwards falls through. The
+     * change takes ~80 ms to reach the input system, and a tap injected
+     * sooner landed on this window again and was handed on twice - the game
+     * skipped a line (`docs/milestones/v3.md`, spike 3). So the tap waits until
+     * [UNTOUCHABLE_SETTLE_MS] after touch-down, which an ordinary finger tap
+     * already lasts.
+     */
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private fun passTapsThrough(held: Held) {
+        val view = held.view.view
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        var downAt = 0L
+        var longPressed = false
+        val showOriginal = Runnable {
+            longPressed = true
+            held.showingOriginal = true
+            view.alpha = 0f
+        }
+        view.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    downAt = android.os.SystemClock.uptimeMillis()
+                    longPressed = false
+                    setTouchable(view, false)
+                    handler.postDelayed(showOriginal, LONG_PRESS_MS)
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(showOriginal)
+                    if (longPressed) {
+                        held.showingOriginal = false
+                        view.alpha = 1f
+                        setTouchable(view, true)
+                    } else {
+                        val x = event.rawX
+                        val y = event.rawY
+                        val wait = (UNTOUCHABLE_SETTLE_MS - (android.os.SystemClock.uptimeMillis() - downAt))
+                            .coerceAtLeast(0)
+                        handler.postDelayed({ forward(view, x, y) }, wait)
+                    }
+                }
+                android.view.MotionEvent.ACTION_CANCEL -> {
+                    handler.removeCallbacks(showOriginal)
+                    held.showingOriginal = false
+                    view.alpha = 1f
+                    setTouchable(view, true)
+                }
+            }
+            true
+        }
+    }
+
+    private fun forward(view: View, x: Float, y: Float) {
+        val forwarder = taps
+        if (forwarder == null || !forwarder.canForward) {
+            setTouchable(view, true)
+            return
+        }
+        forwarder.tap(x, y) {
+            view.postDelayed({ setTouchable(view, true) }, RETOUCHABLE_AFTER_MS)
+        }
+    }
+
+    private fun setTouchable(view: View, touchable: Boolean) {
+        if (!view.isAttachedToWindow) return
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        params.flags = if (touchable) {
+            params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        } else {
+            params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        }
+        runCatching { windowManager.updateViewLayout(view, params) }
+    }
+
     fun detach() {
         clear()
         container?.let { runCatching { (containerManager ?: windowManager).removeView(it) } }
@@ -146,6 +226,7 @@ internal class OverlayWindow(
             val ownWindow = translation.sourceType == TextSourceType.OCR ||
                 translation.sourceType == TextSourceType.GAME
             if (!ownWindow && !ensureContainer()) continue
+            val game = translation.sourceType == TextSourceType.GAME
 
             // A window of its own is positioned on the display, so it wants the
             // screen coordinates as they came. A child of the container wants
@@ -185,13 +266,13 @@ internal class OverlayWindow(
                 )
 
             val existing = views[translation.elementId]
-            val held = if (existing != null && existing.matches(vertical, ownWindow)) {
+            val held = if (existing != null && existing.matches(vertical, ownWindow, game)) {
                 existing
             } else {
                 // A changed writing mode or a changed arrangement needs a new
                 // view, not a rebind.
                 existing?.let(::remove)
-                newHeld(vertical, ownWindow).also { views[translation.elementId] = it }
+                newHeld(vertical, ownWindow, game).also { views[translation.elementId] = it }
             }
 
             // A fresh render is a fresh balloon: whatever the reader revealed or
@@ -226,19 +307,21 @@ internal class OverlayWindow(
      * re-scan should bring the translation back, so [show] resets it rather
      * than the coordinator remembering it.
      */
-    private class Held(val view: TranslationView, val ownWindow: Boolean) {
+    private class Held(val view: TranslationView, val ownWindow: Boolean, val game: Boolean = false) {
         var showingOriginal = false
 
-        fun matches(vertical: Boolean, ownWindow: Boolean): Boolean =
-            this.ownWindow == ownWindow && (view is VerticalTranslationView) == vertical
+        fun matches(vertical: Boolean, ownWindow: Boolean, game: Boolean): Boolean =
+            this.ownWindow == ownWindow && this.game == game && (view is VerticalTranslationView) == vertical
     }
 
-    private fun newHeld(vertical: Boolean, ownWindow: Boolean): Held {
+    private fun newHeld(vertical: Boolean, ownWindow: Boolean, game: Boolean): Held {
         val view: TranslationView =
             if (vertical) VerticalTranslationView(context) else TranslationTextView(context)
-        val held = Held(view, ownWindow)
+        val held = Held(view, ownWindow, game)
 
-        if (ownWindow) {
+        if (game) {
+            passTapsThrough(held)
+        } else if (ownWindow) {
             // A translation that swallows the touch landing on it has to offer
             // something back, and "show me the original" is what a reader wants
             // from it anyway.
@@ -402,3 +485,12 @@ internal class OverlayWindow(
         coordinateMapper.updateContainerOrigin(location[0], location[1])
     }
 }
+
+/** How long a press must be held to show the original under a game's translation. */
+private const val LONG_PRESS_MS = 450L
+
+/** Time for an untouchable window to reach the input system (spike 3: ~80 ms). */
+private const val UNTOUCHABLE_SETTLE_MS = 90L
+
+/** Stay out of the way of the tap just delivered before taking touches again. */
+private const val RETOUCHABLE_AFTER_MS = 150L

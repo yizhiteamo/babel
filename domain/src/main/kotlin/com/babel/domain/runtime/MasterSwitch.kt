@@ -27,9 +27,13 @@ import kotlinx.coroutines.flow.first
  */
 object MasterSwitch {
 
-    /** On while either path is working. */
-    fun isOn(text: TranslationRuntimeState, manga: CaptureState): Boolean =
-        text == TranslationRuntimeState.Running || manga == CaptureState.ACTIVE
+    /** On while any path is working. */
+    fun isOn(
+        text: TranslationRuntimeState,
+        manga: CaptureState,
+        game: CaptureState = CaptureState.IDLE,
+    ): Boolean =
+        text == TranslationRuntimeState.Running || manga == CaptureState.ACTIVE || game == CaptureState.ACTIVE
 
     /**
      * Takes down whatever is running and writes down what that was.
@@ -42,12 +46,14 @@ object MasterSwitch {
         coordinator: TranslationCoordinator,
         capture: ScreenCaptureController,
         settings: SettingsRepository,
+        game: ScreenCaptureController? = null,
     ) {
         val held = SwitchedOff(
             text = coordinator.runtimeState.value == TranslationRuntimeState.Running,
             manga = capture.state.value == CaptureState.ACTIVE,
+            game = game?.state?.value == CaptureState.ACTIVE,
         )
-        if (!held.text && !held.manga) return
+        if (!held.text && !held.manga && !held.game) return
 
         settings.setSwitchedOff(held)
         if (held.text) {
@@ -55,6 +61,7 @@ object MasterSwitch {
             settings.setTranslationPaused(true)
         }
         if (held.manga) capture.stop()
+        if (held.game) game?.stop()
     }
 
     /**
@@ -68,6 +75,7 @@ object MasterSwitch {
         coordinator: TranslationCoordinator,
         capture: ScreenCaptureController,
         settings: SettingsRepository,
+        game: ScreenCaptureController? = null,
     ) {
         val held = settings.settings.first().switchedOff ?: SwitchedOff(text = true, manga = false)
         if (held.text && coordinator.runtimeState.value == TranslationRuntimeState.Paused) {
@@ -75,6 +83,7 @@ object MasterSwitch {
             settings.setTranslationPaused(false)
         }
         if (held.manga) capture.start()
+        if (held.game) game?.start()
         settings.setSwitchedOff(null)
     }
 }

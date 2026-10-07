@@ -21,11 +21,12 @@ import kotlinx.coroutines.withContext
 class OverlayRenderer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val trusted: com.babel.platform.screen.TrustedWindows,
+    private val taps: com.babel.platform.screen.TapForwarder,
     private val dispatchers: DispatcherProvider,
     private val logger: BabelLogger,
 ) : TranslationRenderer {
 
-    private val window by lazy { OverlayWindow(context, trusted) }
+    private val window by lazy { OverlayWindow(context, trusted, taps) }
 
     override suspend fun apply(update: RenderUpdate) = withContext(dispatchers.main) {
         when (update) {

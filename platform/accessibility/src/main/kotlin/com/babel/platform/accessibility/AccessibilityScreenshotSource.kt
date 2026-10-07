@@ -34,7 +34,31 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class AccessibilityScreenshotSource @Inject constructor(
     private val logger: BabelLogger,
-) : ScreenFrameSource, com.babel.platform.screen.TrustedWindows {
+) : ScreenFrameSource, com.babel.platform.screen.TrustedWindows, com.babel.platform.screen.TapForwarder {
+
+    override val canForward: Boolean get() = service != null
+
+    override fun tap(x: Float, y: Float, done: () -> Unit) {
+        val current = service ?: return done()
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(
+                android.accessibilityservice.GestureDescription.StrokeDescription(
+                    android.graphics.Path().apply { moveTo(x, y) },
+                    0,
+                    TAP_DURATION_MS,
+                ),
+            )
+            .build()
+        val sent = current.dispatchGesture(
+            gesture,
+            object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) = done()
+                override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) = done()
+            },
+            null,
+        )
+        if (!sent) done()
+    }
 
     /** The connected service, for overlays it can add as trusted windows. */
     override val context: android.content.Context? get() = service
@@ -175,6 +199,9 @@ class AccessibilityScreenshotSource @Inject constructor(
 
     private companion object {
         const val TAG = "Screenshot"
+
+        /** Short: spike 3 measured a 10 ms stroke landing ~20 ms sooner than 40. */
+        const val TAP_DURATION_MS = 10L
 
         /**
          * The platform allows roughly one screenshot every 333ms. Asking at a

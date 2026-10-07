@@ -277,7 +277,10 @@ class HomeViewModel @Inject constructor(
 
     fun stopMangaMode() = screenCapture.stop()
 
-    fun startGameMode() = gameCapture.start()
+    fun startGameMode() {
+        gameCapture.start()
+        forgetSwitchedOff()
+    }
 
     fun stopGameMode() = gameCapture.stop()
 

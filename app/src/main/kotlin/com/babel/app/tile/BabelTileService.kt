@@ -56,6 +56,9 @@ class BabelTileService : TileService() {
     @Inject
     lateinit var presence: TilePresence
 
+    @Inject
+    lateinit var game: com.babel.domain.game.GameCaptureController
+
     /** Taps outlive the panel closing, so they get the service's lifetime. */
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -80,8 +83,8 @@ class BabelTileService : TileService() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         listening = scope
         scope.launch {
-            combine(coordinator.runtimeState, capture.state) { text, manga -> text to manga }
-                .collect { (text, manga) -> show(text, manga) }
+            combine(coordinator.runtimeState, capture.state, game.state) { text, manga, g -> Triple(text, manga, g) }
+                .collect { (text, manga, g) -> show(text, manga, g) }
         }
     }
 
@@ -101,10 +104,10 @@ class BabelTileService : TileService() {
             return
         }
         work.launch {
-            if (MasterSwitch.isOn(coordinator.runtimeState.value, capture.state.value)) {
-                MasterSwitch.turnOff(coordinator, capture, settings)
+            if (MasterSwitch.isOn(coordinator.runtimeState.value, capture.state.value, game.state.value)) {
+                MasterSwitch.turnOff(coordinator, capture, settings, game)
             } else {
-                MasterSwitch.turnOn(coordinator, capture, settings)
+                MasterSwitch.turnOn(coordinator, capture, settings, game)
             }
         }
     }
@@ -114,10 +117,10 @@ class BabelTileService : TileService() {
         super.onDestroy()
     }
 
-    private fun show(text: TranslationRuntimeState, manga: CaptureState) {
+    private fun show(text: TranslationRuntimeState, manga: CaptureState, game: CaptureState) {
         val tile = qsTile ?: return
         val serviceDown = text == TranslationRuntimeState.Disabled
-        val on = MasterSwitch.isOn(text, manga)
+        val on = MasterSwitch.isOn(text, manga, game)
         tile.label = getString(R.string.tile_label)
         tile.state = if (on) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

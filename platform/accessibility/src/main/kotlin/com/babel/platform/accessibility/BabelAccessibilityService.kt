@@ -376,6 +376,16 @@ class BabelAccessibilityService : AccessibilityService() {
                 return
             }
 
+            // A game is game mode's, whether game mode is on or not. The comic
+            // recogniser reads game UI badly — AUTO and MENU both came back as
+            // 菜单 and a loading line appeared from nowhere (`docs/milestones/v3.md`,
+            // spike 1) — and two image paths on one screen would stack overlays.
+            if (gameApps.isGame(front)) {
+                logger.debug(TAG, "image scan skipped: a game, which is game mode's")
+                standDownImagePath()
+                return
+            }
+
             val layout = readScreenLayout()
             if (!layout.imagePathOwnsScreen) {
                 logger.debug(TAG, "image scan skipped: the node path owns this screen")

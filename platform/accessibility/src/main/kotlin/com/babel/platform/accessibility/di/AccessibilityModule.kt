@@ -43,6 +43,10 @@ abstract class AccessibilityModule {
 
     @Binds
     @Singleton
+    abstract fun bindTapForwarder(impl: AccessibilityScreenshotSource): com.babel.platform.screen.TapForwarder
+
+    @Binds
+    @Singleton
     abstract fun bindGameController(impl: GameModeController): GameCaptureController
 
     @Binds

@@ -72,7 +72,7 @@ data class BabelSettings(
 }
 
 /** Which of the two paths the quick-settings switch took down. */
-data class SwitchedOff(val text: Boolean, val manga: Boolean)
+data class SwitchedOff(val text: Boolean, val manga: Boolean, val game: Boolean = false)
 
 /**
  * Where to reach a remote translator, when the user has asked for one.

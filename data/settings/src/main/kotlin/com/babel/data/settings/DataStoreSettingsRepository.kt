@@ -119,7 +119,9 @@ class DataStoreSettingsRepository(
             if (held == null) {
                 prefs.remove(Keys.SWITCHED_OFF_TEXT)
                 prefs.remove(Keys.SWITCHED_OFF_MANGA)
+                prefs.remove(Keys.SWITCHED_OFF_GAME)
             } else {
+                prefs[Keys.SWITCHED_OFF_GAME] = held.game
                 prefs[Keys.SWITCHED_OFF_TEXT] = held.text
                 prefs[Keys.SWITCHED_OFF_MANGA] = held.manga
             }
@@ -141,7 +143,11 @@ class DataStoreSettingsRepository(
         mangaMode = prefs[Keys.MANGA_MODE] ?: false,
         gameMode = prefs[Keys.GAME_MODE] ?: false,
         switchedOff = prefs[Keys.SWITCHED_OFF_TEXT]?.let { text ->
-            SwitchedOff(text = text, manga = prefs[Keys.SWITCHED_OFF_MANGA] ?: false)
+            SwitchedOff(
+                text = text,
+                manga = prefs[Keys.SWITCHED_OFF_MANGA] ?: false,
+                game = prefs[Keys.SWITCHED_OFF_GAME] ?: false,
+            )
         },
     )
 
@@ -214,6 +220,7 @@ class DataStoreSettingsRepository(
         /** Both present while the quick-settings switch is off, both absent otherwise. */
         val SWITCHED_OFF_TEXT = booleanPreferencesKey("switched_off_text")
         val SWITCHED_OFF_MANGA = booleanPreferencesKey("switched_off_manga")
+        val SWITCHED_OFF_GAME = booleanPreferencesKey("switched_off_game")
     }
 
     private companion object {
