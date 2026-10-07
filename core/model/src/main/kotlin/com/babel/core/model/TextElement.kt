@@ -93,6 +93,18 @@ data class TextElement(
      * never half of its neighbour.
      */
     val share: TextShare? = null,
+    /**
+     * Whether this is a line of a conversation — a speech balloon, a game's
+     * dialogue — and so worth translating with the lines around it.
+     *
+     * Only those are. Measured on a pixiv character sheet, four description
+     * blocks lettered on the art: with the page as context the model
+     * translated other blocks' text into each of them, sometimes several
+     * blocks run together; with none, all four were right. Context was
+     * justified on dialogue (`docs/milestones/v2.md`), and descriptions,
+     * captions and labels are not dialogue.
+     */
+    val conversational: Boolean = false,
     val metadata: Map<String, String> = emptyMap(),
 )
 

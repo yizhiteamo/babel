@@ -8,6 +8,7 @@ import com.babel.core.model.TextOrientation
 import com.babel.domain.vision.ClippedBalloons
 import com.babel.domain.vision.LineJoin
 import com.babel.domain.vision.MangaReadingOrder
+import com.babel.domain.vision.NestedDetections
 import com.babel.domain.vision.PageMotion
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.ScrolledBalloons
@@ -192,8 +193,11 @@ internal class DetectingPageReader @Inject constructor(
         // balloon readers cannot answer for themselves (`BubbleRecognizer`).
         recognizer.startPage(frame)
 
-        val detected = predetected ?: detector.detect(frame)
-        logger.debug(TAG, "detector found ${detected.size} bubbles")
+        val found = predetected ?: detector.detect(frame)
+        // One block reported twice, whole and in part, is read once
+        // (`NestedDetections`); otherwise its two translations stack.
+        val detected = NestedDetections.dropNested(found) { it.text }
+        logger.debug(TAG, "detector found ${found.size} bubbles, ${found.size - detected.size} nested in another")
 
         // Outside the page, skipped before reading rather than after. The page
         // is nearly the whole frame once it is a column of images, too much to

@@ -66,6 +66,10 @@ class PageContext {
      * [exclude] is the line being translated; repeating it as its own context
      * would only invite the model to answer twice.
      */
+    /** What the page's other lines were rendered as, for [EchoGuard]. */
+    fun renderingsBesides(exclude: String): List<String> =
+        agreed.filterKeys { it != exclude }.values.toList()
+
     fun forLine(exclude: String): String? {
         val renderings = agreed.entries
             .filter { it.key != exclude }

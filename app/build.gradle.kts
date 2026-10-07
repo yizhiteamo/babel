@@ -56,6 +56,12 @@ android {
     }
 
     buildTypes {
+        // Signed with the release key when it is present, so a debug build can
+        // be installed over a published release on a test phone without
+        // uninstalling it — which would wipe the user's settings and models.
+        debug {
+            if (releaseStore != null) signingConfig = signingConfigs.getByName("release")
+        }
         release {
             if (releaseStore != null) signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true

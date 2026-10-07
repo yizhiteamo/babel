@@ -186,6 +186,7 @@ class GameTextSource @Inject constructor(
                 CoordinateSpace.SCREEN,
             ),
             sourceType = TextSourceType.GAME,
+            conversational = true,
             source = SourceIdentity(packageName = packageName),
             revision = Revision(session),
             sourceLanguage = JAPANESE.takeIf { JapaneseScript.isJapanese(line.text) },

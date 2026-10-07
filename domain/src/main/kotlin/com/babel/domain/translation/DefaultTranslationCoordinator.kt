@@ -261,17 +261,19 @@ class DefaultTranslationCoordinator(
             val entry = Tracked(element = element, key = key)
             tracked[element.id] = entry
 
-            // Only the image paths. On the node path every element is a separate
-            // control on one screen, and handing a button's label to a dialog's
-            // translation as "context" would be noise, not help. A game's lines
-            // are a conversation, which is what the context is for.
-            val context = if (element.sourceType.carriesContext()) {
+            // Only conversation: balloons and a game's dialogue. On the node path
+            // every element is a separate control, and handing a button's label
+            // to a dialog's translation as "context" would be noise; lettering
+            // on a comic's art was measured to be worse than noise
+            // (`TextElement.conversational`).
+            val context = if (element.conversational && element.sourceType.carriesContext()) {
                 pageContext.note(element.revision, element.text)
                 pageContext.forLine(element.text)
             } else {
                 null
             }
-            entry.job = launchTranslation(element, pair, key, context)
+            val others = if (context != null) pageContext.renderingsBesides(element.text) else emptyList()
+            entry.job = launchTranslation(element, pair, key, context, others)
         }
 
         if (toHide.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(toHide))
@@ -464,6 +466,7 @@ class DefaultTranslationCoordinator(
         pair: LanguagePair,
         key: TranslationCacheKey,
         context: String?,
+        others: List<String> = emptyList(),
     ): Job? {
         val active = scope ?: return null
         return active.launch {
@@ -482,7 +485,22 @@ class DefaultTranslationCoordinator(
 
                 permits.withPermit {
                     val waitedMs = System.currentTimeMillis() - started
-                    val result = translateWithRetry(element, pair, context)
+                    val first = translateWithRetry(element, pair, context)
+                    // The page's context can make the model translate the wrong
+                    // line: measured on a character sheet, three of four
+                    // descriptions came back as another character's, and with no
+                    // context all four were right. An answer that repeats what
+                    // another line was rendered as is asked again without it.
+                    val result = if (
+                        context != null &&
+                        first.status == TranslationStatus.Translated &&
+                        EchoGuard.repeatsAnother(first.translatedText, others)
+                    ) {
+                        logger.debug(TAG, "answer echoed another line; asking again without context")
+                        translateWithRetry(element, pair, context = null)
+                    } else {
+                        first
+                    }
                     logger.debug(
                         TAG,
                         "translated in ${System.currentTimeMillis() - started}ms" +

@@ -460,6 +460,11 @@ class BabelAccessibilityService : AccessibilityService() {
         val contentArea: TextBounds?,
         /** Label-sized text nodes sitting inside [contentArea]. */
         val labelsInContent: Int,
+        /**
+         * Whether a node too big to be a label carries prose — the text path
+         * reads that as well as any label, so it is not the image path's.
+         */
+        val hasProse: Boolean,
     ) {
         /**
          * Whether this screen holds text **only** the image path can reach.
@@ -476,13 +481,23 @@ class BabelAccessibilityService : AccessibilityService() {
          * path that could read it properly sat suspended.
          */
         val imagePathOwnsScreen: Boolean
-            get() = labelsInContent < MIN_CONTENT_LABELS
+            get() = labelsInContent < MIN_CONTENT_LABELS && !hasProse
     }
 
     private fun readScreenLayout(): ScreenLayout {
         val screen = resources.displayMetrics.let { it.widthPixels.toLong() * it.heightPixels }
-        val bounds = interfaceRoots().flatMap { extractor.extract(it) }.map { it.bounds }
+        val texts = interfaceRoots().flatMap { extractor.extract(it) }
+        val bounds = texts.map { it.bounds }
         val (sized, containers) = bounds.partition { it.isLabelSized(screen) }
+
+        // A container is not always empty. Chromium's page node carries the
+        // page title; pixiv's caption sheet carries the whole caption, several
+        // hundred characters, in one node bigger than a quarter of the screen.
+        // Counted as a container only, that sheet had two labels, so manga
+        // mode took it and put prose through the comic recogniser — nonsense
+        // translations stacked over each other — while the text path, which
+        // reads it correctly, stood down (measured, `docs/milestones/v2.md`).
+        val hasProse = texts.any { !it.bounds.isLabelSized(screen) && it.text.isProse() }
 
         // The page, not its largest image (`ContentArea`). The parts of the
         // column that are small only because they are half off screen are
@@ -498,8 +513,8 @@ class BabelAccessibilityService : AccessibilityService() {
             else -> labels.count { it.centreIsIn(content) }
         }
 
-        logger.debug(TAG, "screen layout: $inContent labels inside the content area")
-        return ScreenLayout(labels + systemBars(), content, inContent)
+        logger.debug(TAG, "screen layout: $inContent labels inside the content area, prose=$hasProse")
+        return ScreenLayout(labels + systemBars(), content, inContent, hasProse)
     }
 
     /**
@@ -533,6 +548,10 @@ class BabelAccessibilityService : AccessibilityService() {
      * telling us where text sits, it is a box with text somewhere inside it.
      * V1 met the same container the first time it sized type from bounds.
      */
+    /** Sentences rather than a title: enough letters, over more than one line. */
+    private fun String.isProse(): Boolean =
+        count { it.isLetter() } >= PROSE_MIN_LETTERS && lines().count { it.isNotBlank() } >= PROSE_MIN_LINES
+
     private fun TextBounds.isLabelSized(screenArea: Long): Boolean =
         width.toLong() * height <= screenArea / LABEL_MAX_SCREEN_FRACTION
 
@@ -848,5 +867,12 @@ class BabelAccessibilityService : AccessibilityService() {
          * without that making the page readable as text.
          */
         const val MIN_CONTENT_LABELS = 3
+
+        /**
+         * A page title is one line of a few dozen characters; pixiv's caption
+         * is eleven lines and hundreds. Both thresholds sit well inside that.
+         */
+        const val PROSE_MIN_LETTERS = 60
+        const val PROSE_MIN_LINES = 3
     }
 }

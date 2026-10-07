@@ -708,6 +708,9 @@ class CaptureTextSource @Inject internal constructor(
             text = text,
             bounds = placement.bounds,
             sourceType = TextSourceType.OCR,
+            // A balloon is speech; lettering on the art is a caption, a label,
+            // a title — not part of a conversation (`TextElement.conversational`).
+            conversational = region.enclosure != null,
             // Carried so the privacy policy's per-app exclusions apply
             // here as they do on the node path. There is no window id: a
             // capture is of the screen, not of a window.

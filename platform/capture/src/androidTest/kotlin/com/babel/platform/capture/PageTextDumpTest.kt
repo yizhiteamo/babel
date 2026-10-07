@@ -62,8 +62,15 @@ class PageTextDumpTest {
         override val io = Dispatchers.IO
     }
 
-    /** What the emulator shows a page at, so the recogniser sees what it sees. */
-    private val SCREEN_WIDTH = 1080
+    /**
+     * What the emulator shows a page at, so the recogniser sees what it sees.
+     * `-e width 1440` for a phone; `-e pages a.png,b.png` to read only those.
+     */
+    private val SCREEN_WIDTH =
+        InstrumentationRegistry.getArguments().getString("width")?.toInt() ?: 1080
+
+    private val only: Set<String>? =
+        InstrumentationRegistry.getArguments().getString("pages")?.split(",")?.toSet()
 
     /** Two balloons within this fraction of the page's height are one row. */
     private val rowTolerance = 0.08f
@@ -72,7 +79,10 @@ class PageTextDumpTest {
     fun dumpEachPageInReadingOrder() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val pages = File(context.getExternalFilesDir(null), "comic-sample")
-            .listFiles { file -> file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
+            .listFiles { file ->
+                file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") &&
+                    (only == null || file.name in only)
+            }
             ?.sortedBy { it.name }
             .orEmpty()
 
@@ -176,7 +186,10 @@ class PageTextDumpTest {
     fun dumpEveryDetectedBalloon() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val pages = File(context.getExternalFilesDir(null), "comic-sample")
-            .listFiles { file -> file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") }
+            .listFiles { file ->
+                file.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp") &&
+                    (only == null || file.name in only)
+            }
             ?.sortedBy { it.name }
             .orEmpty()
 
