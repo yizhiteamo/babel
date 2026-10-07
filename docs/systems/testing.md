@@ -103,7 +103,7 @@ Found the hard way, each one having cost a wrong diagnosis:
   T=/sdcard/Android/data/com.babel.platform.capture.test/files
   adb shell "mkdir -p $T/models $T/comic-sample"
   adb shell "cp /sdcard/Android/data/com.yizhiteamo.babel/files/models/* $T/models/"
-  adb push comic-sample/<page> $T/comic-sample/
+  adb push material-sample/comic/<page> $T/comic-sample/
   ```
 
   Forgetting the models gives `manga-ocr available: false` and a test that

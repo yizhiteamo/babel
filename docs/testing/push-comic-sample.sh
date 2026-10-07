@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Puts locally-held manga pages on the device for judging V2 quality.
 #
-# The pages are copyrighted and are never committed — `comic-sample/` is in
+# The pages are copyrighted and are never committed — `material-sample/` is in
 # .gitignore. This script is committed; what it pushes is not.
+#
+# On the device the folder is still `comic-sample`: that is the name every
+# instrumentation test reads, so only the local side moved.
 #
 # Two destinations, because the two things that read them differ:
 #   - the instrumentation harness reads the test app's own external files dir,
@@ -15,7 +18,7 @@
 set -euo pipefail
 
 ADB="${ADB:-adb}"
-SRC="${1:-comic-sample}"
+SRC="${1:-material-sample/comic}"
 
 TEST_DIR=/sdcard/Android/data/com.babel.platform.capture.test/files/comic-sample
 VIEW_DIR=/sdcard/Download/comic-sample

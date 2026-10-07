@@ -6,7 +6,7 @@ have already had to be reverted in this area; these scripts exist so the next
 decision rests on numbers.
 
 Neither the models nor the manga pages are committed — both are somebody else's
-work, and `models/` and `comic-sample/` are in `.gitignore`.
+work, and `models/` and `material-sample/` are in `.gitignore`.
 
 ## Setup
 
@@ -31,8 +31,8 @@ app with it.
 ## Running
 
 ```bash
-python tools/manga-model-eval/detect.py models/detector.onnx comic-sample/*.jpg
-python tools/manga-model-eval/endtoend.py models comic-sample/jap-mag-01.jpg comic-sample/jap-mag-04.jpg
+python tools/manga-model-eval/detect.py models/detector.onnx material-sample/comic/*.jpg
+python tools/manga-model-eval/endtoend.py models material-sample/comic/jap-mag-01.jpg material-sample/comic/jap-mag-04.jpg
 ```
 
 `detect.py` checks the detector alone against hand-measured bubble rectangles.

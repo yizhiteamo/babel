@@ -15,8 +15,11 @@ local.properties
 !debug.keystore
 /app/release/
 
-# Real manga pages used to judge V2 quality. Supplied locally, never committed:
-# it is somebody else's copyrighted work (docs/milestones/v2.md).
+# Real material to test against — manga pages (comic/), game screenshots
+# (game/), the icon's source art (icon/). Supplied locally, never committed:
+# most of it is somebody else's copyrighted work (docs/milestones/v2.md).
+/material-sample/
+# Where the manga pages used to live, kept so an old checkout cannot leak them.
 /comic-sample/
 
 # The local model scratch directory: exports, experiments and candidates that
