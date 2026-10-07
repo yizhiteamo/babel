@@ -130,7 +130,10 @@ internal class OverlayWindow(private val context: Context) {
         if (!attached) return
 
         for (translation in translations) {
-            val ownWindow = translation.sourceType == TextSourceType.OCR
+            // A game is full screen and landscape, where the container's offsets
+            // do not hold; its lines get windows of their own, like manga mode's.
+            val ownWindow = translation.sourceType == TextSourceType.OCR ||
+                translation.sourceType == TextSourceType.GAME
             if (!ownWindow && !ensureContainer()) continue
 
             // A window of its own is positioned on the display, so it wants the

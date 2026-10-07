@@ -118,4 +118,8 @@
     <string name="manga_row_idle">以图像方式读取屏幕，翻译图片里的文字</string>
     <string name="remote_row_off">未开启——全部在本机翻译。开启后译得好得多，代价是识别出的文字会发送到你指定的服务。</string>
     <string name="tile_row_title">下拉快捷开关</string>
+    <string name="game_row_title">游戏模式</string>
+    <string name="game_row_idle">翻译游戏里的对话、选项和弹窗</string>
+    <string name="game_row_active">在游戏中生效</string>
+    <string name="game_row_unsupported">需要 Android 14 及以上</string>
 </resources>

@@ -16,6 +16,7 @@ import com.babel.domain.render.RenderUpdate
 import com.babel.domain.render.TranslationRenderer
 import com.babel.domain.scope.TranslationScopePolicy
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.game.GameTextScanner
 import com.babel.domain.translation.TranslationCoordinator
 import com.babel.domain.translation.TranslationStartup
 import com.babel.domain.vision.CaptureState
@@ -29,6 +30,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -80,6 +82,15 @@ class BabelAccessibilityService : AccessibilityService() {
 
     @Inject
     lateinit var restorer: AccessibilityServiceRestorer
+
+    @Inject
+    lateinit var gameMode: GameModeController
+
+    @Inject
+    lateinit var gameScanner: GameTextScanner
+
+    @Inject
+    lateinit var gameApps: GameApps
 
     @Inject
     lateinit var logger: BabelLogger
@@ -191,12 +202,15 @@ class BabelAccessibilityService : AccessibilityService() {
         // come from here (ADR 009).
         screenshots.attach(this)
         mangaMode.onServiceAvailabilityChanged()
+        gameMode.onServiceAvailabilityChanged()
 
         val newScope = CoroutineScope(SupervisorJob() + dispatchers.default)
         scope = newScope
 
         newScope.launch { textSource.events().collect(coordinator::submit) }
         newScope.launch { imageScanner.events().collect(coordinator::submit) }
+        newScope.launch { gameScanner.events().collect(coordinator::submit) }
+        newScope.launch { runGameLoop() }
         newScope.launch { coordinator.renderUpdates.collect(renderer::apply) }
         newScope.launch { runScanLoop() }
         newScope.launch { runImageScanLoop() }
@@ -324,6 +338,11 @@ class BabelAccessibilityService : AccessibilityService() {
             return
         }
         try {
+            if (gamePathOwner != null) {
+                logger.debug(TAG, "image scan skipped: game mode owns this screen")
+                standDownImagePath()
+                return
+            }
             if (mangaMode.state.value != CaptureState.ACTIVE) {
                 logger.debug(TAG, "image scan skipped: manga mode ${mangaMode.state.value}")
                 standDownImagePath()
@@ -619,6 +638,8 @@ class BabelAccessibilityService : AccessibilityService() {
     }
 
     private fun teardown() {
+        gamePathOwner = null
+        gameMode.onServiceAvailabilityChanged()
         lastWindowKey = null
         imagePathOwner = null
         screenshots.detach()
@@ -628,6 +649,64 @@ class BabelAccessibilityService : AccessibilityService() {
         scope = null
         teardownScope.launch { renderer.apply(RenderUpdate.ClearAll) }
         logger.info(TAG, "accessibility service torn down")
+    }
+
+    /** The game whose window game mode is reading, or null. Read by the other paths to stand down. */
+    @Volatile
+    private var gamePathOwner: String? = null
+
+    /**
+     * Game mode's driver: one window screenshot of the game in front, about
+     * every 333ms (the platform's limit — the frame source waits it out), read
+     * and settled line by line by [gameScanner].
+     *
+     * Only for a game, and only while it is in front; anything else stands the
+     * path down and takes its translations off.
+     */
+    private suspend fun runGameLoop() {
+        while (currentCoroutineContext().isActive) {
+            val target = if (gameMode.state.value == CaptureState.ACTIVE) gameWindow() else null
+            if (target == null) {
+                standDownGamePath()
+                delay(GAME_IDLE_POLL_MS)
+                continue
+            }
+            if (gamePathOwner != target.packageName) {
+                standDownGamePath()
+                gamePathOwner = target.packageName
+                logger.info(TAG, "game mode reading ${target.packageName}")
+            }
+            gameScanner.scan(target.windowId, target.bounds, target.packageName)
+        }
+    }
+
+    private suspend fun standDownGamePath() {
+        if (gamePathOwner == null) return
+        gamePathOwner = null
+        gameScanner.clear()
+    }
+
+    private class GameWindow(val windowId: Int, val bounds: TextBounds, val packageName: String)
+
+    /** The application window in front, if it belongs to a game. */
+    private fun gameWindow(): GameWindow? = try {
+        val window = windows.firstOrNull {
+            it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION && (it.isActive || it.isFocused)
+        }
+        val packageName = window?.root?.packageName?.toString()
+        if (window == null || packageName == null || !gameApps.isGame(packageName)) {
+            null
+        } else {
+            val rect = android.graphics.Rect().also(window::getBoundsInScreen)
+            GameWindow(
+                window.id,
+                TextBounds(rect.left, rect.top, rect.right, rect.bottom, CoordinateSpace.SCREEN),
+                packageName,
+            )
+        }
+    } catch (failure: Exception) {
+        logger.warn(TAG, "could not read the window list", failure)
+        null
     }
 
     private suspend fun runScanLoop() {
@@ -674,6 +753,16 @@ class BabelAccessibilityService : AccessibilityService() {
 
         val packageName = root.packageName?.toString()
 
+        // A game game mode is reading is not the node path's: its few nodes are
+        // chrome at best, and two layers of translation would stack.
+        if (packageName != null && packageName == gamePathOwner) {
+            if (lastWindowKey != null) {
+                lastWindowKey = null
+                textSource.clear()
+            }
+            return
+        }
+
         // Checked before walking the tree, so an out-of-scope app costs nothing
         // rather than being filtered element by element afterwards
         // (`docs/systems/scope.md`).
@@ -714,6 +803,9 @@ class BabelAccessibilityService : AccessibilityService() {
 
     private companion object {
         const val TAG = "AccessibilityService"
+
+        /** How often to look for a game while none is in front: cheap, no screenshot. */
+        const val GAME_IDLE_POLL_MS = 500L
 
         /**
          * Long enough that a flick-scroll produces one scan instead of dozens,

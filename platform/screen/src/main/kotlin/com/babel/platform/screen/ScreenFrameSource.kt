@@ -38,4 +38,18 @@ interface ScreenFrameSource {
      * `getPixels` and is rejected by the recognisers that consume this.
      */
     suspend fun latestFrame(): Bitmap?
+
+    /**
+     * A picture of one window alone, or null when that cannot be had.
+     *
+     * Game mode reads this rather than [latestFrame]: a picture of the game's
+     * window does not contain Babel's own translations, so the next line is
+     * still visible once the last one is covered (`docs/milestones/v3.md`,
+     * spike 1). Android 14 and up; null everywhere else. Same ownership rule
+     * as [latestFrame].
+     */
+    suspend fun windowFrame(windowId: Int): Bitmap? = null
+
+    /** Whether [windowFrame] can work on this device. */
+    val supportsWindowFrames: Boolean get() = false
 }

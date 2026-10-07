@@ -10,6 +10,7 @@ import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.language.LanguageResolver
 import com.babel.app.tile.TilePresence
+import com.babel.domain.game.GameCaptureController
 import com.babel.domain.runtime.AccessibilityRecovery
 import com.babel.domain.runtime.CapabilityChecker
 import com.babel.core.model.ApiKey
@@ -57,6 +58,7 @@ data class HomeUiState(
     val autoRestore: Boolean = false,
     /** Whether Babel's quick-settings tile is in the panel (`TilePresence`). */
     val tileAdded: Boolean = false,
+    val gameState: CaptureState = CaptureState.IDLE,
 ) {
     /**
      * Whether pausing or resuming makes sense right now.
@@ -125,6 +127,7 @@ class HomeViewModel @Inject constructor(
     private val remoteProbe: RemoteProbe,
     private val recovery: AccessibilityRecovery,
     private val tilePresence: TilePresence,
+    private val gameCapture: GameCaptureController,
 ) : ViewModel() {
 
     private val autoRestore = MutableStateFlow(recovery.canRestore)
@@ -182,6 +185,8 @@ class HomeViewModel @Inject constructor(
         state.copy(autoRestore = restore)
     }.combine(tilePresence.added) { state, added ->
         state.copy(tileAdded = added)
+    }.combine(gameCapture.state) { state, game ->
+        state.copy(gameState = game)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -271,6 +276,10 @@ class HomeViewModel @Inject constructor(
     }
 
     fun stopMangaMode() = screenCapture.stop()
+
+    fun startGameMode() = gameCapture.start()
+
+    fun stopGameMode() = gameCapture.stop()
 
     /**
      * @param tag null to go back to detecting it.

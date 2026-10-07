@@ -23,6 +23,15 @@ enum class TextSourceType {
 
     /** Recognised from captured pixels (V2). */
     OCR,
+
+    /**
+     * Recognised from a game's own window, line by line as it settles (V3).
+     *
+     * Its own value rather than more OCR because everything downstream that
+     * asks treats it differently: it is cleared on its own, it gets dialogue
+     * context, and it is drawn in windows of its own over a full-screen game.
+     */
+    GAME,
 }
 
 /** Identity of the app/window the text belongs to, when it is known. */

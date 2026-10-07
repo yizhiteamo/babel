@@ -43,6 +43,11 @@ data class BabelSettings(
      */
     val mangaMode: Boolean = false,
     /**
+     * Whether the user last left game mode on. Kept and restored for the same
+     * reason as [mangaMode], and written only by the user's own actions.
+     */
+    val gameMode: Boolean = false,
+    /**
      * What the quick-settings switch turned off, or null when it is on.
      *
      * The switch exists so that turning translation off no longer means
@@ -188,4 +193,6 @@ interface SettingsRepository {
     suspend fun setMangaMode(enabled: Boolean)
 
     suspend fun setSwitchedOff(held: SwitchedOff?)
+
+    suspend fun setGameMode(enabled: Boolean)
 }

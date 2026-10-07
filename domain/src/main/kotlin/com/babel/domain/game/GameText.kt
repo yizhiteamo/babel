@@ -1,0 +1,48 @@
+package com.babel.domain.game
+
+import com.babel.core.model.TextBounds
+import com.babel.domain.acquisition.TextSource
+import com.babel.domain.vision.ScreenCaptureController
+
+/**
+ * Turns game mode on and off. A type of its own, separate from manga mode's
+ * controller, so the two can be injected side by side without a qualifier.
+ */
+interface GameCaptureController : ScreenCaptureController
+
+/**
+ * Reads one frame of a game's window and publishes the lines that have
+ * settled.
+ *
+ * Free of Android types, like `ImageTextScanner`: the accessibility service
+ * drives it without seeing the recogniser, and the pixels travel by
+ * `ScreenFrameSource`.
+ */
+interface GameTextScanner : TextSource {
+
+    /**
+     * Reads the window [windowId] once.
+     *
+     * @param windowBounds where that window sits on the screen, so lines read
+     *   in the window's own pixels can be put back in screen coordinates.
+     */
+    suspend fun scan(windowId: Int, windowBounds: TextBounds, packageName: String)
+
+    /** Takes everything this scanner published off the screen. */
+    suspend fun clear()
+
+    /** Lets go of loaded models; the next scan reloads them. */
+    suspend fun release()
+}
+
+/** One line as the recogniser returned it, with what the frame says about it. */
+data class GameLine(
+    val text: String,
+    val bounds: TextBounds,
+    /**
+     * How well the band above and below the line is predicted by interpolating,
+     * row by row, between the pixels at its two ends. Low on a plain or evenly
+     * graded panel, high on artwork (`docs/milestones/v3.md`, spike 2).
+     */
+    val backdropError: Double,
+)

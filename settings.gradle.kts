@@ -40,3 +40,5 @@ include(":platform:screen")
 include(":platform:accessibility")
 include(":platform:overlay")
 include(":platform:capture")
+// Game text, read from the game's own window (V3).
+include(":platform:game")

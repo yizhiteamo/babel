@@ -110,6 +110,10 @@ class DataStoreSettingsRepository(
         dataStore.edit { prefs -> prefs[Keys.MANGA_MODE] = enabled }
     }
 
+    override suspend fun setGameMode(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[Keys.GAME_MODE] = enabled }
+    }
+
     override suspend fun setSwitchedOff(held: SwitchedOff?) {
         dataStore.edit { prefs ->
             if (held == null) {
@@ -135,6 +139,7 @@ class DataStoreSettingsRepository(
         ),
         translationPaused = prefs[Keys.TRANSLATION_PAUSED] ?: false,
         mangaMode = prefs[Keys.MANGA_MODE] ?: false,
+        gameMode = prefs[Keys.GAME_MODE] ?: false,
         switchedOff = prefs[Keys.SWITCHED_OFF_TEXT]?.let { text ->
             SwitchedOff(text = text, manga = prefs[Keys.SWITCHED_OFF_MANGA] ?: false)
         },
@@ -205,6 +210,7 @@ class DataStoreSettingsRepository(
          */
         val TRANSLATION_PAUSED = booleanPreferencesKey("translation_paused")
         val MANGA_MODE = booleanPreferencesKey("manga_mode")
+        val GAME_MODE = booleanPreferencesKey("game_mode")
         /** Both present while the quick-settings switch is off, both absent otherwise. */
         val SWITCHED_OFF_TEXT = booleanPreferencesKey("switched_off_text")
         val SWITCHED_OFF_MANGA = booleanPreferencesKey("switched_off_manga")

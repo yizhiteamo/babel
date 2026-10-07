@@ -148,6 +148,9 @@ fun BabelApp(
                 onMangaChange = { on ->
                     if (on) viewModel.startMangaMode() else viewModel.stopMangaMode()
                 },
+                onGameChange = { on ->
+                    if (on) viewModel.startGameMode() else viewModel.stopGameMode()
+                },
                 onTileAnswered = viewModel::onTileRequestAnswered,
                 onUseLocal = viewModel::disableRemoteTranslation,
                 onDownloadModel = viewModel::downloadRecognizerModel,
@@ -790,6 +793,7 @@ private fun TranslationSection(
     state: HomeUiState,
     onTextChange: (Boolean) -> Unit,
     onMangaChange: (Boolean) -> Unit,
+    onGameChange: (Boolean) -> Unit,
     onTileAnswered: (Boolean) -> Unit,
     onUseLocal: () -> Unit,
     onDownloadModel: () -> Unit,
@@ -888,6 +892,23 @@ private fun TranslationSection(
                     }
                 }
             },
+        )
+
+        // Game mode (V3): only in games, Android 14 and up.
+        val game = state.gameState
+        SwitchRow(
+            title = stringResource(R.string.game_row_title),
+            supporting = stringResource(
+                when (game) {
+                    CaptureState.ACTIVE -> R.string.game_row_active
+                    CaptureState.UNSUPPORTED -> R.string.game_row_unsupported
+                    CaptureState.UNAVAILABLE -> R.string.capture_state_unavailable
+                    else -> R.string.game_row_idle
+                },
+            ),
+            checked = game == CaptureState.ACTIVE,
+            enabled = game != CaptureState.UNSUPPORTED && game != CaptureState.UNAVAILABLE,
+            onCheckedChange = onGameChange,
         )
 
         // The tile only works with the service on, so it is offered only then.

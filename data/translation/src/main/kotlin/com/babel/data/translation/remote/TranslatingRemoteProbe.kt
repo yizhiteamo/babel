@@ -84,6 +84,7 @@ class TranslatingRemoteProbe @Inject constructor(
         override suspend fun setTranslationPaused(paused: Boolean) = Unit
         override suspend fun setMangaMode(enabled: Boolean) = Unit
         override suspend fun setSwitchedOff(held: SwitchedOff?) = Unit
+        override suspend fun setGameMode(enabled: Boolean) = Unit
     }
 
     private companion object {

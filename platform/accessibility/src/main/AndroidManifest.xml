@@ -13,6 +13,18 @@
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
+    <!--
+      Game mode asks whether the app in front is a game (GameApps). Android 11+
+      hides other apps' info unless it is asked for; launcher apps cover every
+      game a player can open.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application>
         <service
             android:name=".BabelAccessibilityService"

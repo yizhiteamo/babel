@@ -261,10 +261,11 @@ class DefaultTranslationCoordinator(
             val entry = Tracked(element = element, key = key)
             tracked[element.id] = entry
 
-            // Only the image path. On the node path every element is a separate
+            // Only the image paths. On the node path every element is a separate
             // control on one screen, and handing a button's label to a dialog's
-            // translation as "context" would be noise, not help.
-            val context = if (element.sourceType == TextSourceType.OCR) {
+            // translation as "context" would be noise, not help. A game's lines
+            // are a conversation, which is what the context is for.
+            val context = if (element.sourceType.carriesContext()) {
                 pageContext.note(element.revision, element.text)
                 pageContext.forLine(element.text)
             } else {
@@ -326,7 +327,7 @@ class DefaultTranslationCoordinator(
 
         entry.translatedText = message.translatedText
         entry.job = null
-        if (entry.element.sourceType == TextSourceType.OCR) {
+        if (entry.element.sourceType.carriesContext()) {
             pageContext.agree(entry.element.text, message.translatedText)
         }
         clearFailures()
@@ -638,3 +639,7 @@ class DefaultTranslationCoordinator(
         const val FAILURES_BEFORE_REPORTING = 3
     }
 }
+
+private fun TextSourceType.carriesContext(): Boolean =
+    this == TextSourceType.OCR || this == TextSourceType.GAME
+

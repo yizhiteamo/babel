@@ -56,6 +56,10 @@ class FakeSettingsRepository(
         state.value = state.value.copy(mangaMode = enabled)
     }
 
+    override suspend fun setGameMode(enabled: Boolean) {
+        state.value = state.value.copy(gameMode = enabled)
+    }
+
     override suspend fun setSwitchedOff(held: SwitchedOff?) {
         state.value = state.value.copy(switchedOff = held)
     }

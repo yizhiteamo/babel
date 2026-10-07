@@ -1,11 +1,13 @@
 package com.babel.platform.accessibility.di
 
 import com.babel.core.common.BabelLogger
+import com.babel.domain.game.GameCaptureController
 import com.babel.domain.runtime.AccessibilityRecovery
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.vision.ScreenCaptureController
 import com.babel.platform.accessibility.AccessibilityScreenshotSource
 import com.babel.platform.accessibility.AccessibilityServiceRestorer
+import com.babel.platform.accessibility.GameModeController
 import com.babel.platform.accessibility.MangaModeController
 import com.babel.platform.screen.ScreenFrameSource
 import dagger.Binds
@@ -37,6 +39,10 @@ abstract class AccessibilityModule {
 
     @Binds
     @Singleton
+    abstract fun bindGameController(impl: GameModeController): GameCaptureController
+
+    @Binds
+    @Singleton
     abstract fun bindRecovery(impl: AccessibilityServiceRestorer): AccessibilityRecovery
 
     companion object {
@@ -53,6 +59,19 @@ abstract class AccessibilityModule {
             settings: SettingsRepository,
             logger: BabelLogger,
         ): MangaModeController = MangaModeController(
+            frames = frames,
+            settings = settings,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            logger = logger,
+        )
+
+        @Provides
+        @Singleton
+        fun provideGameModeController(
+            frames: ScreenFrameSource,
+            settings: SettingsRepository,
+            logger: BabelLogger,
+        ): GameModeController = GameModeController(
             frames = frames,
             settings = settings,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),

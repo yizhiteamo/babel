@@ -121,4 +121,8 @@
     <string name="manga_row_idle">Reads the screen as a picture, to translate text in images</string>
     <string name="remote_row_off">Off — everything is translated on this device. On translates much better, at the cost of sending recognised text to the service you name.</string>
     <string name="tile_row_title">Quick settings tile</string>
+    <string name="game_row_title">Game mode</string>
+    <string name="game_row_idle">Translates the dialogue, choices and pop-ups of the game in front</string>
+    <string name="game_row_active">On in games</string>
+    <string name="game_row_unsupported">Needs Android 14 or later</string>
 </resources>

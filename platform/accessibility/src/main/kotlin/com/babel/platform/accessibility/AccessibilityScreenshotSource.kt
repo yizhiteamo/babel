@@ -84,6 +84,46 @@ class AccessibilityScreenshotSource @Inject constructor(
         }
     }
 
+    override val supportsWindowFrames: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+
+    /**
+     * One window alone, paced by the same lock: the platform's interval is
+     * shared with whole-display screenshots (measured: ~333ms either way,
+     * `docs/milestones/v3.md`, spike 1).
+     */
+    override suspend fun windowFrame(windowId: Int): Bitmap? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
+        val current = service ?: return null
+
+        return pacing.withLock {
+            val since = SystemClock.elapsedRealtime() - lastCaptureAt
+            if (since < MIN_INTERVAL_MS) delay(MIN_INTERVAL_MS - since)
+            val frame = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { takeWindowScreenshot(current, windowId) }
+            lastCaptureAt = SystemClock.elapsedRealtime()
+            frame
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    private suspend fun takeWindowScreenshot(current: AccessibilityService, windowId: Int): Bitmap? =
+        suspendCancellableCoroutine { continuation ->
+            current.takeScreenshotOfWindow(
+                windowId,
+                Executor(Runnable::run),
+                object : AccessibilityService.TakeScreenshotCallback {
+                    override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
+                        continuation.resume(result.toSoftwareBitmap())
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        logger.debug(TAG, "window screenshot unavailable, code $errorCode")
+                        continuation.resume(null)
+                    }
+                },
+            )
+        }
+
     @RequiresApi(Build.VERSION_CODES.R)
     private suspend fun takeScreenshot(current: AccessibilityService): Bitmap? =
         suspendCancellableCoroutine { continuation ->

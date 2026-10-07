@@ -280,6 +280,7 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 | `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization, screen frames (ADR 009) |
 | `:platform:overlay` | platform | overlay windows, `TranslationRenderer`, coordinate mapping |
 | `:platform:capture` | platform | OCR recognition, balloon detection (ONNX), region grouping → `TextElement` (V2) |
+| `:platform:game` | platform | Game text from the game's own window: recognition, "do not translate" rules, line settling → `TextElement` (V3) |
 | `:app` | UI | Compose screens, `AndroidLogger`, Hilt wiring for the pure-Kotlin domain |
 
 Dependency rules that the build enforces:
