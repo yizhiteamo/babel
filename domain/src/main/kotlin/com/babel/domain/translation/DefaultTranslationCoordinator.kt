@@ -565,6 +565,7 @@ class DefaultTranslationCoordinator(
                 sourceText = element.text,
                 languages = pair.forElement(element),
                 context = context,
+                recognised = element.sourceType != TextSourceType.ACCESSIBILITY,
             )
             val result = translator.translate(request)
             val status = result.status

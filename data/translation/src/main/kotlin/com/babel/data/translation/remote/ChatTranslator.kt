@@ -231,6 +231,20 @@ class ChatTranslator(
         // explicitly is worth more here than more context was.
         append(" Titles and forms of address — teacher, senior, brother — are")
         append(" translated by meaning, never spelled out by sound.")
+        // Two things a user reported on real pages: misread characters carried
+        // straight into the translation (嶺幻 read as 積幻, 真実 as 基実 —
+        // `docs/milestones/v2.md` measured both), and translations that follow
+        // the source's word order into stilted Chinese. The recogniser's text
+        // is a reading, not the original; the model can often see what was
+        // meant, if it is told it may.
+        if (request.recognised) {
+            append(" The text was read from an image by character recognition and may")
+            append(" contain misread or missing characters: translate what it most")
+            append(" plausibly says, not the mistakes.")
+        }
+        append(" Write natural, fluent")
+        append(" ${nameOf(request.languages.target)} a native reader would write,")
+        append(" reordering the sentence where that reads better.")
     }
 
     /**

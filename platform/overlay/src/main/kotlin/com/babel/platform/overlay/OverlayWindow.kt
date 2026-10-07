@@ -23,10 +23,14 @@ import com.babel.core.model.TextSourceType
  * child views. Every touch reaches the app underneath, which is a V1 acceptance
  * condition: translating a screen must never change how it behaves.
  *
- * The price is that the original shows through at 20%. Android caps the opacity
- * of an untrusted overlay that lets touches past
- * (`maximum_obscuring_opacity_for_touch`, 0.8). Here the cap is unavoidable,
- * and worth paying.
+ * Android caps the opacity of an **untrusted** overlay that lets touches past
+ * (`maximum_obscuring_opacity_for_touch`, 0.8), and for a long time the
+ * original showed through every V1 translation at 20%. The container is now
+ * added through the accessibility service as `TYPE_ACCESSIBILITY_OVERLAY`,
+ * which the input system trusts: measured on a phone, `alpha=1` with
+ * `FLAG_NOT_TOUCHABLE`, the original fully hidden, and a swipe starting on a
+ * translation still scrolled the app (`TrustedWindows`). Without the service
+ * it falls back to the capped app overlay.
  *
  * ## Text in a captured image (V2, manga)
  *
@@ -95,13 +99,19 @@ internal const val OWN_WINDOW_FLAGS =
         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
 
-internal class OverlayWindow(private val context: Context) {
+internal class OverlayWindow(
+    private val context: Context,
+    private val trusted: com.babel.platform.screen.TrustedWindows? = null,
+) {
 
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     /** Shared passthrough window for the accessibility path; created on demand. */
     private var container: FrameLayout? = null
+
+    /** The window manager [container] was added through, to remove it by. */
+    private var containerManager: WindowManager? = null
 
     private val views = LinkedHashMap<TextElementId, Held>()
     private val coordinateMapper = CoordinateMapper()
@@ -121,8 +131,9 @@ internal class OverlayWindow(private val context: Context) {
 
     fun detach() {
         clear()
-        container?.let { runCatching { windowManager.removeView(it) } }
+        container?.let { runCatching { (containerManager ?: windowManager).removeView(it) } }
         container = null
+        containerManager = null
         attached = false
     }
 
@@ -311,16 +322,36 @@ internal class OverlayWindow(private val context: Context) {
      */
     private fun ensureContainer(): Boolean {
         container?.let {
-            refreshContainerOrigin(it)
-            return true
+            // A trusted container goes with the service that added it; when
+            // the service reconnects, a new one is made.
+            if (it.isAttachedToWindow || containerManager == null) {
+                refreshContainerOrigin(it)
+                return true
+            }
+            it.removeAllViews()
+            container = null
+            containerManager = null
+            views.entries.removeAll { (_, held) -> !held.ownWindow }
         }
-        if (!canDraw()) return false
 
-        val layout = FrameLayout(context)
+        // The accessibility service's own window when it is connected: a
+        // trusted overlay is drawn opaque even while letting touches through,
+        // so the original no longer shows through at 20% ([TrustedWindows]).
+        val serviceContext = trusted?.context
+        val owner = serviceContext ?: context
+        val manager = serviceContext?.getSystemService(WindowManager::class.java) ?: windowManager
+        val type = if (serviceContext != null) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            if (!canDraw()) return false
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        }
+
+        val layout = FrameLayout(owner)
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            type,
             CONTAINER_FLAGS,
             PixelFormat.TRANSLUCENT,
         ).apply {
@@ -333,8 +364,9 @@ internal class OverlayWindow(private val context: Context) {
             alpha = 1f
         }
 
-        runCatching { windowManager.addView(layout, params) }.onFailure { return false }
+        runCatching { manager.addView(layout, params) }.onFailure { return false }
         container = layout
+        containerManager = manager
         refreshContainerOrigin(layout)
         return true
     }

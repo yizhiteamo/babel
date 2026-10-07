@@ -15,6 +15,11 @@ data class TranslationRequest(
     val languages: LanguagePair,
     /** Optional surrounding text a provider may use; not persisted. */
     val context: String? = null,
+    /**
+     * Whether [sourceText] was read from pixels and may hold misread
+     * characters. Accessibility text is exact; OCR's is a reading.
+     */
+    val recognised: Boolean = false,
     val metadata: Map<String, String> = emptyMap(),
 )
 

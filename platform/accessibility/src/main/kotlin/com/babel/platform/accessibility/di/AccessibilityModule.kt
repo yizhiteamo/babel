@@ -39,6 +39,10 @@ abstract class AccessibilityModule {
 
     @Binds
     @Singleton
+    abstract fun bindTrustedWindows(impl: AccessibilityScreenshotSource): com.babel.platform.screen.TrustedWindows
+
+    @Binds
+    @Singleton
     abstract fun bindGameController(impl: GameModeController): GameCaptureController
 
     @Binds

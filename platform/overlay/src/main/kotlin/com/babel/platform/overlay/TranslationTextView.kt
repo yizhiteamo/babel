@@ -37,6 +37,12 @@ internal class TranslationTextView(context: Context) : TextView(context), Transl
     init {
         gravity = Gravity.CENTER_VERTICAL or Gravity.START
         includeFontPadding = false
+        // A node can report text the app does not show: an ellipsized
+        // TextView — a timeline's long post cut at three lines — hands
+        // accessibility the whole text. Its translation then cannot fit the
+        // box even at the smallest size, and was cut off mid-sentence with
+        // nothing to say so. Ending in "…", as the original does, says it.
+        ellipsize = android.text.TextUtils.TruncateAt.END
         setPadding(HORIZONTAL_PADDING_PX, 0, HORIZONTAL_PADDING_PX, 0)
         applyTheme()
     }

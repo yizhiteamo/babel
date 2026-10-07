@@ -167,6 +167,18 @@ internal class BubbleRecognizer @Inject constructor(
         return if (unusable) general.recognize(frame) else lines
     }
 
+    /**
+     * Whether the general engine sees lettering in [crop] at all.
+     *
+     * The comic engine never declines: given a panel's border it writes a
+     * sentence. Measured on a pixiv page, two strips along panel edges, 1134x42
+     * and 1223x40, came back as fluent Japanese that was never there, and were
+     * translated into captions under the art. The general engine reads what is
+     * on the page or nothing, so it is the second opinion for such strips.
+     */
+    suspend fun generalSeesLettering(crop: Bitmap): Boolean =
+        general.recognize(crop).sumOf { line -> line.text.count { it.isLetter() } } >= MIN_CONFIRMING_LETTERS
+
     suspend fun release() = manga.release()
 
     private companion object {
@@ -178,5 +190,8 @@ internal class BubbleRecognizer @Inject constructor(
          * showing two glyphs does not settle which reader the rest of it gets.
          */
         const val MIN_PROBE_CHARS = 10
+
+        /** A real caption line has several; a texture gives none or a stray one. */
+        const val MIN_CONFIRMING_LETTERS = 3
     }
 }

@@ -18,6 +18,9 @@ Everything else — translation quality, layout, speed, smaller bugs — waits
 for the next of those. No more than one patch release a week; several
 blocking fixes in a week ship together.
 
+**Every release is confirmed with the user before anything is tagged,
+pushed or uploaded**, whichever of the two reasons applies.
+
 ## Versions
 
 `0.MINOR.PATCH` until the app is ready to be called 1.0. `versionCode` goes up

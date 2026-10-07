@@ -34,7 +34,10 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class AccessibilityScreenshotSource @Inject constructor(
     private val logger: BabelLogger,
-) : ScreenFrameSource {
+) : ScreenFrameSource, com.babel.platform.screen.TrustedWindows {
+
+    /** The connected service, for overlays it can add as trusted windows. */
+    override val context: android.content.Context? get() = service
 
     @Volatile
     private var service: AccessibilityService? = null

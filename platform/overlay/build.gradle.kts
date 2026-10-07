@@ -26,6 +26,9 @@ android {
 // Renderers consume RenderedTranslation only. No provider dependency here.
 dependencies {
     implementation(project(":domain"))
+    // TrustedWindows only: the accessibility service's context, for overlays
+    // the input system does not dim. Still cannot see :platform:accessibility.
+    implementation(project(":platform:screen"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)

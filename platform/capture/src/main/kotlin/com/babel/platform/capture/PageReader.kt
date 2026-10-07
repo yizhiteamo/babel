@@ -10,6 +10,7 @@ import com.babel.domain.vision.LineJoin
 import com.babel.domain.vision.MangaReadingOrder
 import com.babel.domain.vision.NestedDetections
 import com.babel.domain.vision.PageMotion
+import com.babel.domain.vision.PatternReading
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.ScrolledBalloons
 import com.babel.domain.vision.SoundEffect
@@ -585,6 +586,14 @@ internal class DetectingPageReader @Inject constructor(
         // balloons, never lose one.
         val crop = frame.cropTo(bubble.text) ?: return emptyList()
         return try {
+            // A long thin strip on the art is the shape of a panel border as
+            // much as of a caption line; it is read only if the general engine
+            // agrees there is lettering in it (`BubbleRecognizer.generalSeesLettering`).
+            val strip = bubble.onArt && bubble.text.width >= bubble.text.height * STRIP_RATIO
+            if (strip && !recognizer.generalSeesLettering(crop)) {
+                logger.debug(TAG, "strip without lettering: ${bubble.text.width}x${bubble.text.height}")
+                return emptyList()
+            }
             recognizer.recognize(crop)
         } finally {
             crop.recycle()
@@ -600,6 +609,12 @@ internal class DetectingPageReader @Inject constructor(
         // here because the test is on the words rather than on the box. A
         // short katakana read inside a balloon is somebody speaking; the same
         // read on the artwork is a noise drawn into the picture.
+        // A border or a screen tone read as one character over and over
+        // (`PatternReading`); dropped wherever it was found.
+        if (PatternReading.isPattern(LineJoin.join(lines.map { it.text }))) {
+            logger.debug(TAG, "dropped a pattern read as text")
+            return null
+        }
         if (bubble.onArt && SoundEffect.isDrawnNoise(LineJoin.join(lines.map { it.text }))) {
             logger.debug(TAG, "dropped a sound effect")
             return null
@@ -717,6 +732,9 @@ internal class DetectingPageReader @Inject constructor(
         copy(left = left + dx, top = top + dy, right = right + dx, bottom = bottom + dy)
 
     private companion object {
+        /** Width over height at which lettering on the art is checked as a possible border. */
+        const val STRIP_RATIO = 12
+
         const val TAG = "DetectingPageReader"
         const val MIN_SIDE = 8
 
