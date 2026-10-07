@@ -37,6 +37,7 @@ one).
 | Same language as the target | **Not translated.** Already the pipeline's behaviour (`Unchanged`); game mode additionally remembers a game's language once it is settled, so it stops asking. |
 | Look | **Fit the game's UI.** Where the text sits on a plain or smoothly graded panel, the original is erased and the translation drawn in its place. Elsewhere it is not translated, or falls back to the existing box. |
 | Seeing the original | **Long press shows the original**, release restores the translation. A short tap is handed straight on to the game, because tapping the dialogue box is how a player advances it. |
+| Touches on a translation | **Babel's, as in manga mode.** Only the translation's own area takes touches; everywhere else goes to the game untouched. Passing a long press on to the game as well was considered and rejected: it would collide with seeing the original. A game whose long press means something (hold to skip) still gets it anywhere outside the translated text. |
 
 ## In Scope
 
