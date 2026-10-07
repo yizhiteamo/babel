@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The art (AI-generated) fills the foreground at 0.74 of the layer, the largest
+    scale at which the 文A badge stays inside a circular mask. The background is
+    the art's own edge colour, so the padding does not show. Monochrome is the
+    glyph Android 13+ tints for themed icons.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />
+</adaptive-icon>

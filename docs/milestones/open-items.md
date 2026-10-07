@@ -122,14 +122,6 @@ returns. Long pages, rate-limited by `maxConcurrentTranslations`, do engage.
 
 ## C. Wanted before any release
 
-### 8. No app icon
-
-`CLAUDE.md` → Conventions
-
-`app/src/main/res/` holds no mipmap or drawable and the manifest declares no
-`android:icon`, so the launcher shows the platform placeholder. (Deferred by
-the user, not forgotten.)
-
 ### 14. Manga mode reads any app that does not expose its text
 
 `docs/systems/privacy.md` → *Known, unfixed*

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher art's own edge colour, so the padding around it does not show. -->
+    <color name="ic_launcher_background">#483771</color>
+</resources>
