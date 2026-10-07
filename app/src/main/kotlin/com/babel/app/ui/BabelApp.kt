@@ -46,6 +46,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
 import com.babel.app.capability.openAccessibilitySettings
+import com.babel.app.tile.TileRequestResult
+import com.babel.app.tile.canRequestTile
+import com.babel.app.tile.requestAddBabelTile
 import com.babel.core.model.ApiKey
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.SourceLanguageMode
@@ -135,6 +138,7 @@ fun BabelApp(
             // read on a screen already asking for two permissions, and it
             // describes a symptom nobody has met yet.
             if (state.accessibilityGranted) {
+                QuickSettingsCard()
                 BackgroundSurvivalCard(
                     autoRestore = state.autoRestore,
                     grantCommand = "adb shell pm grant ${context.packageName} " +
@@ -1079,6 +1083,59 @@ private fun BackgroundSurvivalCard(
                 }
                 OutlinedButton(onClick = onOpenAppSettings) {
                     Text(stringResource(R.string.background_action_app))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Says the quick-settings tile exists, where it is, and offers to add it.
+ *
+ * Measured the hard way: the tile was in the control centre and the user did
+ * not find it — HyperOS shows tiles without names, and its glyph reads as the
+ * system's own translate. Below Android 13 the system cannot be asked to add
+ * it, so the card only says where to look.
+ */
+@Composable
+private fun QuickSettingsCard() {
+    val context = LocalContext.current
+    var result by remember { mutableStateOf<TileRequestResult?>(null) }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.tile_card_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.tile_card_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.tile_card_where),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            result?.let {
+                Text(
+                    text = stringResource(
+                        when (it) {
+                            TileRequestResult.ADDED -> R.string.tile_result_added
+                            TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
+                            TileRequestResult.DECLINED -> R.string.tile_result_declined
+                            TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (canRequestTile) {
+                OutlinedButton(onClick = { context.requestAddBabelTile { result = it } }) {
+                    Text(stringResource(R.string.tile_card_action))
                 }
             }
         }

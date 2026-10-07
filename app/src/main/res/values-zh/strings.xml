@@ -110,7 +110,7 @@
     <string name="overlay_missing_action">授予权限</string>
     <string name="background_title">让它一直运行</string>
     <string name="background_explanation">手机的「清理」会强行停止 Babel，无障碍服务也会随之被系统关掉，只能再去设置里打开。</string>
-    <string name="background_steps">在最近任务里长按 Babel 卡片并「锁定」，清理时就会跳过它。不需要翻译时，用下拉快捷开关里的「Babel」关掉，不必清理。省电策略设为「无限制」。</string>
+    <string name="background_steps">在最近任务里长按 Babel 卡片并「锁定」，清理时就会跳过它。不需要翻译时，用上面的快捷开关关掉，不必清理。省电策略设为「无限制」。</string>
     <string name="background_action_battery">电池设置</string>
     <string name="background_action_app">应用设置</string>
     <string name="background_restore_on">自动恢复已开启：被强行停止后，打开一次 Babel，无障碍会自动重新开启。</string>
@@ -122,4 +122,12 @@
     <string name="tile_on">翻译中</string>
     <string name="tile_off">已关闭</string>
     <string name="tile_unavailable">无障碍未开启</string>
+    <string name="tile_card_title">快捷开关</string>
+    <string name="tile_card_explanation">一键暂停或恢复全部翻译，不用进入 Babel，也不会关掉无障碍——不必为了关翻译去清理应用。</string>
+    <string name="tile_card_where">下拉控制中心，找「文A」翻译图标。部分手机的控制中心不显示名称，点「编辑」才能看到它下面写着「Babel」。</string>
+    <string name="tile_card_action">添加到快捷开关</string>
+    <string name="tile_result_added">已添加。</string>
+    <string name="tile_result_already">已经在快捷开关里了。</string>
+    <string name="tile_result_declined">未添加。</string>
+    <string name="tile_result_unsupported">这台手机不支持从这里添加，请在控制中心的「编辑」里手动添加「Babel」。</string>
 </resources>

@@ -25,6 +25,11 @@ whether it was unbound or killed, so a force stop — which takes it out of the
 enabled list — can be undone when the user opens Babel, if they have granted
 `WRITE_SECURE_SETTINGS`. The measurements are in `docs/systems/capabilities.md`.
 
+The tile is easy to miss — HyperOS's control centre shows tiles without names,
+and its glyph reads as the system's own translate — so the home screen has a
+card that says what it does and where it is, and on Android 13 and later asks
+the system to add it (`StatusBarManager.requestAddTileService`).
+
 ## Unsupported Content
 
 If useful accessible text is unavailable, the active text-only phase should fail gracefully rather than silently invoking future visual-translation systems.

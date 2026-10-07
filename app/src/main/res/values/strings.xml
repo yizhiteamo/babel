@@ -113,7 +113,7 @@
     <string name="overlay_missing_action">Grant the permission</string>
     <string name="background_title">Keeping it running</string>
     <string name="background_explanation">Phone cleaners force-stop Babel, and a force stop switches its accessibility service off — then it has to be switched on again in system settings.</string>
-    <string name="background_steps">In recent apps, long-press Babel and lock it, so cleaning skips it. When you do not need translation, turn it off with the Babel tile in quick settings instead of clearing the app. Battery: set Babel to unrestricted.</string>
+    <string name="background_steps">In recent apps, long-press Babel and lock it, so cleaning skips it. When you do not need translation, use the quick settings switch above instead of clearing the app. Battery: set Babel to unrestricted.</string>
     <string name="background_action_battery">Battery</string>
     <string name="background_action_app">App settings</string>
     <string name="background_restore_on">Automatic recovery is on: after a force stop, opening Babel once switches the accessibility service back on.</string>
@@ -125,4 +125,12 @@
     <string name="tile_on">Translating</string>
     <string name="tile_off">Off</string>
     <string name="tile_unavailable">Accessibility off</string>
+    <string name="tile_card_title">Quick settings switch</string>
+    <string name="tile_card_explanation">Pause or resume all translation in one tap, without leaving Babel or switching accessibility off — no need to clear the app to stop it.</string>
+    <string name="tile_card_where">Pull down the control centre and look for the translate icon (文A). Some phones show tiles without names; tap Edit to see \"Babel\" written under it.</string>
+    <string name="tile_card_action">Add to quick settings</string>
+    <string name="tile_result_added">Added.</string>
+    <string name="tile_result_already">It is already in quick settings.</string>
+    <string name="tile_result_declined">Not added.</string>
+    <string name="tile_result_unsupported">This phone does not offer to add it from here. Add \"Babel\" by hand through Edit in the control centre.</string>
 </resources>
