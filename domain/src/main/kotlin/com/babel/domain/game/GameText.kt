@@ -21,12 +21,17 @@ interface GameCaptureController : ScreenCaptureController
 interface GameTextScanner : TextSource {
 
     /**
-     * Reads the window [windowId] once.
+     * Reads the window [windowId] frame after frame for as long as
+     * [stillWanted] says so, then returns.
+     *
+     * A loop rather than one frame per call, so the next picture can be taken
+     * while the last one is being read: done one after the other, frames came
+     * every ~470 ms instead of the platform's 333 (`docs/milestones/v3.md`).
      *
      * @param windowBounds where that window sits on the screen, so lines read
      *   in the window's own pixels can be put back in screen coordinates.
      */
-    suspend fun scan(windowId: Int, windowBounds: TextBounds, packageName: String)
+    suspend fun read(windowId: Int, windowBounds: TextBounds, packageName: String, stillWanted: () -> Boolean)
 
     /** Takes everything this scanner published off the screen. */
     suspend fun clear()

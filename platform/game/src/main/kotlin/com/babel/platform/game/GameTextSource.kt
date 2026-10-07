@@ -13,6 +13,7 @@ import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.domain.game.ChangedBand
 import com.babel.domain.game.GameLine
 import com.babel.domain.game.GameTextFilter
 import com.babel.domain.game.GameTextScanner
@@ -27,6 +28,8 @@ import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.max
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -77,35 +80,95 @@ class GameTextSource @Inject constructor(
         TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
     }
 
-    override suspend fun scan(windowId: Int, windowBounds: TextBounds, packageName: String) {
-        val frame = frames.windowFrame(windowId) ?: return
-        try {
-            val started = System.currentTimeMillis()
-            val read = recognise(frame)
-            val readMs = System.currentTimeMillis() - started
+    /** The grid the last read frame was compared on, and what was read from it. */
+    private var lastGrid: IntArray? = null
+    private var lastLines: List<GameLine> = emptyList()
 
-            val kept = read.filter { GameTextFilter.judge(it, frame.height) == GameTextFilter.Verdict.TRANSLATE }
-
-            lock.withLock {
-                val update = lines.next(kept, now = System.currentTimeMillis())
-                val gone = update.gone.mapNotNull { published.remove(it) }
-                if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
-
-                val upserted = update.settled.map { settled ->
-                    val element = toElement(settled.key, settled.line, windowBounds, packageName)
-                    published[settled.key] = element.id
-                    logger.debug(
-                        TAG,
-                        "settled ${Redact.text(settled.line.text)} after ${settled.settledAfterMs}ms",
-                    )
-                    element
-                }
-                if (upserted.isNotEmpty()) events.emit(TextSourceEvent.Upserted(upserted))
+    override suspend fun read(
+        windowId: Int,
+        windowBounds: TextBounds,
+        packageName: String,
+        stillWanted: () -> Boolean,
+    ) = coroutineScope {
+        // The next picture is taken while this one is read. The frame source
+        // waits out the platform's interval itself, so this asks as soon as it
+        // may and no sooner.
+        var next = async { frames.windowFrame(windowId) }
+        while (stillWanted()) {
+            val frame = next.await()
+            if (!stillWanted()) {
+                frame?.recycle()
+                break
             }
-            logger.debug(TAG, "read ${read.size} lines, kept ${kept.size}, in ${readMs}ms")
-        } finally {
-            frame.recycle()
+            next = async { frames.windowFrame(windowId) }
+            if (frame == null) continue
+            try {
+                readOne(frame, windowBounds, packageName)
+            } finally {
+                frame.recycle()
+            }
         }
+        next.cancel()
+        runCatching { next.await()?.recycle() }
+        Unit
+    }
+
+    private suspend fun readOne(frame: Bitmap, windowBounds: TextBounds, packageName: String) {
+        val started = System.currentTimeMillis()
+        val grid = gridOf(frame)
+        val band = ChangedBand.of(lastGrid, grid, GRID_COLUMNS)
+
+        val read: List<GameLine>
+        val how: String
+        if (band == null) {
+            // Nothing moved: the last reading stands, and is offered again so
+            // that two frames agreeing still settles a line.
+            read = lastLines
+            how = "unchanged"
+        } else {
+            val cellHeight = frame.height.toFloat() / GRID_ROWS
+            val top = ((band.first - BAND_MARGIN_CELLS) * cellHeight).toInt().coerceAtLeast(0)
+            val bottom = ((band.last + 1 + BAND_MARGIN_CELLS) * cellHeight).toInt().coerceAtMost(frame.height)
+            read = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
+                how = "whole"
+                recognise(frame, 0, frame.height)
+            } else {
+                how = "band ${bottom - top}px"
+                ChangedBand.merge(lastLines, recognise(frame, top, bottom), top, bottom)
+            }
+            lastGrid = grid
+            lastLines = read
+        }
+        val readMs = System.currentTimeMillis() - started
+
+        val kept = read.filter { GameTextFilter.judge(it, frame.height) == GameTextFilter.Verdict.TRANSLATE }
+
+        lock.withLock {
+            val update = lines.next(kept, now = System.currentTimeMillis())
+            val gone = update.gone.mapNotNull { published.remove(it) }
+            if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
+
+            val upserted = update.settled.map { settled ->
+                val element = toElement(settled.key, settled.line, windowBounds, packageName)
+                published[settled.key] = element.id
+                logger.debug(
+                    TAG,
+                    "settled ${Redact.text(settled.line.text)} after ${settled.settledAfterMs}ms",
+                )
+                element
+            }
+            if (upserted.isNotEmpty()) events.emit(TextSourceEvent.Upserted(upserted))
+        }
+        logger.debug(TAG, "read $how: ${read.size} lines, kept ${kept.size}, in ${readMs}ms")
+    }
+
+    /** Mean brightness of a [GRID_COLUMNS] x [GRID_ROWS] grid, for [ChangedBand]. */
+    private fun gridOf(frame: Bitmap): IntArray {
+        val small = Bitmap.createScaledBitmap(frame, GRID_COLUMNS, GRID_ROWS, true)
+        val pixels = IntArray(GRID_COLUMNS * GRID_ROWS)
+        small.getPixels(pixels, 0, GRID_COLUMNS, 0, 0, GRID_COLUMNS, GRID_ROWS)
+        if (small !== frame) small.recycle()
+        return IntArray(pixels.size) { luma(pixels[it]).toInt() }
     }
 
     override suspend fun clear() {
@@ -113,6 +176,8 @@ class GameTextSource @Inject constructor(
             lines.reset()
             published.clear()
             lines = StableLines()
+            lastGrid = null
+            lastLines = emptyList()
             session += 1
         }
         events.emit(TextSourceEvent.Cleared(TextSourceType.GAME))
@@ -122,16 +187,25 @@ class GameTextSource @Inject constructor(
         runCatching { recognizer.close() }
     }
 
-    private suspend fun recognise(frame: Bitmap): List<GameLine> = try {
-        val result = recognizer.process(InputImage.fromBitmap(frame, 0)).await()
+    /**
+     * Reads rows [top, bottom) of [frame], returning lines in the frame's
+     * coordinates. The backdrop is judged on the frame's own pixels around
+     * each line, so a band's edge cannot make a panel look like artwork.
+     */
+    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int): List<GameLine> = try {
+        val part = if (top == 0 && bottom == frame.height) frame else Bitmap.createBitmap(frame, 0, top, frame.width, bottom - top)
+        val result = try {
+            recognizer.process(InputImage.fromBitmap(part, 0)).await()
+        } finally {
+            if (part !== frame) part.recycle()
+        }
         val width = frame.width
         val height = frame.height
-        val pixels = IntArray(width * height).also { frame.getPixels(it, 0, width, 0, 0, width, height) }
         result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
             val box = line.boundingBox ?: return@mapNotNull null
             if (line.text.isBlank()) return@mapNotNull null
-            val bounds = TextBounds(box.left, box.top, box.right, box.bottom, CoordinateSpace.SCREEN)
-            GameLine(line.text, bounds, backdropError(pixels, width, height, bounds))
+            val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
+            GameLine(line.text, bounds, backdropError(frame, width, height, bounds))
         }
     } catch (cancellation: CancellationException) {
         throw cancellation
@@ -145,17 +219,21 @@ class GameTextSource @Inject constructor(
      * predicted row by row from the pixels at the line's two ends. Mean
      * absolute error in brightness; see [GameLine.backdropError].
      */
-    private fun backdropError(pixels: IntArray, width: Int, height: Int, box: TextBounds): Double {
+    private fun backdropError(frame: Bitmap, width: Int, height: Int, box: TextBounds): Double {
         val pad = max(6, box.height / 4)
         val left = box.left - 1
         val right = box.right
         if (left < 0 || right >= width) return Double.MAX_VALUE
         var sum = 0.0
         var count = 0
+        val rowPixels = IntArray(width)
         val rows = (box.top - pad until box.top) + (box.bottom until box.bottom + pad)
         for (y in rows) {
             if (y < 0 || y >= height) continue
-            val row = y * width
+            // One row at a time: the whole frame as an int array is 18 MB.
+            frame.getPixels(rowPixels, 0, width, 0, y, width, 1)
+            val pixels = rowPixels
+            val row = 0
             val l = luma(pixels[row + left])
             val r = luma(pixels[row + right])
             val span = (right - left).coerceAtLeast(1)
@@ -196,6 +274,16 @@ class GameTextSource @Inject constructor(
     private companion object {
         const val TAG = "GameText"
         const val SAMPLE_STEP = 4
+
+        /** About 50 px a cell on a 3200x1440 window: a dialogue line is a row or two. */
+        const val GRID_COLUMNS = 64
+        const val GRID_ROWS = 29
+
+        /** A cell of slack above and below, so a line's edge is not cut off. */
+        const val BAND_MARGIN_CELLS = 1
+
+        /** A band this tall is a new screen, not a new line: read it whole. */
+        const val WHOLE_FRAME_FRACTION = 0.5f
         val JAPANESE = LanguageTag("ja")
     }
 }

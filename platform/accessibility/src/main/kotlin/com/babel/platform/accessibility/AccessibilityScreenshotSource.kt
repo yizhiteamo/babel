@@ -123,11 +123,17 @@ class AccessibilityScreenshotSource @Inject constructor(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
         val current = service ?: return null
 
+        // Paced from when the last one was **asked for**, not from when it
+        // arrived. The platform's interval runs start to start (spike 1: asked
+        // ~300 ms after the last arrived, all succeeded; ~205, half failed).
+        // Counting from arrival added the 60-110 ms a capture takes to every
+        // frame — measured, game mode read a frame every ~480 ms.
         return pacing.withLock {
             val since = SystemClock.elapsedRealtime() - lastCaptureAt
-            if (since < MIN_INTERVAL_MS) delay(MIN_INTERVAL_MS - since)
-            val frame = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { takeWindowScreenshot(current, windowId) }
+            if (since < WINDOW_INTERVAL_MS) delay(WINDOW_INTERVAL_MS - since)
             lastCaptureAt = SystemClock.elapsedRealtime()
+            val frame = withTimeoutOrNull(CAPTURE_TIMEOUT_MS) { takeWindowScreenshot(current, windowId) }
+            if (frame == null) lastCaptureAt = SystemClock.elapsedRealtime()
             frame
         }
     }
@@ -209,6 +215,9 @@ class AccessibilityScreenshotSource @Inject constructor(
          * itself, and costs nothing: nothing here wants screenshots faster.
          */
         const val MIN_INTERVAL_MS = 400L
+
+        /** Start to start, a little over the platform's ~333 ms (`windowFrame`). */
+        const val WINDOW_INTERVAL_MS = 350L
 
         /**
          * How long to wait for the platform to answer before giving up on a

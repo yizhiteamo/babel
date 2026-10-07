@@ -705,7 +705,12 @@ class BabelAccessibilityService : AccessibilityService() {
                 gamePathOwner = target.packageName
                 logger.info(TAG, "game mode reading ${target.packageName}")
             }
-            gameScanner.scan(target.windowId, target.bounds, target.packageName)
+            // Reads until this game's window is no longer the one in front.
+            // Checked against the window list once a frame at most: cheap,
+            // and what notices an app switch.
+            gameScanner.read(target.windowId, target.bounds, target.packageName) {
+                gameMode.state.value == CaptureState.ACTIVE && gameWindow()?.windowId == target.windowId
+            }
         }
     }
 
