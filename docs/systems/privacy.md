@@ -166,14 +166,13 @@ speech balloon, so "it only reads comics" is not a claim this detector supports.
 Recorded so the next attempt does not re-derive them:
 
 - **Bind the mode to one app** — the first app entered after it is switched on
-  owns it; every other app is skipped, and the notification names the owner.
+  owns it; every other app is skipped, and the home screen names the owner.
   No new settings screen, small change, and it grows naturally into the next
   option. Costs: switching readers means switching the mode off and on.
 - **A user allow-list** — strongest and supports several readers at once. Costs
   an app-picker and persistence, which `docs/systems/settings.md` defers.
 - **Ask on entering a new app** — clearest consent, but it interrupts reading,
-  and with notification permission denied there is nowhere to ask (the gap this
-  document already records).
+  and Babel posts no notifications to ask through.
 - **A content gate** — attractive and, as measured above, **not reliable**;
   worse, it only fires after the screenshot and the OCR, which is the step that
   matters most here.
@@ -190,23 +189,28 @@ be settled before any release (`docs/milestones/open-items.md` #14).
 
 ## Visibility of screen reading
 
-Screen reading should be visible to the user for as long as it lasts.
+MediaProjection used to make screen reading visible whether anyone wanted it or
+not: a forced notification and a status-bar recording indicator. Taking frames
+through the accessibility service (ADR 009) removed both, and Babel then posted
+a notification of its own for as long as manga mode was on.
 
-MediaProjection used to guarantee this: the platform forced a notification and a
-status-bar recording indicator, and neither could be suppressed. Taking frames
-through the accessibility service instead (ADR 009) removed the ceremony the
-user disliked — and removed that guarantee with it.
+**That notification is gone, by the user's decision (2026-10-07).** It had in
+fact never appeared — Babel never asked for the notification permission Android
+13 requires — and when that was found, the user chose immersion over an
+ongoing notification, and declined an opt-in switch as one control too many.
 
-What replaces it:
+What shows that the screen is being read now, and nothing else does:
 
-- Babel posts its own ongoing notification for the lifetime of manga mode. The
-  platform no longer requires one; this document does.
-- The accessibility service description states that manga mode takes pictures of
-  the screen. It is shown at the moment the permission is granted, and it is now
-  the only place the user is told.
+- **At the moment of consent:** the accessibility service description says
+  manga mode takes pictures of the screen; it is the text shown when the
+  permission is granted.
+- **On the home screen:** the manga mode row reads 正在读取屏幕 while it does.
+- **In quick settings:** the Babel tile is lit while either path is on.
 
-The gap that remains, stated rather than glossed: if the user has denied
-notification permission there is no indicator, and Babel cannot create one.
+The cost, stated rather than glossed: while reading another app, with Babel not
+open and the control centre not pulled down, nothing on screen says the screen
+is being read. The translations drawn over the comic are the only sign — which
+is the point of the mode, and also its only indicator.
 
 ### Manga mode comes back by itself, and why that is not a new decision
 
@@ -224,9 +228,8 @@ Why it is nonetheless the right behaviour:
   replayed later as consent.
 - Nothing is restored without the accessibility service, which is a permission
   they granted explicitly and can revoke in system settings.
-- The indicator follows `CaptureState`, so a restored mode posts the
-  notification exactly as a hand-started one does. Screen reading stays visible
-  for as long as it lasts, which is the rule this section exists to keep.
+- A restored mode shows exactly as a hand-started one does: the home screen
+  row and the tile follow `CaptureState`, not how the mode came on.
 
 What Babel deliberately does **not** do is keep itself alive to make this rarer:
 there is no foreground service (ADR 009 removed the one MediaProjection

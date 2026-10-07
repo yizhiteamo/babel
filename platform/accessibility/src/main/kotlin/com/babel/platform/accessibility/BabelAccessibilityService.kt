@@ -70,9 +70,6 @@ class BabelAccessibilityService : AccessibilityService() {
     lateinit var imageScanner: ImageTextScanner
 
     @Inject
-    lateinit var indicator: MangaModeIndicator
-
-    @Inject
     lateinit var coordinator: TranslationCoordinator
 
     @Inject
@@ -556,11 +553,11 @@ class BabelAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Screen reading used to be visible because MediaProjection forced a
-     * notification, and `docs/systems/privacy.md` welcomed it rather than
-     * merely tolerating it. Nothing forces one now, so the notification is
-     * posted deliberately: the platform stopped requiring visibility, the
-     * project still does (ADR 009).
+     * Cleans up when manga mode goes off.
+     *
+     * There is no notification while it is on. One used to be posted here, and
+     * was dropped for immersion: what shows that the screen is being read is
+     * the home screen and the quick-settings tile (`docs/systems/privacy.md`).
      */
     private suspend fun followMangaMode() {
         var wasActive = false
@@ -569,10 +566,7 @@ class BabelAccessibilityService : AccessibilityService() {
             if (active == wasActive) return@collect
             wasActive = active
 
-            if (active) {
-                indicator.show()
-            } else {
-                indicator.hide()
+            if (!active) {
                 // Immediately rather than at the next tick of the scan loop:
                 // the user switched the mode off and expects the bubbles gone.
                 standDownImagePath()
@@ -629,7 +623,6 @@ class BabelAccessibilityService : AccessibilityService() {
         imagePathOwner = null
         screenshots.detach()
         mangaMode.onServiceAvailabilityChanged()
-        indicator.hide()
         coordinator.stop()
         scope?.cancel()
         scope = null

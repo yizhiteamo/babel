@@ -62,6 +62,17 @@ The accessibility service description was also rewritten to state that manga
 mode takes pictures of the screen. It is the copy shown at the moment the
 permission is granted, and it is now the only place the user is told.
 
+### Amended 2026-10-07: the notification is withdrawn
+
+The notification above is no longer posted. It had never actually appeared —
+the permission Android 13 requires was never requested — and when that came to
+light the user chose not to have one: reading should be immersive, and an
+opt-in switch was one control too many. What shows screen reading now is the
+service description at consent, the home screen's manga mode row, and the
+quick-settings tile; the reasoning and the remaining gap are in
+`docs/systems/privacy.md` → *Visibility of screen reading*. The rest of this
+decision stands.
+
 ## Module consequence
 
 Only a live `AccessibilityService` can take a screenshot, and that service is in

@@ -14,8 +14,5 @@
     -->
     <string name="accessibility_service_description">Reads the text currently on screen so it can be translated in place. In manga mode it also takes pictures of the screen to read text inside images. Everything is translated on this device and is not uploaded.</string>
 
-    <string name="manga_indicator_channel">Manga mode</string>
-    <string name="manga_indicator_title">Manga mode is on</string>
-    <string name="manga_indicator_text">Babel is reading the screen as images. The pictures never leave this device.</string>
 
 </resources>
