@@ -16,6 +16,18 @@ translated and how it is drawn are signals every game shares (what kind of
 backdrop text sits on, whether a reading is stable, whether it is a number);
 a per-game profile is an optional correction on top, never a requirement.
 
+## Fast, accurate and good — at any pace of play
+
+Story-heavy games, where the player taps rarely, are the main reason to
+translate a game, but the design must not assume a slow player. A player who
+taps through dialogue quickly, or moves through menus, must still get
+translations fast, correctly read and well drawn — by whatever method that
+takes. Concretely this rules out designs that only work when the screen sits
+still for seconds: every stage is judged by how it behaves when the text changes
+again before the last translation has landed (stale work is dropped, cached
+interface text appears at once, nothing from an old line is drawn over a new
+one).
+
 ## Decisions agreed before writing this
 
 | Question | Decision |
