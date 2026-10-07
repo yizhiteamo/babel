@@ -151,6 +151,7 @@ Common system documents:
 - Capabilities: `docs/systems/capabilities.md`
 - Privacy: `docs/systems/privacy.md`
 - Translation scope: `docs/systems/scope.md`
+- Releases (when to publish, what each needs): `docs/systems/release.md`
 - Testing: `docs/systems/testing.md` (traps and principles); `docs/testing/` (the pages and images to test against)
 
 Do not load all documentation unless the task genuinely spans all systems.
