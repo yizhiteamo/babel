@@ -133,4 +133,6 @@
     <string name="tile_result_already">It is already in quick settings.</string>
     <string name="tile_result_declined">Not added.</string>
     <string name="tile_result_unsupported">This phone does not offer to add it from here. Add \"Babel\" by hand through Edit in the control centre.</string>
+    <string name="tile_card_added">Added</string>
+    <string name="tile_card_remove">Not needed any more? In the control centre, tap Edit and take \"Babel\" out. To turn translation off you do not need to remove it — just tap it.</string>
 </resources>

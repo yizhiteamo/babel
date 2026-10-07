@@ -28,7 +28,9 @@ enabled list — can be undone when the user opens Babel, if they have granted
 The tile is easy to miss — HyperOS's control centre shows tiles without names,
 and its glyph reads as the system's own translate — so the home screen has a
 card that says what it does and where it is, and on Android 13 and later asks
-the system to add it (`StatusBarManager.requestAddTileService`).
+the system to add it (`StatusBarManager.requestAddTileService`). No app can
+remove its own tile, so once the tile reports itself added (`TilePresence`)
+the card says how to remove it through Edit instead of offering a button.
 
 ## Unsupported Content
 

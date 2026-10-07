@@ -138,7 +138,10 @@ fun BabelApp(
             // read on a screen already asking for two permissions, and it
             // describes a symptom nobody has met yet.
             if (state.accessibilityGranted) {
-                QuickSettingsCard()
+                QuickSettingsCard(
+                    added = state.tileAdded,
+                    onAnswered = viewModel::onTileRequestAnswered,
+                )
                 BackgroundSurvivalCard(
                     autoRestore = state.autoRestore,
                     grantCommand = "adb shell pm grant ${context.packageName} " +
@@ -1098,7 +1101,7 @@ private fun BackgroundSurvivalCard(
  * it, so the card only says where to look.
  */
 @Composable
-private fun QuickSettingsCard() {
+private fun QuickSettingsCard(added: Boolean, onAnswered: (Boolean) -> Unit) {
     val context = LocalContext.current
     var result by remember { mutableStateOf<TileRequestResult?>(null) }
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -1106,10 +1109,23 @@ private fun QuickSettingsCard() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = stringResource(R.string.tile_card_title),
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.tile_card_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (added) {
+                    Text(
+                        text = stringResource(R.string.tile_card_added),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             Text(
                 text = stringResource(R.string.tile_card_explanation),
                 style = MaterialTheme.typography.bodySmall,
@@ -1120,22 +1136,41 @@ private fun QuickSettingsCard() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            result?.let {
+            if (added) {
+                // No button: Android lets no app remove its own tile, so the
+                // card says how instead of offering something it cannot do.
                 Text(
-                    text = stringResource(
-                        when (it) {
-                            TileRequestResult.ADDED -> R.string.tile_result_added
-                            TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
-                            TileRequestResult.DECLINED -> R.string.tile_result_declined
-                            TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
-                        },
-                    ),
+                    text = stringResource(R.string.tile_card_remove),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            if (canRequestTile) {
-                OutlinedButton(onClick = { context.requestAddBabelTile { result = it } }) {
-                    Text(stringResource(R.string.tile_card_action))
+            } else {
+                result?.let {
+                    Text(
+                        text = stringResource(
+                            when (it) {
+                                TileRequestResult.ADDED -> R.string.tile_result_added
+                                TileRequestResult.ALREADY_ADDED -> R.string.tile_result_already
+                                TileRequestResult.DECLINED -> R.string.tile_result_declined
+                                TileRequestResult.UNSUPPORTED -> R.string.tile_result_unsupported
+                            },
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (canRequestTile) {
+                    OutlinedButton(
+                        onClick = {
+                            context.requestAddBabelTile {
+                                result = it
+                                onAnswered(
+                                    it == TileRequestResult.ADDED || it == TileRequestResult.ALREADY_ADDED,
+                                )
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.tile_card_action))
+                    }
                 }
             }
         }

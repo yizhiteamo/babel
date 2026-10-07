@@ -9,6 +9,7 @@ import com.babel.core.model.LanguageTag
 import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.language.LanguageResolver
+import com.babel.app.tile.TilePresence
 import com.babel.domain.runtime.AccessibilityRecovery
 import com.babel.domain.runtime.CapabilityChecker
 import com.babel.domain.runtime.MasterSwitch
@@ -55,6 +56,8 @@ data class HomeUiState(
     val meteredConnection: Boolean = false,
     /** Whether a force-stopped service is put back on its own (`AccessibilityRecovery`). */
     val autoRestore: Boolean = false,
+    /** Whether Babel's quick-settings tile is in the panel (`TilePresence`). */
+    val tileAdded: Boolean = false,
 ) {
     /**
      * Whether pausing or resuming makes sense right now.
@@ -122,6 +125,7 @@ class HomeViewModel @Inject constructor(
     private val recognizerModel: RecognizerModel,
     private val remoteProbe: RemoteProbe,
     private val recovery: AccessibilityRecovery,
+    private val tilePresence: TilePresence,
 ) : ViewModel() {
 
     private val autoRestore = MutableStateFlow(recovery.canRestore)
@@ -177,6 +181,8 @@ class HomeViewModel @Inject constructor(
         state.copy(providerFailure = failure)
     }.combine(autoRestore) { state, restore ->
         state.copy(autoRestore = restore)
+    }.combine(tilePresence.added) { state, added ->
+        state.copy(tileAdded = added)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -208,6 +214,8 @@ class HomeViewModel @Inject constructor(
         // Opening the app is the one moment a force-stopped Babel runs again.
         recovery.restoreIfDropped()
         autoRestore.value = recovery.canRestore
+        // The tile may have been removed from the control centre meanwhile.
+        tilePresence.refresh()
         capabilityChecker.refresh()
         recognizerModel.refresh()
     }
@@ -232,6 +240,11 @@ class HomeViewModel @Inject constructor(
         coordinator.start()
         remember(paused = false)
         forgetSwitchedOff()
+    }
+
+    /** What the system's add-tile dialog answered; both yeses mean it is there. */
+    fun onTileRequestAnswered(added: Boolean) {
+        if (added) tilePresence.report(added = true)
     }
 
     /** The home screen's way back from the quick-settings switch. */

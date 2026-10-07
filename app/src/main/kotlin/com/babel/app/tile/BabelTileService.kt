@@ -53,14 +53,30 @@ class BabelTileService : TileService() {
     @Inject
     lateinit var recovery: AccessibilityRecovery
 
+    @Inject
+    lateinit var presence: TilePresence
+
     /** Taps outlive the panel closing, so they get the service's lifetime. */
     private val work = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     /** While the panel is showing the tile. */
     private var listening: CoroutineScope? = null
 
+    override fun onTileAdded() {
+        super.onTileAdded()
+        presence.report(added = true)
+    }
+
+    override fun onTileRemoved() {
+        presence.report(added = false)
+        super.onTileRemoved()
+    }
+
     override fun onStartListening() {
         super.onStartListening()
+        // Only a tile that is in the panel is listened to, so this also
+        // corrects a tile added before anything recorded it.
+        presence.report(added = true)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         listening = scope
         scope.launch {

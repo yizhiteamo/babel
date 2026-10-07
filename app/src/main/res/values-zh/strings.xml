@@ -130,4 +130,6 @@
     <string name="tile_result_already">已经在快捷开关里了。</string>
     <string name="tile_result_declined">未添加。</string>
     <string name="tile_result_unsupported">这台手机不支持从这里添加，请在控制中心的「编辑」里手动添加「Babel」。</string>
+    <string name="tile_card_added">已添加</string>
+    <string name="tile_card_remove">不需要时，在控制中心点「编辑」，把「Babel」移出即可。只是想关掉翻译的话不必移除，点它一下就行。</string>
 </resources>
