@@ -15,6 +15,7 @@ import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.settings.SwitchedOff
 import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -109,6 +110,18 @@ class DataStoreSettingsRepository(
         dataStore.edit { prefs -> prefs[Keys.MANGA_MODE] = enabled }
     }
 
+    override suspend fun setSwitchedOff(held: SwitchedOff?) {
+        dataStore.edit { prefs ->
+            if (held == null) {
+                prefs.remove(Keys.SWITCHED_OFF_TEXT)
+                prefs.remove(Keys.SWITCHED_OFF_MANGA)
+            } else {
+                prefs[Keys.SWITCHED_OFF_TEXT] = held.text
+                prefs[Keys.SWITCHED_OFF_MANGA] = held.manga
+            }
+        }
+    }
+
     private fun toSettings(prefs: Preferences): BabelSettings = BabelSettings(
         sourceLanguageMode = readSourceMode(prefs),
         targetLanguageMode = readTargetMode(prefs),
@@ -122,6 +135,9 @@ class DataStoreSettingsRepository(
         ),
         translationPaused = prefs[Keys.TRANSLATION_PAUSED] ?: false,
         mangaMode = prefs[Keys.MANGA_MODE] ?: false,
+        switchedOff = prefs[Keys.SWITCHED_OFF_TEXT]?.let { text ->
+            SwitchedOff(text = text, manga = prefs[Keys.SWITCHED_OFF_MANGA] ?: false)
+        },
     )
 
     /**
@@ -189,6 +205,9 @@ class DataStoreSettingsRepository(
          */
         val TRANSLATION_PAUSED = booleanPreferencesKey("translation_paused")
         val MANGA_MODE = booleanPreferencesKey("manga_mode")
+        /** Both present while the quick-settings switch is off, both absent otherwise. */
+        val SWITCHED_OFF_TEXT = booleanPreferencesKey("switched_off_text")
+        val SWITCHED_OFF_MANGA = booleanPreferencesKey("switched_off_manga")
     }
 
     private companion object {

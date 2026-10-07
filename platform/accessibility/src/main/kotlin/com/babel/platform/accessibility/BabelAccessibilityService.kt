@@ -82,6 +82,9 @@ class BabelAccessibilityService : AccessibilityService() {
     lateinit var dispatchers: DispatcherProvider
 
     @Inject
+    lateinit var restorer: AccessibilityServiceRestorer
+
+    @Inject
     lateinit var logger: BabelLogger
 
     private var scope: CoroutineScope? = null
@@ -184,6 +187,8 @@ class BabelAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         logger.info(TAG, "accessibility service connected")
+        // Before anything else, so a force stop from here on finds it written.
+        restorer.onConnected()
 
         // Only a live service can take a screenshot, so manga mode's frames
         // come from here (ADR 009).
@@ -607,6 +612,9 @@ class BabelAccessibilityService : AccessibilityService() {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        // The user, or the vendor's security centre, took the service away;
+        // that is not something to undo (`AccessibilityServiceRestorer`).
+        restorer.onUnbound()
         teardown()
         return super.onUnbind(intent)
     }

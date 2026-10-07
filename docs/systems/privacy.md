@@ -230,8 +230,38 @@ Why it is nonetheless the right behaviour:
 
 What Babel deliberately does **not** do is keep itself alive to make this rarer:
 there is no foreground service (ADR 009 removed the one MediaProjection
-required). The home screen explains the power settings instead, and the user
-decides.
+required). It would buy nothing anyway — a bound accessibility service already
+runs at a foreground service's importance, and what kills Babel is the user's
+own cleaner force-stopping it (`docs/systems/capabilities.md`). The home screen
+explains how to lock it in recents instead, and the user decides.
+
+### The service is put back after a force stop, and why that is not a new decision either
+
+A force stop also takes the accessibility service out of the enabled list,
+which until now meant a trip through system settings after every clean. With
+`WRITE_SECURE_SETTINGS` granted, opening Babel writes it back
+(`AccessibilityServiceRestorer`). That is the strongest thing Babel does on its
+own, so its limits are the point:
+
+- **The user grants it, on purpose, from a computer.** No dialog in any app can
+  give this permission; only `adb shell pm grant` can, and the home screen shows
+  the command and what it does rather than asking for it.
+- **Only a service the user had on, and only one nobody switched off.** Switching
+  it off in system settings unbinds it, and so does the vendor's security
+  centre revoking it; the service records both and the restorer leaves them
+  alone. Only a force stop — which kills the process before anything runs —
+  leaves the record saying the user wanted it.
+- **Only its own entry.** Every other service in the list is kept as written.
+- **Only when the user opens Babel.** A force-stopped app runs nothing until it
+  is launched, so there is no background path that turns screen reading back
+  on behind the user's back.
+
+### Turning translation off is no longer turning accessibility off
+
+The quick-settings tile pauses text translation and stops manga mode through
+the same calls as the home screen's buttons (`MasterSwitch`), and turning it on
+brings back exactly what it took down. Manga mode never comes on through it
+unless it was on when the tile went off: it takes pictures of the screen.
 
 ## What the logs contain
 

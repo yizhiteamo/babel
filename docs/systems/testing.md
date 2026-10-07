@@ -68,6 +68,11 @@ Found the hard way, each one having cost a wrong diagnosis:
   the exact split state the capability check exists for. Rebind before judging
   any V1 result, or a working build reads as a dead one.
 - **`adb install -r` unbinds the accessibility service.** Re-enabling it takes `am force-stop`, deleting `enabled_accessibility_services`, writing it again, and then **about fifteen seconds** before `dumpsys accessibility` reports it bound. Eight seconds reads as a failure to bind and invites a wrong diagnosis. On this phone that same window is when the grant gets taken away again — next bullet.
+- **With `WRITE_SECURE_SETTINGS` granted, opening the app re-enables the
+  service** after a force stop or a reinstall (`AccessibilityServiceRestorer`).
+  That is the quickest rebind, and also a trap: a test that force-stops the
+  app to see it unbound will find it bound again the moment the app is opened.
+  `pm revoke` it first to test the unaided path.
 - **MIUI/HyperOS revokes the grant a few seconds after every enable, and it is
   not a Babel bug.** The vendor security centre rescans every app named in
   `enabled_accessibility_services` whenever the list changes, and drops the ones

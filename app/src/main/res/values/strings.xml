@@ -112,8 +112,17 @@
     <string name="overlay_missing_explanation">Text is being read and translated, but nothing can be drawn on top of it: Babel does not have permission to appear over other apps. The translations are being discarded.</string>
     <string name="overlay_missing_action">Grant the permission</string>
     <string name="background_title">Keeping it running</string>
-    <string name="background_explanation">Some phones stop Babel as soon as you switch to another app, which also switches the accessibility service off. Allowing it to run in the background is what prevents that.</string>
-    <string name="background_steps">Battery: set Babel to unrestricted. Then, in its app settings, allow autostart — on some ROMs it sits under permissions rather than battery.</string>
+    <string name="background_explanation">Phone cleaners force-stop Babel, and a force stop switches its accessibility service off — then it has to be switched on again in system settings.</string>
+    <string name="background_steps">In recent apps, long-press Babel and lock it, so cleaning skips it. When you do not need translation, turn it off with the Babel tile in quick settings instead of clearing the app. Battery: set Babel to unrestricted.</string>
     <string name="background_action_battery">Battery</string>
     <string name="background_action_app">App settings</string>
+    <string name="background_restore_on">Automatic recovery is on: after a force stop, opening Babel once switches the accessibility service back on.</string>
+    <string name="background_restore_off">Automatic recovery is off. Run this once from a computer, and after a force stop opening Babel once switches the accessibility service back on:</string>
+    <string name="switched_off_title">Translation is off</string>
+    <string name="switched_off_text">Turned off from the quick settings tile. The accessibility service is still on, so turning it back on is instant.</string>
+    <string name="switched_off_action">Turn on</string>
+    <string name="tile_label">Babel</string>
+    <string name="tile_on">Translating</string>
+    <string name="tile_off">Off</string>
+    <string name="tile_unavailable">Accessibility off</string>
 </resources>

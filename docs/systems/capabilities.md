@@ -95,3 +95,60 @@ permission is an app-op with no settings key to watch, so it still rides on
 `ON_RESUME`.
 
 Device-testing traps around all of this are in `docs/systems/testing.md`.
+
+## A force stop takes the service out of the list
+
+Reported by the user: every time the process was killed, accessibility had to
+be switched on again in system settings. `dumpsys activity exit-info` on the
+HyperOS test phone says what actually killed it (2026-10-04 to 10-07, the
+builds' own reinstalls and the tests below left out):
+
+| Reason in `exit-info` | Times | Importance |
+|---|---|---|
+| `USER REQUESTED / FORCE STOP`, `due to SwipeUpClean` — clearing Babel from recents | 5 | 125 |
+| `OTHER KILLS BY SYSTEM`, `camera boost` (765MB PSS at the time) | 1 | 125 |
+| `LOW_MEMORY`, already a cached process | 2 | 400 |
+
+A force stop is what removes it: AOSP's package monitor drops a force-stopped
+package's service from `enabled_accessibility_services`. Reproduced with the
+recents screen's clear-all button, which logs as `OneKeyClean`: the list lost
+Babel in the same second as the exit. A process merely killed keeps its place in the list.
+
+### What does and does not keep it out of the cleaner's way
+
+Measured with the clear-all button, since injected swipes on the recents
+cards are ignored:
+
+- **Not being in recents does not help.** With `excludeFromRecents` on the
+  activity, the card was gone and `OneKeyClean` force-stopped the package
+  anyway (`ProcessSceneCleaner: OneKeyClean: force-stop pkgName=…`) — it cleans
+  background packages, not only tasks.
+- **Locking the card in recents does.** Locked, clear-all ran and Babel stayed,
+  process and service both. The lock lives in the vendor's `locked_apps`
+  setting, per package — the old id `com.babel` was still locked there, and the
+  renamed app was not until it was locked again.
+- **A foreground service would not.** A bound accessibility service already
+  runs at importance 125, the same as a foreground service, and the kills above
+  were at 125. #11 in `docs/milestones/open-items.md` is closed on this.
+
+### What Babel does about it
+
+- **A switch that is not the service.** Clearing the app was also how the user
+  turned translation off, so the quick-settings tile now does that instead
+  (`MasterSwitch`, `BabelTileService`), and the service can stay on.
+- **Putting it back after a force stop**, when the user has run
+  `adb shell pm grant com.yizhiteamo.babel android.permission.WRITE_SECURE_SETTINGS`
+  (`AccessibilityServiceRestorer`). Opening Babel then re-enables it; measured,
+  connected within five seconds of opening the app, and the vendor's rescan
+  returned `try to remove: []`. A service switched off by the user stays off:
+  that unbinds the service and the restorer records it, while a force stop
+  kills the process before anything can run — measured both ways.
+- **The tile cannot do the putting back.** Clicked after a force stop, SystemUI
+  logged the click and nothing in Babel ran: a stopped package's tile service
+  is not started. Opening the app is the one way back in.
+- **Babel's own switch page is not reachable.**
+  `android.settings.ACCESSIBILITY_DETAILS_SETTINGS` is hidden API and ended in
+  `Permission Denial` on this phone, so the button opens the accessibility list
+  with Babel's entry passed as the highlight; HyperOS's list does not highlight
+  it, and the user taps through 已下载的应用.
+

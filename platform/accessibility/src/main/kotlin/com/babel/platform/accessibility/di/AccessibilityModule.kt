@@ -1,9 +1,11 @@
 package com.babel.platform.accessibility.di
 
 import com.babel.core.common.BabelLogger
+import com.babel.domain.runtime.AccessibilityRecovery
 import com.babel.domain.settings.SettingsRepository
 import com.babel.domain.vision.ScreenCaptureController
 import com.babel.platform.accessibility.AccessibilityScreenshotSource
+import com.babel.platform.accessibility.AccessibilityServiceRestorer
 import com.babel.platform.accessibility.MangaModeController
 import com.babel.platform.screen.ScreenFrameSource
 import dagger.Binds
@@ -17,8 +19,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 /**
- * Publishes the two things the rest of the app needs from this module without
- * seeing it: who takes the pictures, and whether manga mode is on.
+ * Publishes what the rest of the app needs from this module without seeing it:
+ * who takes the pictures, whether manga mode is on, and how the service is put
+ * back after a force stop.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -31,6 +34,10 @@ abstract class AccessibilityModule {
     @Binds
     @Singleton
     abstract fun bindCaptureController(impl: MangaModeController): ScreenCaptureController
+
+    @Binds
+    @Singleton
+    abstract fun bindRecovery(impl: AccessibilityServiceRestorer): AccessibilityRecovery
 
     companion object {
 

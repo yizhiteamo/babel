@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -43,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.babel.app.R
+import com.babel.app.capability.openAccessibilitySettings
 import com.babel.core.model.ApiKey
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.SourceLanguageMode
@@ -108,6 +111,12 @@ fun BabelApp(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            // First, because it explains a screen where nothing is translating
+            // although every permission below says yes.
+            if (state.settings.switchedOff != null) {
+                SwitchedOffCard(onTurnOn = viewModel::turnTranslationOn)
+            }
+
             PermissionCard(
                 title = stringResource(R.string.permission_accessibility_title),
                 explanation = stringResource(R.string.permission_accessibility_explanation),
@@ -127,6 +136,9 @@ fun BabelApp(
             // describes a symptom nobody has met yet.
             if (state.accessibilityGranted) {
                 BackgroundSurvivalCard(
+                    autoRestore = state.autoRestore,
+                    grantCommand = "adb shell pm grant ${context.packageName} " +
+                        "android.permission.WRITE_SECURE_SETTINGS",
                     onOpenBattery = { context.openBatterySettings() },
                     onOpenAppSettings = { context.openAppSettings() },
                 )
@@ -1020,6 +1032,8 @@ private fun CaptureCard(
  */
 @Composable
 private fun BackgroundSurvivalCard(
+    autoRestore: Boolean,
+    grantCommand: String,
     onOpenBattery: () -> Unit,
     onOpenAppSettings: () -> Unit,
 ) {
@@ -1042,6 +1056,23 @@ private fun BackgroundSurvivalCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                text = stringResource(
+                    if (autoRestore) R.string.background_restore_on else R.string.background_restore_off,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            // Selectable, because it is meant to be copied to a computer.
+            if (!autoRestore) {
+                SelectionContainer {
+                    Text(
+                        text = grantCommand,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onOpenBattery) {
                     Text(stringResource(R.string.background_action_battery))
@@ -1049,6 +1080,35 @@ private fun BackgroundSurvivalCard(
                 OutlinedButton(onClick = onOpenAppSettings) {
                     Text(stringResource(R.string.background_action_app))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Says that translation is off on purpose, and offers the way back.
+ *
+ * Without it the screen contradicts itself: every permission granted, and
+ * nothing being translated, because a tile outside the app turned it off.
+ */
+@Composable
+private fun SwitchedOffCard(onTurnOn: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.switched_off_title),
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = stringResource(R.string.switched_off_text),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onTurnOn) {
+                Text(stringResource(R.string.switched_off_action))
             }
         }
     }
@@ -1180,12 +1240,6 @@ private fun RefreshOnResume(onResume: () -> Unit) {
     }
 }
 
-private fun Context.openAccessibilitySettings() {
-    startActivity(
-        Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-    )
-}
 
 /**
  * The battery exemption, which on some ROMs is what keeps the service alive.

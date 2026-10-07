@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       Manga mode posts an ongoing notification while it reads the screen. The
@@ -8,6 +9,17 @@
       (ADR 009).
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Lets Babel put its own accessibility service back after a force stop took
+      it out of the enabled list (AccessibilityServiceRestorer). No app can be
+      given this by a dialog: only `adb shell pm grant`, which the user has to
+      run on purpose. Without it nothing is written and the home screen sends
+      the user to the switch instead.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <application>
         <service

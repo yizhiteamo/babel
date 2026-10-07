@@ -9,7 +9,9 @@ import com.babel.core.model.LanguageTag
 import com.babel.core.model.SourceLanguageMode
 import com.babel.core.model.TargetLanguageMode
 import com.babel.domain.language.LanguageResolver
+import com.babel.domain.runtime.AccessibilityRecovery
 import com.babel.domain.runtime.CapabilityChecker
+import com.babel.domain.runtime.MasterSwitch
 import com.babel.core.model.ApiKey
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
@@ -51,6 +53,8 @@ data class HomeUiState(
     val recognizerModelBytes: Long = 0,
     /** Whether the user would pay for that by the megabyte. */
     val meteredConnection: Boolean = false,
+    /** Whether a force-stopped service is put back on its own (`AccessibilityRecovery`). */
+    val autoRestore: Boolean = false,
 ) {
     /**
      * Whether pausing or resuming makes sense right now.
@@ -117,7 +121,10 @@ class HomeViewModel @Inject constructor(
     private val coordinator: TranslationCoordinator,
     private val recognizerModel: RecognizerModel,
     private val remoteProbe: RemoteProbe,
+    private val recovery: AccessibilityRecovery,
 ) : ViewModel() {
+
+    private val autoRestore = MutableStateFlow(recovery.canRestore)
 
     /**
      * The last check the online-translation dialog ran, or null before one.
@@ -168,6 +175,8 @@ class HomeViewModel @Inject constructor(
         // sixth folded in as an array would cost the names that make the
         // block above readable.
         state.copy(providerFailure = failure)
+    }.combine(autoRestore) { state, restore ->
+        state.copy(autoRestore = restore)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
@@ -195,6 +204,10 @@ class HomeViewModel @Inject constructor(
      * called it.
      */
     fun refreshOnReturn() {
+        // First, so the check below already sees the service back in the list.
+        // Opening the app is the one moment a force-stopped Babel runs again.
+        recovery.restoreIfDropped()
+        autoRestore.value = recovery.canRestore
         capabilityChecker.refresh()
         recognizerModel.refresh()
     }
@@ -218,6 +231,20 @@ class HomeViewModel @Inject constructor(
     fun resumeTranslation() {
         coordinator.start()
         remember(paused = false)
+        forgetSwitchedOff()
+    }
+
+    /** The home screen's way back from the quick-settings switch. */
+    fun turnTranslationOn() {
+        viewModelScope.launch { MasterSwitch.turnOn(coordinator, screenCapture, settingsRepository) }
+    }
+
+    /**
+     * Starting something here supersedes what the quick-settings switch held,
+     * or turning the switch on later would bring back a choice since replaced.
+     */
+    private fun forgetSwitchedOff() {
+        viewModelScope.launch { settingsRepository.setSwitchedOff(null) }
     }
 
     /**
@@ -231,7 +258,10 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.setTranslationPaused(paused) }
     }
 
-    fun startMangaMode() = screenCapture.start()
+    fun startMangaMode() {
+        screenCapture.start()
+        forgetSwitchedOff()
+    }
 
     fun stopMangaMode() = screenCapture.stop()
 

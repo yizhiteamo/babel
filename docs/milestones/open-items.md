@@ -130,13 +130,6 @@ returns. Long pages, rate-limited by `maxConcurrentTranslations`, do engage.
 `android:icon`, so the launcher shows the platform placeholder. (Deferred by
 the user, not forgotten.)
 
-### 11. No foreground service
-
-`docs/systems/privacy.md` → *Visibility of screen reading*
-
-Nothing keeps the process alive; the home screen explains the power settings
-instead. That hands a platform problem to the user.
-
 ### 14. Manga mode reads any app that does not expose its text
 
 `docs/systems/privacy.md` → *Known, unfixed*

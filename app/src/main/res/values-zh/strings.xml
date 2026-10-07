@@ -109,8 +109,17 @@
     <string name="overlay_missing_explanation">文字正在被读取和翻译，但没法画到屏幕上：Babel 没有「显示在其他应用上层」的权限，译文都被丢掉了。</string>
     <string name="overlay_missing_action">授予权限</string>
     <string name="background_title">让它一直运行</string>
-    <string name="background_explanation">部分手机会在你切到其他应用时停掉 Babel，无障碍服务也会随之关闭。允许后台运行才不会这样。</string>
-    <string name="background_steps">省电策略设为「无限制」；再到应用设置里允许「自启动」——有的系统把它放在权限里而不是电池里。</string>
+    <string name="background_explanation">手机的「清理」会强行停止 Babel，无障碍服务也会随之被系统关掉，只能再去设置里打开。</string>
+    <string name="background_steps">在最近任务里长按 Babel 卡片并「锁定」，清理时就会跳过它。不需要翻译时，用下拉快捷开关里的「Babel」关掉，不必清理。省电策略设为「无限制」。</string>
     <string name="background_action_battery">电池设置</string>
     <string name="background_action_app">应用设置</string>
+    <string name="background_restore_on">自动恢复已开启：被强行停止后，打开一次 Babel，无障碍会自动重新开启。</string>
+    <string name="background_restore_off">自动恢复未开启。用电脑执行一次下面的命令，之后被强行停止时，打开一次 Babel，无障碍会自动重新开启：</string>
+    <string name="switched_off_title">翻译已关闭</string>
+    <string name="switched_off_text">是从下拉快捷开关关掉的。无障碍仍然开着，打开即可继续。</string>
+    <string name="switched_off_action">打开</string>
+    <string name="tile_label">Babel</string>
+    <string name="tile_on">翻译中</string>
+    <string name="tile_off">已关闭</string>
+    <string name="tile_unavailable">无障碍未开启</string>
 </resources>

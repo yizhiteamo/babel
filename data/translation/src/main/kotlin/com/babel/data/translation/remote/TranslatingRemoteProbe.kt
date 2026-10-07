@@ -13,6 +13,7 @@ import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.settings.SwitchedOff
 import com.babel.domain.translation.ProbeResult
 import com.babel.domain.translation.RemoteProbe
 import com.babel.domain.translation.probeResultOf
@@ -82,6 +83,7 @@ class TranslatingRemoteProbe @Inject constructor(
         override suspend fun setRemoteProvider(settings: RemoteProviderSettings) = Unit
         override suspend fun setTranslationPaused(paused: Boolean) = Unit
         override suspend fun setMangaMode(enabled: Boolean) = Unit
+        override suspend fun setSwitchedOff(held: SwitchedOff?) = Unit
     }
 
     private companion object {

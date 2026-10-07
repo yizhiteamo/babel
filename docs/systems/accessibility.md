@@ -17,6 +17,14 @@ Acquire text exposed by Android accessibility APIs and convert it into project-o
 
 Do not call translation providers directly.
 
+## The service stays on; translation has its own switch
+
+Turning the service off is not how translation is turned off: the
+quick-settings tile does that (`docs/systems/privacy.md`). The service records
+whether it was unbound or killed, so a force stop — which takes it out of the
+enabled list — can be undone when the user opens Babel, if they have granted
+`WRITE_SECURE_SETTINGS`. The measurements are in `docs/systems/capabilities.md`.
+
 ## Unsupported Content
 
 If useful accessible text is unavailable, the active text-only phase should fail gracefully rather than silently invoking future visual-translation systems.

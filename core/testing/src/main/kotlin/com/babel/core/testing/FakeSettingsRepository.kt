@@ -8,6 +8,7 @@ import com.babel.domain.language.SystemLocaleProvider
 import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.settings.SwitchedOff
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -53,6 +54,10 @@ class FakeSettingsRepository(
     override suspend fun setMangaMode(enabled: Boolean) {
         mangaModeWrites += 1
         state.value = state.value.copy(mangaMode = enabled)
+    }
+
+    override suspend fun setSwitchedOff(held: SwitchedOff?) {
+        state.value = state.value.copy(switchedOff = held)
     }
 }
 

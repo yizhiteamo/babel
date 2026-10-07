@@ -42,6 +42,17 @@ data class BabelSettings(
      * (`docs/systems/privacy.md`).
      */
     val mangaMode: Boolean = false,
+    /**
+     * What the quick-settings switch turned off, or null when it is on.
+     *
+     * The switch exists so that turning translation off no longer means
+     * turning the accessibility service off — which, after a phone's cleaner
+     * force-stops the app, the user had to switch back on in system settings
+     * by hand every time (`docs/systems/capabilities.md`). Turning it back on
+     * has to put back exactly what it took down and nothing more, and the
+     * process can die in between, so what it took is written down here.
+     */
+    val switchedOff: SwitchedOff? = null,
 ) {
     /**
      * Whether text is allowed to leave the device.
@@ -54,6 +65,9 @@ data class BabelSettings(
     val usesRemoteTranslation: Boolean
         get() = provider == RemoteProviderSettings.PROVIDER && remote.isConfigured
 }
+
+/** Which of the two paths the quick-settings switch took down. */
+data class SwitchedOff(val text: Boolean, val manga: Boolean)
 
 /**
  * Where to reach a remote translator, when the user has asked for one.
@@ -172,4 +186,6 @@ interface SettingsRepository {
     suspend fun setTranslationPaused(paused: Boolean)
 
     suspend fun setMangaMode(enabled: Boolean)
+
+    suspend fun setSwitchedOff(held: SwitchedOff?)
 }
