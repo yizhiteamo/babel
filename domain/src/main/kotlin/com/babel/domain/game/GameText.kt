@@ -50,4 +50,11 @@ data class GameLine(
      * graded panel, high on artwork (`docs/milestones/v3.md`, spike 2).
      */
     val backdropError: Double,
+    /**
+     * How tall the type itself is, from the ink: the recogniser's box for one
+     * line of dialogue came back 56 px tall on one frame and 72 on the next,
+     * and at 72 it was as tall as the speaker's name above it. Ruby is not
+     * counted; it stands apart from the line it glosses.
+     */
+    val typeHeight: Int = bounds.height,
 )

@@ -156,7 +156,7 @@ class GameTextSource @Inject constructor(
                 published[settled.key] = element.id
                 logger.debug(
                     TAG,
-                    "settled ${Redact.text(settled.line.text)} after ${settled.settledAfterMs}ms",
+                    "settled ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top},${settled.line.bounds.width}x${settled.line.bounds.height} after ${settled.settledAfterMs}ms",
                 )
                 element
             }
@@ -207,7 +207,7 @@ class GameTextSource @Inject constructor(
         result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
             val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
-            GameLine(text, bounds, backdropError(frame, width, height, bounds))
+            GameLine(text, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
         }.flatMap { splitByColour(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
@@ -287,6 +287,41 @@ class GameTextSource @Inject constructor(
         return if (count == 0) Double.MAX_VALUE else sum / count
     }
 
+    /**
+     * The tallest band of inked rows in [box], a gap of [TYPE_ROW_GAP] rows
+     * allowed inside it: the height of the type, without ruby over it or the
+     * slack the recogniser's box sometimes takes in. See [GameLine.typeHeight].
+     */
+    private fun typeHeight(frame: Bitmap, box: TextBounds): Int {
+        val h = box.height
+        val columns = (box.left until box.right step SAMPLE_STEP).toList()
+        if (h <= 0 || columns.isEmpty()) return h
+        val column = IntArray(h)
+        val lumas = DoubleArray(h)
+        val lighter = IntArray(h)
+        val darker = IntArray(h)
+        for (x in columns) {
+            frame.getPixels(column, 0, 1, x, box.top, 1, h)
+            for (y in 0 until h) lumas[y] = luma(column[y])
+            val bg = lumas.sortedArray()[h / 2]
+            for (y in 0 until h) {
+                if (lumas[y] - bg >= INK_CONTRAST) lighter[y]++ else if (bg - lumas[y] >= INK_CONTRAST) darker[y]++
+            }
+        }
+        val ink = if (lighter.sum() >= darker.sum()) lighter else darker
+        val enough = max(2, columns.size / 50)
+        var best = 0
+        var start = -1
+        var lastInked = -1
+        for (y in 0 until h) {
+            if (ink[y] < enough) continue
+            if (start < 0 || y - lastInked > TYPE_ROW_GAP + 1) start = y
+            lastInked = y
+            best = max(best, y - start + 1)
+        }
+        return if (best == 0) h else best
+    }
+
     /** What a line was split into last time, so a still line is not re-read every frame. */
     private val splits = object : LinkedHashMap<String, List<GameLine>>(16, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<GameLine>>?) = size > SPLIT_CACHE
@@ -304,7 +339,7 @@ class GameTextSource @Inject constructor(
         val key = "${line.text}@${b.left / 8},${b.top / 8},${b.right / 8}"
         splits[key]?.let { return it }
 
-        // One cut, in the line's first half: a name and what follows it. A cut
+        // One cut, short of the line's end: a name and what follows it. A cut
         // further along was measured cutting a white line of dialogue in two
         // where the art behind it changed colour.
         val cuts = GameLayout.splitPoints(inkRuns(frame, b), b.height)
@@ -320,13 +355,7 @@ class GameTextSource @Inject constructor(
                 // used to throw out of the whole frame's reading — measured,
                 // 43 frames of a story scene read as nothing. A margin of the
                 // frame around the piece clears that and keeps the glyphs' edges.
-                val pad = b.height / 4
-                val top = (b.top - pad).coerceAtLeast(0)
-                val bottom = (b.bottom + pad).coerceAtMost(frame.height)
-                val left = (l - pad).coerceAtLeast(0)
-                val right = (r + pad).coerceAtMost(frame.width)
-                if (right - left < MIN_RECOGNISABLE_PX || bottom - top < MIN_RECOGNISABLE_PX) return@mapNotNull null
-                val crop = Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
+                val crop = padded(frame, l, b.top, r, b.bottom, pad = b.height / 4)
                 val text = try {
                     recognizer.process(InputImage.fromBitmap(crop, 0)).await().text.replace("\n", "").trim()
                 } catch (cancellation: CancellationException) {
@@ -336,7 +365,7 @@ class GameTextSource @Inject constructor(
                 } finally {
                     crop.recycle()
                 }
-                if (text.isBlank()) null else GameLine(text, TextBounds(l, b.top, r, b.bottom, b.space), line.backdropError)
+                if (text.isBlank()) null else GameLine(text, TextBounds(l, b.top, r, b.bottom, b.space), line.backdropError, line.typeHeight)
             }
             // A piece that read as nothing means the cut was wrong: keep the whole.
             if (read.size == edges.size - 1) read else listOf(line)
@@ -345,20 +374,68 @@ class GameTextSource @Inject constructor(
         return pieces
     }
 
-    /** Runs of inked columns across [box], each with its mean ink colour. */
+    /**
+     * Columns [left, right) of [frame], with a margin of the piece's own
+     * backdrop around them. A margin taken from the frame reached into the
+     * next piece and read its edge: 「アコ,」, 「|風紀委員会」, 「1風紀委員会」.
+     */
+    private fun padded(frame: Bitmap, left: Int, top: Int, right: Int, bottom: Int, pad: Int): Bitmap {
+        val t = (top - pad).coerceAtLeast(0)
+        val btm = (bottom + pad).coerceAtMost(frame.height)
+        val piece = Bitmap.createBitmap(frame, left, t, right - left, btm - t)
+        val w = max(right - left + 2 * pad, MIN_RECOGNISABLE_PX)
+        val h = max(btm - t, MIN_RECOGNISABLE_PX)
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(out)
+        canvas.drawColor(backdropOf(piece))
+        canvas.drawBitmap(piece, ((w - piece.width) / 2).toFloat(), ((h - piece.height) / 2).toFloat(), null)
+        piece.recycle()
+        return out
+    }
+
+    /** The middle colour of the piece's edge columns, where the cut put backdrop. */
+    private fun backdropOf(piece: Bitmap): Int {
+        val edge = IntArray(piece.height * 2)
+        piece.getPixels(edge, 0, 1, 0, 0, 1, piece.height)
+        piece.getPixels(edge, piece.height, 1, piece.width - 1, 0, 1, piece.height)
+        return edge.sortedBy { luma(it) }[edge.size / 2]
+    }
+
+    /**
+     * Runs of inked columns across [box], each with its mean ink colour.
+     *
+     * Ink is what stands out of its column **on the line's own side**: lighter
+     * than the backdrop if most of the contrast is lighter, darker otherwise.
+     * Counting both took in the glyphs' dark outline and the art showing
+     * through it, and a thin white リ came out grey — measured, the name
+     * イオリ was cut after イオ, every time, and チナツ not at all.
+     */
     private fun inkRuns(frame: Bitmap, box: TextBounds): List<GameLayout.InkRun> {
         val w = box.width
         val h = box.height
         if (w <= 0 || h <= 0) return emptyList()
         val pixels = IntArray(w * h)
         frame.getPixels(pixels, 0, w, box.left, box.top, w, h)
+        val background = DoubleArray(w)
+        val column = DoubleArray(h)
+        var lighter = 0L
+        var darker = 0L
+        for (x in 0 until w) {
+            for (y in 0 until h) column[y] = luma(pixels[y * w + x])
+            val bg = column.sortedArray()[h / 2]
+            background[x] = bg
+            for (y in 0 until h) {
+                if (column[y] - bg >= INK_CONTRAST) lighter++ else if (bg - column[y] >= INK_CONTRAST) darker++
+            }
+        }
+        val sign = if (lighter >= darker) 1.0 else -1.0
+
         val runs = mutableListOf<GameLayout.InkRun>()
         var start = -1
         var r = 0L
         var g = 0L
         var bl = 0L
         var n = 0L
-        val column = DoubleArray(h)
         fun close(end: Int) {
             if (start >= 0 && n > 0) {
                 runs += GameLayout.InkRun(box.left + start, box.left + end, (r / n).toInt(), (g / n).toInt(), (bl / n).toInt(), n.toInt())
@@ -366,12 +443,10 @@ class GameTextSource @Inject constructor(
             start = -1; r = 0; g = 0; bl = 0; n = 0
         }
         for (x in 0 until w) {
-            for (y in 0 until h) column[y] = luma(pixels[y * w + x])
-            val background = column.sortedArray()[h / 2]
             var inked = false
             for (y in 0 until h) {
-                if (abs(column[y] - background) >= INK_CONTRAST) {
-                    val p = pixels[y * w + x]
+                val p = pixels[y * w + x]
+                if ((luma(p) - background[x]) * sign >= INK_CONTRAST) {
                     r += Color.red(p); g += Color.green(p); bl += Color.blue(p); n++
                     inked = true
                 }
@@ -418,9 +493,12 @@ class GameTextSource @Inject constructor(
         const val MIN_PIECE_PX = 24
         const val MIN_RECOGNISABLE_PX = 32
 
-        /** A speaker's name takes at most this much of its line. */
-        const val MAX_NAME_FRACTION = 0.45
+        /** A speaker's name takes at most this much of its line: チナツ took 45%, レイジョ 61%. */
+        const val MAX_NAME_FRACTION = 0.75
         const val SPLIT_CACHE = 64
+
+        /** Empty rows allowed inside one line of type; ruby sits further off. */
+        const val TYPE_ROW_GAP = 2
 
         /** Brightness apart from the column's middle value that counts as ink. */
         const val INK_CONTRAST = 70.0

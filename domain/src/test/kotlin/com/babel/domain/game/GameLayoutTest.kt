@@ -56,12 +56,70 @@ class GameLayoutTest {
         assertEquals(TextBounds(414, 1122, 1558, 1275, CoordinateSpace.SCREEN), joined.single().bounds)
     }
 
+    /** Measured: 「ね!?」 alone is too short to translate, and was dropped from its sentence. */
+    @Test
+    fun `a short wrap is kept with its sentence`() {
+        val first = line("ん?待ってください。どのみち、こちらに請求が回ってくるのは変わりないんですよ", 400, 1121, 2728, 1178)
+        val second = line("ね!?", 433, 1213, 560, 1268)
+
+        val kept = GameLayout.joinWrapped(GameLayout.select(listOf(first, second), frameHeight = 1440, frameWidth = 3200))
+
+        assertEquals(1, kept.size)
+        assertEquals(1268, kept.single().bounds.bottom)
+    }
+
     @Test
     fun `a speaker above the dialogue is not joined to it`() {
         val speaker = line("通行人A", 375, 970, 755, 1064)
         val dialogue = line("う、ウソだろ?", 435, 1122, 837, 1178)
 
         assertEquals(2, GameLayout.joinWrapped(listOf(speaker, dialogue)).size)
+    }
+
+    /** Ruby over the dialogue made its box as tall as the speaker's; measured, the two were joined. */
+    @Test
+    fun `a speaker above dialogue with ruby is not joined to it`() {
+        val speaker = line("アコ", 426, 980, 595, 1056)
+        val dialogue = line("それが、万魔殿が……", 409, 1115, 1703, 1184)
+
+        assertEquals(2, GameLayout.joinWrapped(listOf(speaker, dialogue)).size)
+    }
+
+    /** Measured: a name read as tall as the dialogue under it, 52 px apart. */
+    @Test
+    fun `a name beside its affiliation is never joined to the dialogue`() {
+        val name = line("チナツ", 429, 977, 678, 1061)
+        val affiliation = line("風紀委員会", 678, 977, 980, 1061)
+        val dialogue = line("え、ええと……", 410, 1110, 871, 1180)
+
+        assertEquals(3, GameLayout.joinWrapped(listOf(name, affiliation, dialogue)).size)
+    }
+
+    @Test
+    fun `a sentence over three lines is one utterance`() {
+        val first = line("安全に、そして確実に手元に届くよう、配送業者を手配したからな。", 433, 1122, 2300, 1178)
+        val second = line("もちろん、選定にも抜かりはない。最も安いのに、最も早く届けてくれるところに依頼", 433, 1214, 2773, 1270)
+        val third = line("した。", 440, 1306, 575, 1359)
+
+        assertEquals(1, GameLayout.joinWrapped(listOf(first, second, third)).size)
+    }
+
+    /** The name's box and the dialogue's were the same height; the type is not. */
+    @Test
+    fun `a name is not joined to dialogue whose box grew to its height`() {
+        val name = GameLine("美奈玄龍門", TextBounds(398, 974, 989, 1061, CoordinateSpace.SCREEN), 5.0, typeHeight = 66)
+        val dialogue = GameLine("これでいい。", TextBounds(436, 1110, 1137, 1182, CoordinateSpace.SCREEN), 5.0, typeHeight = 46)
+
+        assertEquals(2, GameLayout.joinWrapped(listOf(name, dialogue)).size)
+    }
+
+    /** Measured: the first line read without its leading 「……」 began 83 px in. */
+    @Test
+    fun `a first line read without its opening ellipsis is still joined`() {
+        val first = line("良い機会ですので、覚えておいてください。", 519, 1122, 1717, 1179)
+        val second = line("この業者は文字通り、一番安くて早いところではあります。", 436, 1213, 2619, 1270)
+
+        assertEquals(1, GameLayout.joinWrapped(listOf(first, second)).size)
     }
 
     @Test

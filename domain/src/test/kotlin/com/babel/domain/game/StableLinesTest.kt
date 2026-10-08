@@ -102,6 +102,45 @@ class StableLinesTest {
         assertEquals(1, lines.next(listOf(line("え、ケーキ食べないの?うっそ")), now = 666).gone.size)
     }
 
+    /** Measured: after a longer name the affiliation's translation stayed where it was, over the name. */
+    @Test
+    fun `the same words moved along are drawn again where they are`() {
+        val lines = StableLines()
+        lines.next(listOf(line("風紀委員会", left = 589)), now = 0)
+        val shown = lines.next(listOf(line("風紀委員会", left = 589)), now = 333).settled.single().key
+
+        val moved = lines.next(listOf(line("風紀委員会", left = 674)), now = 666)
+        assertEquals(listOf(shown), moved.gone)
+        assertEquals(674, lines.next(listOf(line("風紀委員会", left = 674)), now = 1000).settled.single().line.bounds.left)
+    }
+
+    /** The recogniser's box for one still line takes in more on one side some frames. */
+    @Test
+    fun `a box that stretches on one side has not moved`() {
+        val lines = StableLines()
+        lines.next(listOf(line("これは大事なところね", left = 434, width = 824)), now = 0)
+        lines.next(listOf(line("これは大事なところね", left = 434, width = 824)), now = 333)
+
+        val stretched = lines.next(listOf(line("これは大事なところね", left = 403, width = 881)), now = 666)
+        assertTrue(stretched.gone.isEmpty())
+        assertTrue(stretched.settled.isEmpty())
+    }
+
+    /** One frame read only the first line of a wrapped sentence. */
+    @Test
+    fun `a sentence read without its end stays published`() {
+        val lines = StableLines()
+        val whole = "ありがとうございます。どれどれ……仁志川センターを経由したところ……と。"
+        lines.next(listOf(line(whole)), now = 0)
+        lines.next(listOf(line(whole)), now = 333)
+
+        val cut = lines.next(listOf(line("ありがとうございます。どれどれ……仁志川センター")), now = 666)
+        assertTrue(cut.gone.isEmpty())
+        val back = lines.next(listOf(line(whole)), now = 1000)
+        assertTrue(back.gone.isEmpty())
+        assertTrue(back.settled.isEmpty())
+    }
+
     @Test
     fun `reset hands back everything shown`() {
         val lines = StableLines()

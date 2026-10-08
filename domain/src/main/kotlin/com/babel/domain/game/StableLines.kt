@@ -56,6 +56,22 @@ class StableLines {
                 continue
             }
             unmatched -= before
+            if (before.publishedKey != null && moved(before.line.bounds, line.bounds)) {
+                // The same words somewhere else: the affiliation after a
+                // longer name. Kept, its translation stayed where the last
+                // speaker's was and covered this one's name.
+                gone += before.publishedKey!!
+                next += Seen(line, now, publishedKey = null)
+                continue
+            }
+            if (before.publishedKey != null && lostItsEnd(before.line.text, line.text)) {
+                // One frame read only the first line of a wrapped sentence.
+                // That is a miss, not a new line: measured, it withdrew the
+                // whole translation and drew it again.
+                before.misses += 1
+                if (before.misses >= GRACE_FRAMES) gone += before.publishedKey!! else next += before
+                continue
+            }
             val growing = line.text.length > before.line.text.length &&
                 line.text.startsWith(before.line.text)
             if (before.line.text == line.text || (!growing && sameReading(before.line.text, line.text))) {
@@ -98,6 +114,29 @@ class StableLines {
         val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
         return shared * 2.0 / (a.length + b.length) >= SAME_READING
     }
+
+    /**
+     * Both edges shifted the same way by more than half the line's height.
+     * The recogniser's box for a still line wobbles too, but by stretching:
+     * measured on dialogue, its left edge 31 px out while the right stayed
+     * within 26 — the affiliation after a longer name moved 85 px whole.
+     */
+    private fun moved(a: TextBounds, b: TextBounds): Boolean {
+        val slack = min(a.height, b.height) / 2
+        fun shifted(x1: Int, y1: Int, x2: Int, y2: Int) =
+            (x2 - x1 > slack && y2 - y1 > slack) || (x1 - x2 > slack && y1 - y2 > slack)
+        return shifted(a.left, a.right, b.left, b.right) || shifted(a.top, a.bottom, b.top, b.bottom)
+    }
+
+    /**
+     * A reading that is clearly shorter than the published one and reads as
+     * its beginning — read slightly differently, as a still line on moving art
+     * is.
+     */
+    private fun lostItsEnd(published: String, read: String): Boolean =
+        read.length * 2 >= published.length &&
+            read.length < published.length - max(2, published.length / 10) &&
+            (published.startsWith(read) || sameReading(published.take(read.length), read))
 
     /** Everything published, for clearing the screen. */
     fun reset(): List<String> {

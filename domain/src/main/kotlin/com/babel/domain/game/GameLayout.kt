@@ -2,7 +2,6 @@ package com.babel.domain.game
 
 import com.babel.core.model.TextBounds
 import com.babel.domain.vision.LineJoin
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -86,6 +85,18 @@ object GameLayout {
     private fun distance(a: DoubleArray, b: DoubleArray): Double =
         sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]))
 
+    /**
+     * The most space a wrapped line leaves below the one above it, against the
+     * type's height. Measured on Blue Archive: a wrapped line 34–38 px under a
+     * 55–57 px one (0.65); the speaker row 59–72 px above the dialogue (0.86
+     * and up) — less than a whole line, and with ruby over the dialogue its
+     * box grows to the speaker's height, so the gap is what tells them apart.
+     */
+    const val WRAP_GAP_FRACTION = 0.75
+
+    /** How far in, in line heights, the first line of an utterance may start. */
+    const val FIRST_LINE_INDENT = 2
+
     /** Line heights within this ratio are the same size of type. */
     const val SAME_SIZE_RATIO = 0.8
 
@@ -95,14 +106,21 @@ object GameLayout {
      * is set larger and a choice sits a button's height away, so neither joins.
      */
     fun joinWrapped(lines: List<GameLine>): List<GameLine> {
-        val out = mutableListOf<GameLine>()
+        // A row of two pieces side by side — a name and an affiliation — is a
+        // label, not a line of a paragraph. Its height alone does not say so:
+        // with ruby over the dialogue, the dialogue's box grew to the name's
+        // height and the two were joined (measured on the live game).
+        val labels = lines.filter { line -> lines.any { it !== line && sameRow(it.bounds, line.bounds) } }.toSet()
+        // Each utterance so far, and the last line it took in: a third line
+        // wraps under the second, not under the two of them.
+        val out = mutableListOf<Pair<GameLine, GameLine>>()
         for (line in lines.sortedBy { it.bounds.top }) {
-            val i = out.indexOfLast { wraps(it.bounds, line.bounds) }
+            val i = if (line in labels) -1 else out.indexOfLast { (_, last) -> last !in labels && wraps(last, line) }
             if (i < 0) {
-                out += line
+                out += line to line
                 continue
             }
-            val above = out[i]
+            val above = out[i].first
             out[i] = GameLine(
                 text = LineJoin.join(listOf(above.text, line.text)),
                 bounds = TextBounds(
@@ -113,23 +131,34 @@ object GameLayout {
                     above.bounds.space,
                 ),
                 backdropError = max(above.backdropError, line.backdropError),
-            )
+                typeHeight = max(above.typeHeight, line.typeHeight),
+            ) to line
         }
-        return out
+        return out.map { it.first }
     }
 
-    private fun wraps(above: TextBounds, below: TextBounds): Boolean {
-        val heights = min(above.height, below.height).toDouble() / max(above.height, below.height)
-        val gap = below.top - above.bottom
-        val h = max(above.height, below.height)
-        return heights >= SAME_SIZE_RATIO && gap in 0..h && abs(below.left - above.left) <= h
+    private fun sameRow(a: TextBounds, b: TextBounds): Boolean =
+        min(a.bottom, b.bottom) - max(a.top, b.top) > min(a.height, b.height) / 2
+
+    private fun wraps(above: GameLine, below: GameLine): Boolean {
+        val heights = min(above.typeHeight, below.typeHeight).toDouble() / max(above.typeHeight, below.typeHeight)
+        val gap = below.bounds.top - above.bounds.bottom
+        val h = max(above.typeHeight, below.typeHeight)
+        // The next line starts at the margin. The first may start further in:
+        // a leading 「……」 is read on some frames and not others, and without
+        // it the first line began 83 px right of the second and was not joined.
+        val indent = above.bounds.left - below.bounds.left
+        return heights >= SAME_SIZE_RATIO &&
+            gap in 0..(min(above.bounds.height, below.bounds.height) * WRAP_GAP_FRACTION).toInt() &&
+            indent in -h..h * FIRST_LINE_INDENT
     }
 
     /**
      * The lines worth translating: [GameTextFilter]'s verdicts, plus a speaker
      * label it turned down for its backdrop alone, when a translated line sits
      * right below it and the backdrop is not far over the line — a name above
-     * dialogue is part of the dialogue.
+     * dialogue is part of the dialogue — and a wrap too short to keep alone
+     * under a line that is kept.
      */
     fun select(lines: List<GameLine>, frameHeight: Int, frameWidth: Int = Int.MAX_VALUE): List<GameLine> {
         val verdicts = lines.associateWith { GameTextFilter.judge(it, frameHeight) }
@@ -143,8 +172,13 @@ object GameLayout {
             verdicts[line] == GameTextFilter.Verdict.TRANSLATE ||
                 (line.bounds.width >= frameWidth * LONG_LINE_FRACTION && onArtWithin(line, LONG_LINE_ALLOWANCE))
         }.toSet()
+        // The end of a wrapped sentence can be a word, 「ね!?」, too short to
+        // keep alone; measured, it was dropped and the sentence translated
+        // without it.
+        fun endsSentence(line: GameLine) =
+            verdicts[line] == GameTextFilter.Verdict.TOO_SHORT && kept.any { above -> wraps(above, line) }
         return lines.filter { line ->
-            line in kept || (
+            line in kept || endsSentence(line) || (
                 onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
                     kept.any { below -> speaksAbove(line.bounds, below.bounds) }
                 )
