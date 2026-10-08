@@ -7,10 +7,13 @@ import com.babel.core.common.Redact
 import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.Revision
+import com.babel.core.model.RowGradient
 import com.babel.core.model.SourceIdentity
+import com.babel.core.model.SourceStyle
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
+import com.babel.core.model.TextOrientation
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.game.ChangedBand
@@ -118,6 +121,13 @@ class GameTextSource @Inject constructor(
         val started = System.currentTimeMillis()
         val grid = gridOf(frame)
         val band = ChangedBand.of(lastGrid, grid, GRID_COLUMNS)
+        // A cut or a fade moves the whole picture a long way; an animated
+        // character only moves part of it a little. Most frames of a story
+        // scene are read whole for the second reason, so extent alone would
+        // call every frame a new scene.
+        val sceneChanged = lastGrid?.let { before ->
+            grid.indices.sumOf { abs(grid[it] - before[it]) }.toDouble() / grid.size > SCENE_CHANGE_LUMA
+        } ?: false
 
         val read: List<GameLine>
         val how: String
@@ -147,16 +157,21 @@ class GameTextSource @Inject constructor(
         val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height, frame.width))
 
         lock.withLock {
-            val update = lines.next(kept, now = System.currentTimeMillis())
+            val update = lines.next(kept, now = System.currentTimeMillis(), sceneChanged = sceneChanged)
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
 
             val upserted = update.settled.map { settled ->
-                val element = toElement(settled.key, settled.line, windowBounds, packageName)
+                // Every line read, not only those kept: a name left untranslated
+                // still has ink an affiliation's patch must not grow into.
+                val (inked, look) = lookOf(frame, settled.line, read)
+                val element = toElement(settled.key, inked, look, windowBounds, packageName)
                 published[settled.key] = element.id
                 logger.debug(
                     TAG,
-                    "settled ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top},${settled.line.bounds.width}x${settled.line.bounds.height} after ${settled.settledAfterMs}ms",
+                    "settled ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top}," +
+                        "${settled.line.bounds.width}x${settled.line.bounds.height} type=${settled.line.typeHeight} " +
+                        "${if (element.style.backdrop != null) "erased" else "boxed"} after ${settled.settledAfterMs}ms",
                 )
                 element
             }
@@ -294,29 +309,37 @@ class GameTextSource @Inject constructor(
      */
     private fun typeHeight(frame: Bitmap, box: TextBounds): Int {
         val h = box.height
-        val columns = (box.left until box.right step SAMPLE_STEP).toList()
-        if (h <= 0 || columns.isEmpty()) return h
+        if (h <= 0 || box.width <= 0) return h
+        // The panel is read just outside the box, above and below each
+        // column. The column's own middle value is not the panel wherever a
+        // stroke fills most of a tight box, and judged against it those
+        // strokes vanished: a line of dialogue measured 37 px for 55.
+        val above = (box.top - 2).coerceAtLeast(0)
+        val below = (box.bottom + 1).coerceAtMost(frame.height - 1)
+        val outsideTop = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, above, box.width, 1) }
+        val outsideBottom = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, below, box.width, 1) }
+        val panel = DoubleArray(box.width) { (luma(outsideTop[it]) + luma(outsideBottom[it])) / 2 }
+        // Ink stands out of its panel: light on a dark one.
+        val sign = if (panel.average() < MID_LUMA) 1.0 else -1.0
+
         val column = IntArray(h)
-        val lumas = DoubleArray(h)
-        val lighter = IntArray(h)
-        val darker = IntArray(h)
-        for (x in columns) {
-            frame.getPixels(column, 0, 1, x, box.top, 1, h)
-            for (y in 0 until h) lumas[y] = luma(column[y])
-            val bg = lumas.sortedArray()[h / 2]
-            for (y in 0 until h) {
-                if (lumas[y] - bg >= INK_CONTRAST) lighter[y]++ else if (bg - lumas[y] >= INK_CONTRAST) darker[y]++
-            }
+        val ink = IntArray(h)
+        for (x in 0 until box.width) {
+            frame.getPixels(column, 0, 1, box.left + x, box.top, 1, h)
+            for (y in 0 until h) if ((luma(column[y]) - panel[x]) * sign >= INK_CONTRAST) ink[y]++
         }
-        val ink = if (lighter.sum() >= darker.sum()) lighter else darker
-        val enough = max(2, columns.size / 50)
+        // A row is inside the type when it holds a little of the busiest
+        // row's ink: across a long line only a few glyphs reach the top rows.
+        // The tallest band of such rows, a few empty ones allowed inside it;
+        // ruby over the line stands further off and is not counted.
+        val enough = max(2, (ink.maxOrNull() ?: 0) / TYPE_ROW_SHARE)
         var best = 0
         var start = -1
-        var lastInked = -1
+        var last = -1
         for (y in 0 until h) {
             if (ink[y] < enough) continue
-            if (start < 0 || y - lastInked > TYPE_ROW_GAP + 1) start = y
-            lastInked = y
+            if (start < 0 || y - last > TYPE_ROW_GAP + 1) start = y
+            last = y
             best = max(best, y - start + 1)
         }
         return if (best == 0) h else best
@@ -365,7 +388,14 @@ class GameTextSource @Inject constructor(
                 } finally {
                     crop.recycle()
                 }
-                if (text.isBlank()) null else GameLine(text, TextBounds(l, b.top, r, b.bottom, b.space), line.backdropError, line.typeHeight)
+                if (text.isBlank()) {
+                    null
+                } else {
+                    // Each piece's own type: an affiliation is set smaller
+                    // than the name beside it.
+                    val pieceBounds = TextBounds(l, b.top, r, b.bottom, b.space)
+                    GameLine(text, pieceBounds, line.backdropError, typeHeight(frame, pieceBounds))
+                }
             }
             // A piece that read as nothing means the cut was wrong: keep the whole.
             if (read.size == edges.size - 1) read else listOf(line)
@@ -410,7 +440,7 @@ class GameTextSource @Inject constructor(
      * through it, and a thin white リ came out grey — measured, the name
      * イオリ was cut after イオ, every time, and チナツ not at all.
      */
-    private fun inkRuns(frame: Bitmap, box: TextBounds): List<GameLayout.InkRun> {
+    private fun inkRuns(frame: Bitmap, box: TextBounds, lighterInk: Boolean? = null): List<GameLayout.InkRun> {
         val w = box.width
         val h = box.height
         if (w <= 0 || h <= 0) return emptyList()
@@ -428,7 +458,7 @@ class GameTextSource @Inject constructor(
                 if (column[y] - bg >= INK_CONTRAST) lighter++ else if (bg - column[y] >= INK_CONTRAST) darker++
             }
         }
-        val sign = if (lighter >= darker) 1.0 else -1.0
+        val sign = if (lighterInk ?: (lighter >= darker)) 1.0 else -1.0
 
         val runs = mutableListOf<GameLayout.InkRun>()
         var start = -1
@@ -464,16 +494,174 @@ class GameTextSource @Inject constructor(
     private fun luma(pixel: Int): Double =
         (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000.0
 
-    private fun toElement(key: String, line: GameLine, window: TextBounds, packageName: String): TextElement {
+    /**
+     * How the line looks, for drawing its translation in its place, and the
+     * line with its bounds grown out to all of its ink: the ink's
+     * colour, the type's height, and — on a panel plain enough to paint back —
+     * the backdrop row by row, so the original can be erased
+     * (`docs/features/v3-game-translation.md`, "erase and redraw").
+     */
+    private fun lookOf(frame: Bitmap, recognised: GameLine, others: List<GameLine>): Pair<GameLine, SourceStyle> {
+        // The ink, not the recogniser's box, is what has to be covered: a
+        // name read while it was still sliding in had a box missing its top,
+        // and a line read without its opening 「……」 left the dots showing.
+        // Never past halfway to the next piece on its row, though: a short
+        // name's patch grew into the affiliation beside it and erased 「玄」.
+        val b = recognised.bounds
+        val row = others.filter { it.bounds != b && sameRow(it.bounds, b) }
+        val leftLimit = row.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0
+        val rightLimit = row.filter { it.bounds.left >= b.right }.minOfOrNull { (it.bounds.left + b.right) / 2 } ?: frame.width
+        val line = recognised.copy(bounds = inkExtent(frame, b, recognised.typeHeight, leftLimit, rightLimit))
+        // Room for a line of type the original's height: a typeface's line is
+        // taller than its glyphs' ink, and in the recogniser's tight box the
+        // translation was shrunk to about 60% of the original to fit.
+        val lineRoom = (line.typeHeight * TYPE_LINE_RATIO).toInt() - line.bounds.height
+        val rowMargin = maxOf(MIN_ERASE_MARGIN_PX, line.typeHeight / ERASE_MARGIN_DIVISOR, lineRoom / 2 + 2)
+        val backdrop = if (line.backdropError <= MAX_ERASE_ERROR) rowGradient(frame, line.bounds, SIDE_MARGIN_PX, rowMargin) else null
+        // Where the panel is known, the ink is whatever stands out of it: a
+        // short piece can count more dark outline than light letter, and
+        // measured, one cyan 風紀委員会 came back navy.
+        val lighterInk = backdrop?.let { luma(it.colorAt(it.rows / 2, 0.5f)) < MID_LUMA }
+        return line to SourceStyle(
+            foregroundColor = inkColour(frame, line.bounds, lighterInk),
+            orientation = TextOrientation.HORIZONTAL,
+            glyphSizePx = line.typeHeight,
+            backdrop = backdrop,
+        )
+    }
+
+    /**
+     * [box] grown out to the ink just beyond it, by at most [reach] on each
+     * side and along the row no further than [leftLimit] and [rightLimit]: a row or column still holding light-on-dark (or dark-on-light)
+     * strokes past the edge is part of the line. Stops at the first clear
+     * one, so a plain panel adds nothing.
+     */
+    private fun sameRow(a: TextBounds, b: TextBounds): Boolean =
+        minOf(a.bottom, b.bottom) - maxOf(a.top, b.top) > minOf(a.height, b.height) / 2
+
+    private fun inkExtent(frame: Bitmap, box: TextBounds, reach: Int, leftLimit: Int, rightLimit: Int): TextBounds {
+        if (box.width <= 0 || box.height <= 0) return box
+        fun inked(pixels: IntArray, lighter: Boolean): Boolean {
+            val lumas = pixels.map { luma(it) }
+            val bg = lumas.sorted()[lumas.size / 2]
+            return lumas.count { (if (lighter) it - bg else bg - it) >= INK_CONTRAST } >= EXTENT_MIN_INK
+        }
+        fun row(y: Int) = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, y, box.width, 1) }
+        // Light ink on a dark panel: the middle row's middle value is panel.
+        val middle = row(box.top + box.height / 2).map { luma(it) }.sorted()
+        val lighter = middle[middle.size / 2] < MID_LUMA
+        fun inked(pixels: IntArray) = inked(pixels, lighter)
+        fun column(x: Int, top: Int, bottom: Int) =
+            IntArray(bottom - top).also { frame.getPixels(it, 0, 1, x, top, 1, bottom - top) }
+
+        var top = box.top
+        while (top > 0 && box.top - top < reach && inked(row(top - 1))) top--
+        var bottom = box.bottom
+        while (bottom < frame.height && bottom - box.bottom < reach && inked(row(bottom))) bottom++
+        // Along the line, across a gap as well: a 「！」 or 「……」 the recogniser
+        // left out stands a little apart from the rest, and missed, the
+        // patch's edge was sampled on it and drew a white bar.
+        // A third of the type: a name and its affiliation stand further apart.
+        val gap = reach / 3
+        var left = box.left
+        // Room left for the patch's edge to be sampled on panel, inside the limits.
+        val edge = SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS
+        var x = box.left - 1
+        while (x >= leftLimit + edge && box.left - x <= reach) {
+            if (inked(column(x, top, bottom))) left = x else if (left - x > gap) break
+            x--
+        }
+        var right = box.right
+        x = box.right
+        while (x < rightLimit - edge && x - box.right < reach) {
+            if (inked(column(x, top, bottom))) right = x + 1 else if (x - right >= gap) break
+            x++
+        }
+        return TextBounds(left, top, right, bottom, box.space)
+    }
+
+    /**
+     * Per row of [box] grown by [margin] along it and [rowMargin] up and
+     * down, the colour just outside it at each end: the mean of a few
+     * columns, so one stray pixel of outline does not colour a whole row.
+     * Null where the box runs off the frame.
+     */
+    private fun rowGradient(frame: Bitmap, box: TextBounds, margin: Int, rowMargin: Int): RowGradient? {
+        val top = box.top - rowMargin
+        val bottom = box.bottom + rowMargin
+        val left = box.left - margin - EDGE_SAMPLE_COLUMNS
+        val right = box.right + margin + EDGE_SAMPLE_COLUMNS
+        if (top < 0 || bottom > frame.height || left < 0 || right > frame.width) return null
+        val rows = bottom - top
+        val column = IntArray(rows * EDGE_SAMPLE_COLUMNS)
+        fun edge(x: Int): List<Int> {
+            frame.getPixels(column, 0, EDGE_SAMPLE_COLUMNS, x, top, EDGE_SAMPLE_COLUMNS, rows)
+            return List(rows) { y ->
+                var r = 0
+                var g = 0
+                var b = 0
+                for (i in 0 until EDGE_SAMPLE_COLUMNS) {
+                    val p = column[y * EDGE_SAMPLE_COLUMNS + i]
+                    r += Color.red(p); g += Color.green(p); b += Color.blue(p)
+                }
+                Color.rgb(r / EDGE_SAMPLE_COLUMNS, g / EDGE_SAMPLE_COLUMNS, b / EDGE_SAMPLE_COLUMNS)
+            }
+        }
+        return RowGradient(edge(left), edge(box.right + margin), margin, rowMargin)
+    }
+
+    /**
+     * The colour of the line's ink: its strongest pixels on the line's own
+     * side of the backdrop. The mean of all of them came out grey — a glyph's
+     * anti-aliased edge and a letter still fading in pull it toward the panel.
+     */
+    private fun inkColour(frame: Bitmap, box: TextBounds, lighterInk: Boolean?): Int? {
+        val w = box.width
+        val h = box.height
+        if (w <= 0 || h <= 0) return null
+        val pixels = IntArray(w * h)
+        frame.getPixels(pixels, 0, w, box.left, box.top, w, h)
+        val column = DoubleArray(h)
+        var lighter = 0
+        var darker = 0
+        val light = mutableListOf<Int>()
+        val dark = mutableListOf<Int>()
+        for (x in 0 until w step 2) {
+            for (y in 0 until h) column[y] = luma(pixels[y * w + x])
+            val bg = column.sortedArray()[h / 2]
+            for (y in 0 until h) {
+                val d = column[y] - bg
+                if (d >= INK_CONTRAST) { lighter++; light += pixels[y * w + x] }
+                else if (-d >= INK_CONTRAST) { darker++; dark += pixels[y * w + x] }
+            }
+        }
+        val useLight = lighterInk ?: (lighter >= darker)
+        val ink = if (useLight) light else dark
+        if (ink.isEmpty()) return null
+        val sorted = ink.sortedBy { luma(it) }
+        val core = if (useLight) sorted.takeLast(max(1, sorted.size * INK_CORE_PERCENT / 100))
+        else sorted.take(max(1, sorted.size * INK_CORE_PERCENT / 100))
+        return Color.rgb(
+            core.sumOf { Color.red(it) } / core.size,
+            core.sumOf { Color.green(it) } / core.size,
+            core.sumOf { Color.blue(it) } / core.size,
+        )
+    }
+
+    private fun toElement(key: String, line: GameLine, style: SourceStyle, window: TextBounds, packageName: String): TextElement {
         val b = line.bounds
+        val grow = style.backdrop?.marginPx ?: 0
+        val growRows = style.backdrop?.rowMarginPx ?: 0
         return TextElement(
             id = TextElementId("game:${key.hashCode().toUInt().toString(16)}"),
             text = line.text,
+            // Grown by the erase margin when there is one, so the cleared
+            // patch takes in the glyphs' outline.
             bounds = TextBounds(
-                b.left + window.left,
-                b.top + window.top,
-                b.right + window.left,
-                b.bottom + window.top,
+                b.left - grow + window.left,
+                b.top - growRows + window.top,
+                b.right + grow + window.left,
+                b.bottom + growRows + window.top,
                 CoordinateSpace.SCREEN,
             ),
             sourceType = TextSourceType.GAME,
@@ -481,6 +669,7 @@ class GameTextSource @Inject constructor(
             source = SourceIdentity(packageName = packageName),
             revision = Revision(session),
             sourceLanguage = JAPANESE.takeIf { JapaneseScript.isJapanese(line.text) },
+            style = style,
         )
     }
 
@@ -497,6 +686,44 @@ class GameTextSource @Inject constructor(
         const val MAX_NAME_FRACTION = 0.75
         const val SPLIT_CACHE = 64
 
+        /**
+         * The most backdrop error a line may have and still be erased: the
+         * interpolation that measures it is the one that paints it back.
+         */
+        const val MAX_ERASE_ERROR = GameTextFilter.MAX_BACKDROP_ERROR * 3
+
+        /**
+         * A line of type against its glyphs' ink: text size 1/0.88 of it, and
+         * a line of CJK type — the fallback font sets the line's height —
+         * about 1.45 of that.
+         */
+        const val TYPE_LINE_RATIO = 1.45 / 0.88
+
+        /**
+         * Clear space along the line, beyond its ink: the ink's extent already
+         * covers the glyphs, and more reached into the piece beside it.
+         */
+        const val SIDE_MARGIN_PX = 2
+
+        /** Clear space above and below the text, against the type's height; at least a few pixels. */
+        const val ERASE_MARGIN_DIVISOR = 8
+        const val MIN_ERASE_MARGIN_PX = 4
+
+        /** The share of ink pixels, strongest first, that give the ink its colour. */
+        const val INK_CORE_PERCENT = 30
+
+        /** Middle of 0..255 brightness: a panel below it carries light ink. */
+        const val MID_LUMA = 128.0
+
+        /** Ink pixels that make a row or column beyond the box part of the line. */
+        const val EXTENT_MIN_INK = 2
+
+        /** Columns averaged at each end of a row for its colour. */
+        const val EDGE_SAMPLE_COLUMNS = 3
+
+        /** A row is inside the type when it holds this fraction (1/n) of the busiest row's ink. */
+        const val TYPE_ROW_SHARE = 40
+
         /** Empty rows allowed inside one line of type; ruby sits further off. */
         const val TYPE_ROW_GAP = 2
 
@@ -509,6 +736,9 @@ class GameTextSource @Inject constructor(
 
         /** A cell of slack above and below, so a line's edge is not cut off. */
         const val BAND_MARGIN_CELLS = 1
+
+        /** Mean brightness change per grid cell, 0..255, that is a new scene. */
+        const val SCENE_CHANGE_LUMA = 30.0
 
         /** A band this tall is a new screen, not a new line: read it whole. */
         const val WHOLE_FRAME_FRACTION = 0.5f

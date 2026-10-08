@@ -43,7 +43,15 @@ class StableLines {
 
     private var seen: List<Seen> = emptyList()
 
-    fun next(lines: List<GameLine>, now: Long): Update {
+    /**
+     * @param sceneChanged most of the frame changed since the last one — a
+     * cut, a fade, a menu opening. A published line not read on such a frame
+     * is withdrawn at once rather than after [GRACE_FRAMES]: its translation
+     * is drawn on the panel it erased, and over the next scene that panel is
+     * a patch of the last one (measured: a name and a line left on a black
+     * fade for over a second).
+     */
+    fun next(lines: List<GameLine>, now: Long, sceneChanged: Boolean = false): Update {
         val settled = mutableListOf<Settled>()
         val gone = mutableListOf<String>()
         val unmatched = seen.toMutableList()
@@ -95,7 +103,7 @@ class StableLines {
         for (missing in unmatched) {
             val key = missing.publishedKey
             if (key == null) continue
-            missing.misses += 1
+            missing.misses += if (sceneChanged) GRACE_FRAMES else 1
             if (missing.misses >= GRACE_FRAMES) gone += key else next += missing
         }
 

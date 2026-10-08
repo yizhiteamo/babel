@@ -70,6 +70,15 @@ class StableLinesTest {
         assertEquals(listOf(key), lines.next(emptyList(), now = 1700).gone)
     }
 
+    @Test
+    fun `a line gone when the scene changes is withdrawn at once`() {
+        val lines = StableLines()
+        lines.next(listOf(line("選択肢")), now = 0)
+        val key = lines.next(listOf(line("選択肢")), now = 333).settled.single().key
+
+        assertEquals(listOf(key), lines.next(emptyList(), now = 666, sceneChanged = true).gone)
+    }
+
     /** The recogniser's box moves by a few pixels between frames; that is the same place. */
     @Test
     fun `a box that wobbles is the same line`() {

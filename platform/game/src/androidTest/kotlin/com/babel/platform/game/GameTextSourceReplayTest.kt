@@ -53,7 +53,11 @@ class GameTextSourceReplayTest {
             println("GAMEREPLAY === ${file.name}")
             events.filterIsInstance<TextSourceEvent.Upserted>().flatMap { it.elements }.forEach {
                 val b = it.bounds
-                println("GAMEREPLAY   ${b.left},${b.top},${b.width}x${b.height}\t${it.text}")
+                val style = it.style
+                val ink = style.foregroundColor?.let { c -> "%06x".format(c and 0xFFFFFF) }
+                val look = "type=${style.glyphSizePx} ink=$ink " +
+                    (style.backdrop?.let { g -> "erased(${g.rows} rows)" } ?: "boxed")
+                println("GAMEREPLAY   ${b.left},${b.top},${b.width}x${b.height}\t$look\t${it.text}")
             }
             source.release()
             still.recycle()

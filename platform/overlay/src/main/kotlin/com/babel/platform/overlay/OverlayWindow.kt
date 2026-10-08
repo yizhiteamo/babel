@@ -265,14 +265,19 @@ internal class OverlayWindow(
                     glyphSizePx = translation.style.sourceStyle.glyphSizePx,
                 )
 
+            // A game's line on a panel plain enough to paint back is erased
+            // and written again in place ([ErasedTextView]); any other keeps
+            // the box.
+            val erased = game && translation.style.sourceStyle.backdrop != null
+
             val existing = views[translation.elementId]
-            val held = if (existing != null && existing.matches(vertical, ownWindow, game)) {
+            val held = if (existing != null && existing.matches(vertical, ownWindow, game, erased)) {
                 existing
             } else {
                 // A changed writing mode or a changed arrangement needs a new
                 // view, not a rebind.
                 existing?.let(::remove)
-                newHeld(vertical, ownWindow, game).also { views[translation.elementId] = it }
+                newHeld(vertical, ownWindow, game, erased).also { views[translation.elementId] = it }
             }
 
             // A fresh render is a fresh balloon: whatever the reader revealed or
@@ -310,13 +315,17 @@ internal class OverlayWindow(
     private class Held(val view: TranslationView, val ownWindow: Boolean, val game: Boolean = false) {
         var showingOriginal = false
 
-        fun matches(vertical: Boolean, ownWindow: Boolean, game: Boolean): Boolean =
-            this.ownWindow == ownWindow && this.game == game && (view is VerticalTranslationView) == vertical
+        fun matches(vertical: Boolean, ownWindow: Boolean, game: Boolean, erased: Boolean): Boolean =
+            this.ownWindow == ownWindow && this.game == game && (view is VerticalTranslationView) == vertical &&
+                (view is ErasedTextView) == erased
     }
 
-    private fun newHeld(vertical: Boolean, ownWindow: Boolean, game: Boolean): Held {
-        val view: TranslationView =
-            if (vertical) VerticalTranslationView(context) else TranslationTextView(context)
+    private fun newHeld(vertical: Boolean, ownWindow: Boolean, game: Boolean, erased: Boolean = false): Held {
+        val view: TranslationView = when {
+            erased -> ErasedTextView(context)
+            vertical -> VerticalTranslationView(context)
+            else -> TranslationTextView(context)
+        }
         val held = Held(view, ownWindow, game)
 
         if (game) {
