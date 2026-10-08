@@ -16,7 +16,7 @@ package com.babel.domain.game
  */
 object GameTextFilter {
 
-    enum class Verdict { TRANSLATE, NUMBER, ON_ARTWORK, TOO_LARGE, TOO_SHORT }
+    enum class Verdict { TRANSLATE, NUMBER, ON_ARTWORK, TOO_LARGE, TOO_SHORT, TOO_SMALL }
 
     fun judge(line: GameLine, frameHeight: Int): Verdict {
         val text = line.text.trim()
@@ -27,6 +27,7 @@ object GameTextFilter {
             letters == 0 || (text.any(Char::isDigit) && text.all { it.code < 0x80 } && letters <= MAX_TAG_LETTERS) ->
                 Verdict.NUMBER
             line.bounds.height > frameHeight * MAX_HEIGHT_FRACTION -> Verdict.TOO_LARGE
+            line.bounds.height < frameHeight * MIN_HEIGHT_FRACTION -> Verdict.TOO_SMALL
             line.backdropError > MAX_BACKDROP_ERROR -> Verdict.ON_ARTWORK
             letters < MIN_LETTERS -> Verdict.TOO_SHORT
             else -> Verdict.TRANSLATE
@@ -38,6 +39,13 @@ object GameTextFilter {
 
     /** Logos measured 8–29% of the screen high; body text at most 5.6%. */
     const val MAX_HEIGHT_FRACTION = 0.07
+
+    /**
+     * Price tags and badges drawn into a scene measured 23–38 px on a 1440 px
+     * frame, dialogue 57, buttons 48: type this small is scenery, and on
+     * moving art it flickered in and out every few frames.
+     */
+    const val MIN_HEIGHT_FRACTION = 0.028
 
     /** "Lv", "HP", "x": the letters a counter carries. */
     const val MAX_TAG_LETTERS = 3

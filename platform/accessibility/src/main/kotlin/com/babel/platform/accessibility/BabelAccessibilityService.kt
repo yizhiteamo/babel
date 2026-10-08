@@ -708,8 +708,14 @@ class BabelAccessibilityService : AccessibilityService() {
             // Reads until this game's window is no longer the one in front.
             // Checked against the window list once a frame at most: cheap,
             // and what notices an app switch.
+            // Bounds as well as identity: a game coming back to the front is
+            // still animating in, its window scaled and offset, and bounds
+            // taken then were kept for the whole read — measured, every
+            // translation drawn 552 px right and 160 px low. A change in
+            // bounds ends this read and the next starts with the real ones.
             gameScanner.read(target.windowId, target.bounds, target.packageName) {
-                gameMode.state.value == CaptureState.ACTIVE && gameWindow()?.windowId == target.windowId
+                gameMode.state.value == CaptureState.ACTIVE &&
+                    gameWindow()?.let { it.windowId == target.windowId && it.bounds == target.bounds } == true
             }
         }
     }

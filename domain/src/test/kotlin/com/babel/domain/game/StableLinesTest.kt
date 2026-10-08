@@ -61,13 +61,13 @@ class StableLinesTest {
     }
 
     @Test
-    fun `a line gone for two frames is withdrawn`() {
+    fun `a line gone for four frames is withdrawn`() {
         val lines = StableLines()
         lines.next(listOf(line("選択肢")), now = 0)
         val key = lines.next(listOf(line("選択肢")), now = 333).settled.single().key
 
-        lines.next(emptyList(), now = 666)
-        assertEquals(listOf(key), lines.next(emptyList(), now = 1000).gone)
+        repeat(3) { assertTrue(lines.next(emptyList(), now = 666L + it * 333).gone.isEmpty()) }
+        assertEquals(listOf(key), lines.next(emptyList(), now = 1700).gone)
     }
 
     /** The recogniser's box moves by a few pixels between frames; that is the same place. */
@@ -77,6 +77,29 @@ class StableLinesTest {
         lines.next(listOf(line("こんにちは", left = 400, top = 1100)), now = 0)
 
         assertEquals(1, lines.next(listOf(line("こんにちは", left = 406, top = 1103)), now = 333).settled.size)
+    }
+
+    /** Measured on moving art: one still line read four slightly different ways. */
+    @Test
+    fun `a line read slightly differently stays published`() {
+        val lines = StableLines()
+        lines.next(listOf(line("……そういえば、先生。クリスマスは何するの?")), now = 0)
+        val shown = lines.next(listOf(line("……そういえば、先生。クリスマスは何するの?")), now = 333)
+        assertEquals(1, shown.settled.size)
+
+        val jitter = lines.next(listOf(line("……そういえば、先生。クリスマスは何するの？")), now = 666)
+        assertTrue(jitter.gone.isEmpty())
+        assertTrue(jitter.settled.isEmpty())
+    }
+
+    /** The next line, read off-by-one-word noisily, is still a new line. */
+    @Test
+    fun `a different line in the same box is still withdrawn`() {
+        val lines = StableLines()
+        lines.next(listOf(line("……袋は大丈夫よ、ありがとう。")), now = 0)
+        lines.next(listOf(line("……袋は大丈夫よ、ありがとう。")), now = 333)
+
+        assertEquals(1, lines.next(listOf(line("え、ケーキ食べないの?うっそ")), now = 666).gone.size)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package com.babel.domain.game
 
 import com.babel.core.model.TextBounds
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -55,11 +56,18 @@ class StableLines {
                 continue
             }
             unmatched -= before
-            if (before.line.text == line.text) {
+            val growing = line.text.length > before.line.text.length &&
+                line.text.startsWith(before.line.text)
+            if (before.line.text == line.text || (!growing && sameReading(before.line.text, line.text))) {
+                // A published line keeps the reading it was published with: on
+                // moving art the recogniser reads one still line slightly
+                // differently every frame, and each variant used to withdraw
+                // the translation and draw it again (`docs/milestones/v3.md`).
+                val shown = if (before.publishedKey != null) before.line else line
                 val key = before.publishedKey ?: keyOf(line).also {
                     settled += Settled(it, line, now - before.firstSeenAt)
                 }
-                next += Seen(line, before.firstSeenAt, key)
+                next += Seen(shown, before.firstSeenAt, key)
             } else {
                 // Same place, new words: the old line is over, whatever it was.
                 before.publishedKey?.let { gone += it }
@@ -77,6 +85,18 @@ class StableLines {
 
         seen = next
         return Update(settled, gone)
+    }
+
+    /**
+     * Two readings of one still line: about the same length and mostly the
+     * same characters. A typewriter line grows by more each frame than this
+     * allows, and a new line in the same box is different words.
+     */
+    private fun sameReading(a: String, b: String): Boolean {
+        if (a.isEmpty() || b.isEmpty()) return false
+        if (abs(a.length - b.length) > max(2, max(a.length, b.length) / 10)) return false
+        val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
+        return shared * 2.0 / (a.length + b.length) >= SAME_READING
     }
 
     /** Everything published, for clearing the screen. */
@@ -99,7 +119,15 @@ class StableLines {
     }
 
     private companion object {
-        const val GRACE_FRAMES = 2
+        /**
+         * Frames a published line may go unread before it is withdrawn. Two
+         * (~0.7 s) let the recogniser's misses on moving art pull a
+         * translation down and put it back again and again.
+         */
+        const val GRACE_FRAMES = 4
+
+        /** Share of characters two readings of one line have in common. */
+        const val SAME_READING = 0.85
         const val KEY_GRID = 24
     }
 }

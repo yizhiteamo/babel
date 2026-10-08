@@ -131,23 +131,41 @@ object GameLayout {
      * right below it and the backdrop is not far over the line — a name above
      * dialogue is part of the dialogue.
      */
-    fun select(lines: List<GameLine>, frameHeight: Int): List<GameLine> {
+    fun select(lines: List<GameLine>, frameHeight: Int, frameWidth: Int = Int.MAX_VALUE): List<GameLine> {
         val verdicts = lines.associateWith { GameTextFilter.judge(it, frameHeight) }
-        val kept = verdicts.filterValues { it == GameTextFilter.Verdict.TRANSLATE }.keys
+        fun onArtWithin(line: GameLine, allowance: Double) =
+            verdicts[line] == GameTextFilter.Verdict.ON_ARTWORK &&
+                line.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * allowance
+        // A long line is dialogue: lettering drawn into the art is a word or a
+        // title, and a translucent dialogue box over moving art scored 11.6 —
+        // a hair under the threshold, and over it on the next frame.
+        val kept = lines.filter { line ->
+            verdicts[line] == GameTextFilter.Verdict.TRANSLATE ||
+                (line.bounds.width >= frameWidth * LONG_LINE_FRACTION && onArtWithin(line, LONG_LINE_ALLOWANCE))
+        }.toSet()
         return lines.filter { line ->
             line in kept || (
-                verdicts[line] == GameTextFilter.Verdict.ON_ARTWORK &&
-                    line.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * SPEAKER_BACKDROP_ALLOWANCE &&
+                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
                     kept.any { below -> speaksAbove(line.bounds, below.bounds) }
                 )
         }
     }
 
-    /** How far over the backdrop threshold a speaker label may be. */
-    const val SPEAKER_BACKDROP_ALLOWANCE = 2.0
+    /**
+     * How far over the backdrop threshold a speaker label may be. The name row
+     * sits on the panel's translucent edge with a character behind it:
+     * measured 15 (通行人A) and 31 (ソラ, エンジェル24).
+     */
+    const val SPEAKER_BACKDROP_ALLOWANCE = 4.0
+
+    /** A line this wide of the frame is dialogue, not lettering on the art. */
+    const val LONG_LINE_FRACTION = 0.4
+    const val LONG_LINE_ALLOWANCE = 2.0
 
     private fun speaksAbove(label: TextBounds, line: TextBounds): Boolean {
         val gap = line.top - label.bottom
-        return gap in 0..label.height && abs(line.left - label.left) <= label.height
+        // Beside the name too: an affiliation is to its right, on the same row,
+        // and the dialogue starts under the name, not under it.
+        return gap in 0..label.height * 2 && line.left <= label.right && label.left - line.left <= label.height * 4
     }
 }

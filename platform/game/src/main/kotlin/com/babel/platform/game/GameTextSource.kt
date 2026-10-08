@@ -144,7 +144,7 @@ class GameTextSource @Inject constructor(
 
         // Speaker labels kept with their dialogue, wrapped lines joined into
         // one utterance (`GameLayout`).
-        val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height))
+        val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height, frame.width))
 
         lock.withLock {
             val update = lines.next(kept, now = System.currentTimeMillis())
@@ -204,17 +204,53 @@ class GameTextSource @Inject constructor(
         }
         val width = frame.width
         val height = frame.height
-        result.textBlocks.flatMap { it.lines }.mapNotNull { line ->
-            val box = line.boundingBox ?: return@mapNotNull null
-            if (line.text.isBlank()) return@mapNotNull null
+        result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
+            if (text.isBlank()) return@mapNotNull null
             val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
-            GameLine(line.text, bounds, backdropError(frame, width, height, bounds))
+            GameLine(text, bounds, backdropError(frame, width, height, bounds))
         }.flatMap { splitByColour(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {
         logger.warn(TAG, "recognition failed", failure)
         emptyList()
+    }
+
+    /**
+     * One recognised line, cut where its words stand far apart.
+     *
+     * ML Kit groups words by height, so two buttons on one row — AUTO and MENU,
+     * 120 px apart — come back as one line on some frames and two on others.
+     * Each flip read as a new line, withdrew the translation and drew it again
+     * (`StableLines`); a gap wider than the line's height is never inside a word.
+     */
+    private fun separated(line: com.google.mlkit.vision.text.Text.Line): List<Pair<String, android.graphics.Rect>> {
+        val box = line.boundingBox ?: return emptyList()
+        val elements = line.elements.filter { it.boundingBox != null }
+        if (elements.size < 2) return listOf(line.text to box)
+        val groups = mutableListOf(mutableListOf(elements.first()))
+        for (e in elements.drop(1)) {
+            val gap = e.boundingBox!!.left - groups.last().last().boundingBox!!.right
+            if (gap > box.height()) groups += mutableListOf(e) else groups.last() += e
+        }
+        // A group with no letters — an opening bracket or quote set apart —
+        // belongs to its neighbour, not on its own.
+        var i = 0
+        while (i < groups.size && groups.size > 1) {
+            if (groups[i].none { e -> e.text.any(Char::isLetterOrDigit) }) {
+                val into = if (i + 1 < groups.size) i + 1 else i - 1
+                if (into > i) groups[into].addAll(0, groups[i]) else groups[into].addAll(groups[i])
+                groups.removeAt(i)
+            } else {
+                i++
+            }
+        }
+        if (groups.size == 1) return listOf(line.text to box)
+        return groups.map { group ->
+            val rect = android.graphics.Rect(group.first().boundingBox!!)
+            group.forEach { rect.union(it.boundingBox!!) }
+            group.joinToString(" ") { it.text } to rect
+        }
     }
 
     /**
@@ -268,16 +304,35 @@ class GameTextSource @Inject constructor(
         val key = "${line.text}@${b.left / 8},${b.top / 8},${b.right / 8}"
         splits[key]?.let { return it }
 
+        // One cut, in the line's first half: a name and what follows it. A cut
+        // further along was measured cutting a white line of dialogue in two
+        // where the art behind it changed colour.
         val cuts = GameLayout.splitPoints(inkRuns(frame, b), b.height)
+            .filter { it - b.left <= b.width * MAX_NAME_FRACTION }
+            .take(1)
         val pieces = if (cuts.isEmpty()) {
             listOf(line)
         } else {
             val edges = listOf(b.left) + cuts + listOf(b.right)
             val read = edges.zipWithNext().mapNotNull { (l, r) ->
                 if (r - l < MIN_PIECE_PX) return@mapNotNull null
-                val crop = Bitmap.createBitmap(frame, l, b.top, r - l, b.height)
+                // ML Kit refuses anything under 32 px a side, and the refusal
+                // used to throw out of the whole frame's reading — measured,
+                // 43 frames of a story scene read as nothing. A margin of the
+                // frame around the piece clears that and keeps the glyphs' edges.
+                val pad = b.height / 4
+                val top = (b.top - pad).coerceAtLeast(0)
+                val bottom = (b.bottom + pad).coerceAtMost(frame.height)
+                val left = (l - pad).coerceAtLeast(0)
+                val right = (r + pad).coerceAtMost(frame.width)
+                if (right - left < MIN_RECOGNISABLE_PX || bottom - top < MIN_RECOGNISABLE_PX) return@mapNotNull null
+                val crop = Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
                 val text = try {
                     recognizer.process(InputImage.fromBitmap(crop, 0)).await().text.replace("\n", "").trim()
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (failure: Exception) {
+                    ""
                 } finally {
                     crop.recycle()
                 }
@@ -361,6 +416,10 @@ class GameTextSource @Inject constructor(
         /** Only a line several times wider than tall can hold two pieces. */
         const val MIN_SPLIT_ASPECT = 4
         const val MIN_PIECE_PX = 24
+        const val MIN_RECOGNISABLE_PX = 32
+
+        /** A speaker's name takes at most this much of its line. */
+        const val MAX_NAME_FRACTION = 0.45
         const val SPLIT_CACHE = 64
 
         /** Brightness apart from the column's middle value that counts as ink. */
