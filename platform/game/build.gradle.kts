@@ -38,6 +38,10 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
 
+    androidTestImplementation(kotlin("test"))
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
 }

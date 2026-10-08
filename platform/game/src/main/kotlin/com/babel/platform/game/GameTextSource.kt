@@ -14,6 +14,7 @@ import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.game.ChangedBand
+import com.babel.domain.game.GameLayout
 import com.babel.domain.game.GameLine
 import com.babel.domain.game.GameTextFilter
 import com.babel.domain.game.GameTextScanner
@@ -141,7 +142,9 @@ class GameTextSource @Inject constructor(
         }
         val readMs = System.currentTimeMillis() - started
 
-        val kept = read.filter { GameTextFilter.judge(it, frame.height) == GameTextFilter.Verdict.TRANSLATE }
+        // Speaker labels kept with their dialogue, wrapped lines joined into
+        // one utterance (`GameLayout`).
+        val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height))
 
         lock.withLock {
             val update = lines.next(kept, now = System.currentTimeMillis())
@@ -206,7 +209,7 @@ class GameTextSource @Inject constructor(
             if (line.text.isBlank()) return@mapNotNull null
             val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
             GameLine(line.text, bounds, backdropError(frame, width, height, bounds))
-        }
+        }.flatMap { splitByColour(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {
@@ -248,6 +251,86 @@ class GameTextSource @Inject constructor(
         return if (count == 0) Double.MAX_VALUE else sum / count
     }
 
+    /** What a line was split into last time, so a still line is not re-read every frame. */
+    private val splits = object : LinkedHashMap<String, List<GameLine>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<GameLine>>?) = size > SPLIT_CACHE
+    }
+
+    /**
+     * A line set in two colours — a speaker's name and their affiliation —
+     * read again piece by piece (`GameLayout.splitPoints`). The recogniser
+     * returns the two as one line and one word, so the cut can only be found
+     * in the pixels, and each piece's words only by reading it alone.
+     */
+    private suspend fun splitByColour(frame: Bitmap, line: GameLine): List<GameLine> {
+        val b = line.bounds
+        if (b.width < b.height * MIN_SPLIT_ASPECT) return listOf(line)
+        val key = "${line.text}@${b.left / 8},${b.top / 8},${b.right / 8}"
+        splits[key]?.let { return it }
+
+        val cuts = GameLayout.splitPoints(inkRuns(frame, b), b.height)
+        val pieces = if (cuts.isEmpty()) {
+            listOf(line)
+        } else {
+            val edges = listOf(b.left) + cuts + listOf(b.right)
+            val read = edges.zipWithNext().mapNotNull { (l, r) ->
+                if (r - l < MIN_PIECE_PX) return@mapNotNull null
+                val crop = Bitmap.createBitmap(frame, l, b.top, r - l, b.height)
+                val text = try {
+                    recognizer.process(InputImage.fromBitmap(crop, 0)).await().text.replace("\n", "").trim()
+                } finally {
+                    crop.recycle()
+                }
+                if (text.isBlank()) null else GameLine(text, TextBounds(l, b.top, r, b.bottom, b.space), line.backdropError)
+            }
+            // A piece that read as nothing means the cut was wrong: keep the whole.
+            if (read.size == edges.size - 1) read else listOf(line)
+        }
+        splits[key] = pieces
+        return pieces
+    }
+
+    /** Runs of inked columns across [box], each with its mean ink colour. */
+    private fun inkRuns(frame: Bitmap, box: TextBounds): List<GameLayout.InkRun> {
+        val w = box.width
+        val h = box.height
+        if (w <= 0 || h <= 0) return emptyList()
+        val pixels = IntArray(w * h)
+        frame.getPixels(pixels, 0, w, box.left, box.top, w, h)
+        val runs = mutableListOf<GameLayout.InkRun>()
+        var start = -1
+        var r = 0L
+        var g = 0L
+        var bl = 0L
+        var n = 0L
+        val column = DoubleArray(h)
+        fun close(end: Int) {
+            if (start >= 0 && n > 0) {
+                runs += GameLayout.InkRun(box.left + start, box.left + end, (r / n).toInt(), (g / n).toInt(), (bl / n).toInt(), n.toInt())
+            }
+            start = -1; r = 0; g = 0; bl = 0; n = 0
+        }
+        for (x in 0 until w) {
+            for (y in 0 until h) column[y] = luma(pixels[y * w + x])
+            val background = column.sortedArray()[h / 2]
+            var inked = false
+            for (y in 0 until h) {
+                if (abs(column[y] - background) >= INK_CONTRAST) {
+                    val p = pixels[y * w + x]
+                    r += Color.red(p); g += Color.green(p); bl += Color.blue(p); n++
+                    inked = true
+                }
+            }
+            if (inked) {
+                if (start < 0) start = x
+            } else {
+                close(x - 1)
+            }
+        }
+        close(w - 1)
+        return runs
+    }
+
     private fun luma(pixel: Int): Double =
         (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000.0
 
@@ -274,6 +357,14 @@ class GameTextSource @Inject constructor(
     private companion object {
         const val TAG = "GameText"
         const val SAMPLE_STEP = 4
+
+        /** Only a line several times wider than tall can hold two pieces. */
+        const val MIN_SPLIT_ASPECT = 4
+        const val MIN_PIECE_PX = 24
+        const val SPLIT_CACHE = 64
+
+        /** Brightness apart from the column's middle value that counts as ink. */
+        const val INK_CONTRAST = 70.0
 
         /** About 50 px a cell on a 3200x1440 window: a dialogue line is a row or two. */
         const val GRID_COLUMNS = 64
