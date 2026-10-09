@@ -92,18 +92,21 @@ object GameLayout {
      * 55–57 px one (0.65); the speaker row 59–72 px above the dialogue (0.86
      * and up) — less than a whole line, and with ruby over the dialogue its
      * box grows to the speaker's height. Fate/Grand Order sets its lines
-     * further apart, 48 px under a 64 px line (0.75), and at a limit of 0.75
-     * the two lines of one utterance were joined on one frame and apart on
-     * the next, each publishing over the other. The speaker row is told apart
-     * by its type's size and by sitting beside its affiliation, not by the gap.
+     * further apart, 48 px under a 64 px line (0.75), its boxes sometimes
+     * tighter than the type; against the smaller box at 0.75, then 0.85, the
+     * two lines of one utterance were joined on one frame and apart on the
+     * next, half of it translated at a time. Against the larger box, 0.9. The
+     * speaker row is told apart by its type's size ([SAME_SIZE_RATIO]: a name
+     * 68 px over dialogue 55 is 0.81) and by sitting beside its affiliation,
+     * not by the gap.
      */
-    const val WRAP_GAP_FRACTION = 0.85
+    const val WRAP_GAP_FRACTION = 0.9
 
     /** How far in, in line heights, the first line of an utterance may start. */
     const val FIRST_LINE_INDENT = 2
 
     /** Line heights within this ratio are the same size of type. */
-    const val SAME_SIZE_RATIO = 0.8
+    const val SAME_SIZE_RATIO = 0.85
 
     /**
      * Lines that wrap one utterance, joined: the next line starts at about the
@@ -156,7 +159,7 @@ object GameLayout {
         // a leading 「……」 is read on some frames and not others, and without
         // it the first line began 83 px right of the second and was not joined.
         val indent = above.bounds.left - below.bounds.left
-        val leftAligned = gap in 0..(min(above.bounds.height, below.bounds.height) * WRAP_GAP_FRACTION).toInt() &&
+        val leftAligned = gap in 0..(max(above.bounds.height, below.bounds.height) * WRAP_GAP_FRACTION).toInt() &&
             indent in -h..h * FIRST_LINE_INDENT
         // Or centred, as a game sets an instruction in the middle of the
         // screen — and a little further apart: Fate/Grand Order's tutorial

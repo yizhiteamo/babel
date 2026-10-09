@@ -46,8 +46,9 @@ class GameLayoutTest {
 
     @Test
     fun `a wrapped line of dialogue is one utterance`() {
-        val first = line("う、ウソだろ?", 435, 1122, 837, 1178)
-        val second = line("こんなすごい演奏を、女子高生が…!?", 414, 1208, 1558, 1275)
+        // The second box takes in more than its type; the type is one size.
+        val first = line("う、ウソだろ?", 435, 1122, 837, 1178).copy(typeHeight = 55)
+        val second = line("こんなすごい演奏を、女子高生が…!?", 414, 1208, 1558, 1275).copy(typeHeight = 55)
 
         val joined = GameLayout.joinWrapped(listOf(first, second))
 
@@ -79,8 +80,9 @@ class GameLayoutTest {
     /** Ruby over the dialogue made its box as tall as the speaker's; measured, the two were joined. */
     @Test
     fun `a speaker above dialogue with ruby is not joined to it`() {
-        val speaker = line("アコ", 426, 980, 595, 1056)
-        val dialogue = line("それが、万魔殿が……", 409, 1115, 1703, 1184)
+        // As measured: the boxes nearly one height, the type not.
+        val speaker = line("アコ", 426, 980, 595, 1056).copy(typeHeight = 68)
+        val dialogue = line("それが、万魔殿が……", 409, 1115, 1703, 1184).copy(typeHeight = 55)
 
         assertEquals(2, GameLayout.joinWrapped(listOf(speaker, dialogue)).size)
     }
