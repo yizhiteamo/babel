@@ -231,11 +231,19 @@ class GameTextSource @Inject constructor(
         }
         val width = frame.width
         val height = frame.height
-        result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
+        val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
             val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
             GameLine(text, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
-        }.flatMap { splitByColour(frame, it) }
+        }
+        // Only a speaker's row is cut by colour: a name and its affiliation
+        // sit over a line of dialogue. A label over a progress bar has its
+        // halves on different colours of bar, and 「ダウンロード中」 came back
+        // cut in two and translated as "down" and "loading".
+        val around = lines + lastLines
+        lines.flatMap { line ->
+            if (around.any { it !== line && GameLayout.speaksAbove(line.bounds, it.bounds) }) splitByColour(frame, line) else listOf(line)
+        }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {

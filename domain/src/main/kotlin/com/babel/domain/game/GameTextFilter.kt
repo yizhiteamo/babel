@@ -44,10 +44,11 @@ object GameTextFilter {
 
     /**
      * Price tags and badges drawn into a scene measured 23–38 px on a 1440 px
-     * frame, dialogue 57, buttons 48: type this small is scenery, and on
-     * moving art it flickered in and out every few frames.
+     * frame, dialogue 57, buttons 48 — and Fate/Grand Order's body text
+     * 34–40, which a limit of 2.8% dropped whole. Under 2.2% is scenery; the
+     * larger tags are drawn on the art, where the backdrop rule takes them.
      */
-    const val MIN_HEIGHT_FRACTION = 0.028
+    const val MIN_HEIGHT_FRACTION = 0.022
 
     /** "Lv", "HP", "x": the letters a counter carries. */
     const val MAX_TAG_LETTERS = 3

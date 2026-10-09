@@ -171,6 +171,19 @@ class GameLayoutTest {
         assertEquals(setOf<GameLine>(), GameLayout.controls(listOf(choice, dialogue), frameHeight = 1440, frameWidth = 3200))
     }
 
+    /** Fate/Grand Order's profile text, on a patterned panel: kept whole, not one line in two. */
+    @Test
+    fun `a paragraph over a patterned panel is kept whole`() {
+        val first = line("謎めいた、暗い色の水着を纏う未亡人。", 946, 337, 1679, 377, error = 8.8)
+        val second = line("唇からこぼれる言葉は謎めいて、", 946, 384, 1553, 424, error = 11.4)
+        val third = line("冷ややかで、忍び寄る猟奇を予感させる。", 946, 432, 1721, 472, error = 20.8)
+
+        val kept = GameLayout.select(listOf(first, second, third), frameHeight = 1440, frameWidth = 3200)
+
+        assertEquals(3, kept.size)
+        assertEquals(1, GameLayout.joinWrapped(kept).size)
+    }
+
     @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)

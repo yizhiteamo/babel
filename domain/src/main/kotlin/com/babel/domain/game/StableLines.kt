@@ -101,7 +101,10 @@ class StableLines {
                 next += Seen(line, before.firstSeenAt, publishedKey = null)
                 continue
             }
-            if (before.line.text == line.text || (!growing && sameReading(before.line.text, line.text))) {
+            // 「接続中」 with its dots counting up is one line, not a new one
+            // three times a second.
+            val sameWords = core(before.line.text).let { it.isNotEmpty() && it == core(line.text) }
+            if (before.line.text == line.text || sameWords || (!growing && sameReading(before.line.text, line.text))) {
                 // A published line keeps the reading it was published with: on
                 // moving art the recogniser reads one still line slightly
                 // differently every frame, and each variant used to withdraw
@@ -187,6 +190,9 @@ class StableLines {
         read.length * 2 >= published.length &&
             read.length < published.length - max(2, published.length / 10) &&
             (published.startsWith(read) || sameReading(published.take(read.length), read))
+
+    /** A line without the dots an animation adds and takes away at its end. */
+    private fun core(text: String): String = text.trimEnd('.', '。', '…', '・', '‥', '･', ' ')
 
     private fun editDistance(a: String, b: String): Int {
         var previous = IntArray(b.length + 1) { it }

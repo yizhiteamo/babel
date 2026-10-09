@@ -133,6 +133,17 @@ class StableLinesTest {
         assertEquals(1, lines.next(listOf(line("ミコ")), now = 666).gone.size)
     }
 
+    @Test
+    fun `a label whose dots count up stays published`() {
+        val lines = StableLines()
+        lines.next(listOf(line("接続中.")), now = 0)
+        lines.next(listOf(line("接続中.")), now = 333)
+
+        val more = lines.next(listOf(line("接続中...")), now = 666)
+        assertTrue(more.gone.isEmpty())
+        assertTrue(more.settled.isEmpty())
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {

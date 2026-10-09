@@ -130,7 +130,10 @@ object GameLayout {
                     line.bounds.bottom,
                     above.bounds.space,
                 ),
-                backdropError = max(above.backdropError, line.backdropError),
+                // By width: one line over a busier patch of a patterned panel
+                // made a whole profile paragraph fall back to a box.
+                backdropError = (above.backdropError * above.bounds.width + line.backdropError * line.bounds.width) /
+                    (above.bounds.width + line.bounds.width).coerceAtLeast(1),
                 typeHeight = max(above.typeHeight, line.typeHeight),
             ) to line
         }
@@ -177,14 +180,22 @@ object GameLayout {
         val kept = lines.filter { line -> line !in controls }.filter { line ->
             verdicts[line] == GameTextFilter.Verdict.TRANSLATE ||
                 (line.bounds.width >= frameWidth * LONG_LINE_FRACTION && onArtWithin(line, LONG_LINE_ALLOWANCE))
-        }.toSet()
-        // The end of a wrapped sentence can be a word, 「ね!?」, too short to
-        // keep alone; measured, it was dropped and the sentence translated
-        // without it.
-        fun endsSentence(line: GameLine) =
-            verdicts[line] == GameTextFilter.Verdict.TOO_SHORT && kept.any { above -> wraps(above, line) }
+        }.toMutableSet()
+        // A paragraph is kept or dropped whole. Its lines sit on the same
+        // panel, but over a patterned one some score higher than others, and
+        // measured, a profile's eleven lines came out half translated. A line
+        // wrapping on to or under a kept one — a word or two too short to keep
+        // alone (「ね!?」), or one over a busier patch of the panel — goes with
+        // it, as far as the next line not on the panel.
+        fun continues(line: GameLine) =
+            (verdicts[line] == GameTextFilter.Verdict.TOO_SHORT || onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE)) &&
+                kept.any { other -> wraps(other, line) || wraps(line, other) }
+        do {
+            val more = lines.filter { it !in kept && it !in controls && continues(it) }
+            kept += more
+        } while (more.isNotEmpty())
         return lines.filter { line ->
-            line in kept || endsSentence(line) || (
+            line in kept || (
                 onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
                     kept.any { below -> speaksAbove(line.bounds, below.bounds) }
                 )
@@ -256,7 +267,8 @@ object GameLayout {
     const val LONG_LINE_FRACTION = 0.4
     const val LONG_LINE_ALLOWANCE = 2.0
 
-    private fun speaksAbove(label: TextBounds, line: TextBounds): Boolean {
+    /** Whether [label] sits where a speaker's name does, just above and over the start of [line]. */
+    fun speaksAbove(label: TextBounds, line: TextBounds): Boolean {
         val gap = line.top - label.bottom
         // Beside the name too: an affiliation is to its right, on the same row,
         // and the dialogue starts under the name, not under it.
