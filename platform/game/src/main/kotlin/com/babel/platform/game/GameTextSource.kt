@@ -196,7 +196,7 @@ class GameTextSource @Inject constructor(
                 published[settled.key] = element.id
                 logger.debug(
                     TAG,
-                    "settled ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top}," +
+                    "settled ${element.id.value} ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top}," +
                         "${settled.line.bounds.width}x${settled.line.bounds.height} type=${settled.line.typeHeight} " +
                         "${if (element.style.backdrop != null) "erased" else "boxed"} " +
                         "outline=${element.style.outlineColor != null} weight=${element.style.strokeWeight?.let { "%.2f".format(it) }} " +
@@ -207,6 +207,18 @@ class GameTextSource @Inject constructor(
             if (upserted.isNotEmpty()) events.emit(TextSourceEvent.Upserted(upserted))
         }
         logger.debug(TAG, "read $how: ${read.size} lines, kept ${kept.size}, in ${readMs}ms")
+        // What was left out and why, as numbers: where a line was, how tall,
+        // how busy behind it. Never its words.
+        val left = read.filter { line -> selected.none { it === line } }
+        if (left.isNotEmpty()) {
+            logger.debug(
+                TAG,
+                "left out " + left.joinToString { l ->
+                    "${GameTextFilter.judge(l, frame.height)}@${l.bounds.left},${l.bounds.top},${l.bounds.width}x${l.bounds.height}" +
+                        " t=${l.typeHeight} e=${"%.0f".format(l.backdropError)}"
+                },
+            )
+        }
     }
 
     /** Mean brightness of a [GRID_COLUMNS] x [GRID_ROWS] grid, for [ChangedBand]. */
