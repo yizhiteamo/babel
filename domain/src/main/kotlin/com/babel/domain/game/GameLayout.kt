@@ -160,7 +160,12 @@ object GameLayout {
      * dialogue is part of the dialogue — and a wrap too short to keep alone
      * under a line that is kept.
      */
-    fun select(lines: List<GameLine>, frameHeight: Int, frameWidth: Int = Int.MAX_VALUE): List<GameLine> {
+    fun select(
+        lines: List<GameLine>,
+        frameHeight: Int,
+        frameWidth: Int = Int.MAX_VALUE,
+        otherScript: Boolean? = null,
+    ): List<GameLine> {
         val verdicts = lines.associateWith { GameTextFilter.judge(it, frameHeight) }
         fun onArtWithin(line: GameLine, allowance: Double) =
             verdicts[line] == GameTextFilter.Verdict.ON_ARTWORK &&
@@ -168,7 +173,8 @@ object GameLayout {
         // A long line is dialogue: lettering drawn into the art is a word or a
         // title, and a translucent dialogue box over moving art scored 11.6 —
         // a hair under the threshold, and over it on the next frame.
-        val kept = lines.filter { line ->
+        val controls = controls(lines, frameHeight, frameWidth, otherScript)
+        val kept = lines.filter { line -> line !in controls }.filter { line ->
             verdicts[line] == GameTextFilter.Verdict.TRANSLATE ||
                 (line.bounds.width >= frameWidth * LONG_LINE_FRACTION && onArtWithin(line, LONG_LINE_ALLOWANCE))
         }.toSet()
@@ -184,6 +190,60 @@ object GameLayout {
                 )
         }
     }
+
+    /**
+     * A game's own controls written in another script than the game — AUTO,
+     * MENU, SKIP and LOG in a Japanese game — left as they are. They are words
+     * every player of the game already reads, a chat model asked about one
+     * word alone guessed wrong (AUTO came back as "car"), and a translation
+     * over them stands between the player and the button.
+     *
+     * All of: Latin letters only, one word; at the edge of the screen; and on
+     * a frame whose text is mostly in another script. In an English game the
+     * same words are the game's language and are translated, and a choice or
+     * a menu entry, set in the game's own script, never qualifies.
+     */
+    fun controls(lines: List<GameLine>, frameHeight: Int, frameWidth: Int, otherScript: Boolean? = null): Set<GameLine> {
+        val candidates = lines.filter { line ->
+            val text = line.text.trim()
+            val word = text.isNotEmpty() && text.length <= MAX_CONTROL_LETTERS && text.all(::isLatinLetter)
+            val b = line.bounds
+            val edge = b.top < frameHeight * EDGE_FRACTION || b.bottom > frameHeight * (1 - EDGE_FRACTION) ||
+                (frameWidth != Int.MAX_VALUE && (b.left < frameWidth * EDGE_FRACTION || b.right > frameWidth * (1 - EDGE_FRACTION)))
+            word && edge
+        }
+        if (candidates.isEmpty()) return emptySet()
+        val inOtherScript = writtenInOtherScript(lines - candidates.toSet()) ?: otherScript ?: false
+        return if (inOtherScript) candidates.toSet() else emptySet()
+    }
+
+    /**
+     * Whether [lines] are mostly in a script other than Latin, or null when
+     * there is too little text to say — a frame showing only AUTO and MENU.
+     * The caller remembers the last answer for such frames.
+     */
+    fun writtenInOtherScript(all: List<GameLine>): Boolean? {
+        // A control's own word does not say what the game is written in.
+        val lines = all.filterNot { line ->
+            val text = line.text.trim()
+            text.length <= MAX_CONTROL_LETTERS && text.all(::isLatinLetter)
+        }
+        val letters = lines.sumOf { line -> line.text.count { it.isLetter() } }
+        if (letters < MIN_SCRIPT_LETTERS) return null
+        val latin = lines.sumOf { line -> line.text.count(::isLatinLetter) }
+        return latin * 2 < letters
+    }
+
+    private fun isLatinLetter(c: Char): Boolean = c.isLetter() && c.code < 0x250
+
+    /** Letters needed on a frame to tell which script a game is in. */
+    const val MIN_SCRIPT_LETTERS = 6
+
+    /** A control's word is at most this long. */
+    const val MAX_CONTROL_LETTERS = 8
+
+    /** The band along each side of the screen where controls sit. */
+    const val EDGE_FRACTION = 0.15
 
     /**
      * How far over the backdrop threshold a speaker label may be. The name row

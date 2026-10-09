@@ -32,7 +32,10 @@ class StableLines {
     /** A line once it has settled, with how long settling took. */
     data class Settled(val key: String, val line: GameLine, val settledAfterMs: Long)
 
-    data class Update(val settled: List<Settled>, val gone: List<String>)
+    /** Why a published line was withdrawn, for the log: the numbers say which rule fires. */
+    enum class Why { MOVED, CUT_SHORT, NEW_WORDS, MISSED, SCENE }
+
+    data class Update(val settled: List<Settled>, val gone: List<String>, val why: Map<String, Why> = emptyMap())
 
     private class Seen(
         val line: GameLine,
@@ -54,6 +57,7 @@ class StableLines {
     fun next(lines: List<GameLine>, now: Long, sceneChanged: Boolean = false): Update {
         val settled = mutableListOf<Settled>()
         val gone = mutableListOf<String>()
+        val why = mutableMapOf<String, Why>()
         val unmatched = seen.toMutableList()
         val next = mutableListOf<Seen>()
 
@@ -69,6 +73,7 @@ class StableLines {
                 // longer name. Kept, its translation stayed where the last
                 // speaker's was and covered this one's name.
                 gone += before.publishedKey!!
+                why[before.publishedKey!!] = Why.MOVED
                 next += Seen(line, now, publishedKey = null)
                 continue
             }
@@ -77,7 +82,12 @@ class StableLines {
                 // That is a miss, not a new line: measured, it withdrew the
                 // whole translation and drew it again.
                 before.misses += 1
-                if (before.misses >= GRACE_FRAMES) gone += before.publishedKey!! else next += before
+                if (before.misses >= GRACE_FRAMES) {
+                    gone += before.publishedKey!!
+                    why[before.publishedKey!!] = Why.CUT_SHORT
+                } else {
+                    next += before
+                }
                 continue
             }
             val growing = line.text.length > before.line.text.length &&
@@ -103,7 +113,10 @@ class StableLines {
                 next += Seen(shown, before.firstSeenAt, key)
             } else {
                 // Same place, new words: the old line is over, whatever it was.
-                before.publishedKey?.let { gone += it }
+                before.publishedKey?.let {
+                    gone += it
+                    why[it] = Why.NEW_WORDS
+                }
                 val stillGrowing = line.text.startsWith(before.line.text)
                 next += Seen(line, if (stillGrowing) before.firstSeenAt else now, publishedKey = null)
             }
@@ -113,11 +126,16 @@ class StableLines {
             val key = missing.publishedKey
             if (key == null) continue
             missing.misses += if (sceneChanged) GRACE_FRAMES else 1
-            if (missing.misses >= GRACE_FRAMES) gone += key else next += missing
+            if (missing.misses >= GRACE_FRAMES) {
+                gone += key
+                why[key] = if (sceneChanged) Why.SCENE else Why.MISSED
+            } else {
+                next += missing
+            }
         }
 
         seen = next
-        return Update(settled, gone)
+        return Update(settled, gone, why)
     }
 
     /**
@@ -127,6 +145,14 @@ class StableLines {
      */
     private fun sameReading(a: String, b: String): Boolean {
         if (a.isEmpty() || b.isEmpty()) return false
+        // A short label misread by one character — 「風紀委員会」 against a
+        // variant one glyph off — shares too few characters for the rule
+        // below and was withdrawn and drawn again on every flip: the speaker
+        // row flickered. One edit in four or more characters is the same
+        // label; a two-letter name keeps the strict rule, where one character
+        // is half the name.
+        val longer = max(a.length, b.length)
+        if (longer >= MIN_EDITABLE_LENGTH && editDistance(a, b) <= max(1, longer / 10)) return true
         if (abs(a.length - b.length) > max(2, max(a.length, b.length) / 10)) return false
         val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
         return shared * 2.0 / (a.length + b.length) >= SAME_READING
@@ -162,6 +188,20 @@ class StableLines {
             read.length < published.length - max(2, published.length / 10) &&
             (published.startsWith(read) || sameReading(published.take(read.length), read))
 
+    private fun editDistance(a: String, b: String): Int {
+        var previous = IntArray(b.length + 1) { it }
+        for (i in 1..a.length) {
+            val current = IntArray(b.length + 1)
+            current[0] = i
+            for (j in 1..b.length) {
+                val substitute = previous[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1
+                current[j] = minOf(substitute, previous[j] + 1, current[j - 1] + 1)
+            }
+            previous = current
+        }
+        return previous[b.length]
+    }
+
     /** Everything published, for clearing the screen. */
     fun reset(): List<String> {
         val keys = seen.mapNotNull { it.publishedKey }
@@ -196,6 +236,9 @@ class StableLines {
          */
         const val MIN_SLIDE_PX = 6
         const val SLIDE_DIVISOR = 6
+
+        /** Shortest reading one misread character may differ in and stay the same line. */
+        const val MIN_EDITABLE_LENGTH = 4
 
         /** Share of characters two readings of one line have in common. */
         const val SAME_READING = 0.85

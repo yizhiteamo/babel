@@ -46,10 +46,22 @@ data class SourceStyle(
      * (`docs/features/v3-game-translation.md`). Null everywhere else.
      */
     val backdrop: RowGradient? = null,
+    /**
+     * The colour of the edge drawn round the letters, when the original has
+     * one — a game's white type usually carries a dark outline, and set
+     * without it on a light patch of art the translation could not be read.
+     */
+    val outlineColor: Int? = null,
+    /**
+     * How heavy the original's strokes are: their typical width against the
+     * type's height. Null where it was not measured.
+     */
+    val strokeWeight: Float? = null,
 ) {
     val isEmpty: Boolean
         get() = backgroundColor == null && foregroundColor == null &&
-            orientation == null && glyphSizePx == null && backdrop == null
+            orientation == null && glyphSizePx == null && backdrop == null &&
+            outlineColor == null && strokeWeight == null
 
     companion object {
         val UNKNOWN = SourceStyle()

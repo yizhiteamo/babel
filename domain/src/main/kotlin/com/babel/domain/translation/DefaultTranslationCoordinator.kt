@@ -622,6 +622,7 @@ class DefaultTranslationCoordinator(
             // acquisition layer is the only one that ever saw the pixels.
             style = StyleHints(sourceStyle = element.style),
             sourceType = element.sourceType,
+            conversational = element.conversational,
         )
     }
 

@@ -17,4 +17,13 @@ internal interface TranslationView {
     val view: View
 
     fun bind(translation: RenderedTranslation)
+
+    /**
+     * Steps aside so the original shows, or comes back. The view stays where
+     * it is and keeps taking touches — stepping aside is not going away, and
+     * the same gesture has to be able to bring the translation back.
+     */
+    fun showOriginal(on: Boolean) {
+        view.alpha = if (on) 0f else 1f
+    }
 }

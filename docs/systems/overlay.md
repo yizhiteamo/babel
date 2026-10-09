@@ -25,7 +25,34 @@ RenderedTranslation
 - bounds
 - revision
 - styleHints
+- sourceType
+- conversational
 ```
+
+## Game translations (V3)
+
+A game's text is drawn in one of three ways, chosen per line:
+
+- **Erased and redrawn** (`ErasedTextView`) — the line has a `SourceStyle.backdrop`
+  (`RowGradient`): the panel is painted back row by row from the colours at
+  either end, and the translation is set over it in the original's ink, height,
+  weight and left edge, with an outline where the original has one or where
+  the ink alone would fall under 4.5:1 contrast with the panel.
+- **Boxed** (`TranslationTextView`) — no backdrop: the line sits on artwork the
+  interpolation cannot paint back.
+- **Not drawn** — the game's own controls in another script than the game
+  (`GameLayout.controls`: AUTO, MENU in a Japanese game).
+
+Touches:
+
+- **Dialogue** (`conversational`) is a touchable window. A short tap is handed
+  to the game; a **long press switches the whole screen** between translation
+  and original. The original state lasts until the next line appears, or
+  another long press on the same spot; a small bar in the line's ink marks
+  where a translation is standing aside.
+- **Labels** (buttons, menu entries, names) are trusted
+  `TYPE_ACCESSIBILITY_OVERLAY` windows that let every touch through — opaque,
+  yet the button under them works untouched, holds and drags included.
 
 ## Coordinate Mapping
 

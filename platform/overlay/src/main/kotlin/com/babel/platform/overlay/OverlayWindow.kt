@@ -132,7 +132,15 @@ internal class OverlayWindow(
 
     /**
      * A game's translation: a short tap goes on to the game, a long press
-     * shows the original until release (`docs/features/v3-game-translation.md`).
+     * switches between the translation and the original
+     * (`docs/features/v3-game-translation.md`).
+     *
+     * A switch rather than a hold: held, the finger covered the line it was
+     * meant to show, and a long line could not be read while holding. The
+     * whole screen switches together — a name in Japanese over a translated
+     * line reads as a fault — and comes back by itself with the next line
+     * ([show]), or by another long press, on the original where the
+     * translation was.
      *
      * The window turns untouchable **at touch-down**. The rest of a touch that
      * began on a window still comes to that window, so press and release are
@@ -149,10 +157,9 @@ internal class OverlayWindow(
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var downAt = 0L
         var longPressed = false
-        val showOriginal = Runnable {
+        val switch = Runnable {
             longPressed = true
-            held.showingOriginal = true
-            view.alpha = 0f
+            showGameOriginal(!gameShowingOriginal)
         }
         view.setOnTouchListener { _, event ->
             when (event.actionMasked) {
@@ -160,13 +167,11 @@ internal class OverlayWindow(
                     downAt = android.os.SystemClock.uptimeMillis()
                     longPressed = false
                     setTouchable(view, false)
-                    handler.postDelayed(showOriginal, LONG_PRESS_MS)
+                    handler.postDelayed(switch, LONG_PRESS_MS)
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    handler.removeCallbacks(showOriginal)
+                    handler.removeCallbacks(switch)
                     if (longPressed) {
-                        held.showingOriginal = false
-                        view.alpha = 1f
                         setTouchable(view, true)
                     } else {
                         val x = event.rawX
@@ -177,13 +182,23 @@ internal class OverlayWindow(
                     }
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
-                    handler.removeCallbacks(showOriginal)
-                    held.showingOriginal = false
-                    view.alpha = 1f
+                    handler.removeCallbacks(switch)
                     setTouchable(view, true)
                 }
             }
             true
+        }
+    }
+
+    /** Whether the game's translations are standing aside for the original. */
+    private var gameShowingOriginal = false
+
+    private fun showGameOriginal(on: Boolean) {
+        gameShowingOriginal = on
+        for (held in views.values) {
+            if (!held.game) continue
+            held.showingOriginal = on
+            held.view.showOriginal(on)
         }
     }
 
@@ -269,24 +284,34 @@ internal class OverlayWindow(
             // and written again in place ([ErasedTextView]); any other keeps
             // the box.
             val erased = game && translation.style.sourceStyle.backdrop != null
+            // A game's label sits on a button: drawn in a window touches go
+            // straight through, so the button works as if nothing covered it —
+            // no hand-off, no delay, a hold or a drag reaches it whole. Only
+            // possible as a trusted overlay, which alone may be opaque while
+            // letting touches through ([TrustedWindows]).
+            val passthrough = game && !translation.conversational && trusted?.context != null
 
             val existing = views[translation.elementId]
-            val held = if (existing != null && existing.matches(vertical, ownWindow, game, erased)) {
+            // A new line of a game brings every translation back: the reader
+            // looked at the original of the last one, and is reading on.
+            if (game && existing == null && gameShowingOriginal) showGameOriginal(false)
+            val held = if (existing != null && existing.matches(vertical, ownWindow, game, erased, passthrough)) {
                 existing
             } else {
                 // A changed writing mode or a changed arrangement needs a new
                 // view, not a rebind.
                 existing?.let(::remove)
-                newHeld(vertical, ownWindow, game, erased).also { views[translation.elementId] = it }
+                newHeld(vertical, ownWindow, game, erased, passthrough).also { views[translation.elementId] = it }
             }
 
             // A fresh render is a fresh balloon: whatever the reader revealed or
             // dismissed belongs to the page that was on screen then. The
             // touchability a dismissal removed comes back with it, because
             // `place` builds the parameters from scratch.
-            held.showingOriginal = false
+            held.showingOriginal = game && gameShowingOriginal
             held.view.view.alpha = 1f
             held.view.bind(translation)
+            if (held.showingOriginal) held.view.showOriginal(true)
             place(held, bounds.left, bounds.top, bounds.width, bounds.height)
             held.view.view.visibility = View.VISIBLE
         }
@@ -296,11 +321,13 @@ internal class OverlayWindow(
         for (id in ids) {
             views.remove(id)?.let(::remove)
         }
+        if (views.values.none { it.game }) gameShowingOriginal = false
     }
 
     fun clear() {
         views.values.forEach(::remove)
         views.clear()
+        gameShowingOriginal = false
     }
 
     // ------------------------------------------------------------- internals
@@ -312,15 +339,33 @@ internal class OverlayWindow(
      * re-scan should bring the translation back, so [show] resets it rather
      * than the coordinator remembering it.
      */
-    private class Held(val view: TranslationView, val ownWindow: Boolean, val game: Boolean = false) {
+    private class Held(
+        val view: TranslationView,
+        val ownWindow: Boolean,
+        val game: Boolean = false,
+        val passthrough: Boolean = false,
+        /** The window manager that added this view's window, which alone may remove it. */
+        val manager: WindowManager? = null,
+    ) {
         var showingOriginal = false
 
-        fun matches(vertical: Boolean, ownWindow: Boolean, game: Boolean, erased: Boolean): Boolean =
+        fun matches(vertical: Boolean, ownWindow: Boolean, game: Boolean, erased: Boolean, passthrough: Boolean): Boolean =
             this.ownWindow == ownWindow && this.game == game && (view is VerticalTranslationView) == vertical &&
-                (view is ErasedTextView) == erased
+                (view is ErasedTextView) == erased && this.passthrough == passthrough
     }
 
-    private fun newHeld(vertical: Boolean, ownWindow: Boolean, game: Boolean, erased: Boolean = false): Held {
+    private fun newHeld(
+        vertical: Boolean,
+        ownWindow: Boolean,
+        game: Boolean,
+        erased: Boolean = false,
+        passthrough: Boolean = false,
+    ): Held {
+        if (passthrough) {
+            val service = requireNotNull(trusted?.context)
+            val view: TranslationView = if (erased) ErasedTextView(service) else TranslationTextView(service)
+            return Held(view, ownWindow, game, passthrough = true, manager = service.getSystemService(WindowManager::class.java))
+        }
         val view: TranslationView = when {
             erased -> ErasedTextView(context)
             vertical -> VerticalTranslationView(context)
@@ -392,17 +437,18 @@ internal class OverlayWindow(
             return
         }
 
-        val params = ownWindowParams(left, top, w, h)
+        val params = if (held.passthrough) passthroughParams(left, top, w, h) else ownWindowParams(left, top, w, h)
+        val manager = held.manager ?: windowManager
         if (held.view.view.isAttachedToWindow) {
-            runCatching { windowManager.updateViewLayout(held.view.view, params) }
+            runCatching { manager.updateViewLayout(held.view.view, params) }
         } else {
-            runCatching { windowManager.addView(held.view.view, params) }
+            runCatching { manager.addView(held.view.view, params) }
         }
     }
 
     private fun remove(held: Held) {
         if (held.ownWindow) {
-            runCatching { windowManager.removeView(held.view.view) }
+            runCatching { (held.manager ?: windowManager).removeView(held.view.view) }
         } else {
             container?.removeView(held.view.view)
         }
@@ -462,6 +508,21 @@ internal class OverlayWindow(
         refreshContainerOrigin(layout)
         return true
     }
+
+    /** A game label's window: trusted, opaque, and letting every touch through. */
+    private fun passthroughParams(left: Int, top: Int, width: Int, height: Int) =
+        WindowManager.LayoutParams(
+            width,
+            height,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            CONTAINER_FLAGS,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = left
+            y = top
+            alpha = 1f
+        }
 
     private fun ownWindowParams(left: Int, top: Int, width: Int, height: Int) =
         WindowManager.LayoutParams(

@@ -147,6 +147,31 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a Japanese game's AUTO and MENU are left alone`() {
+        val auto = line("AUTO", 2510, 66, 2678, 120)
+        val menu = line("MENU", 2799, 69, 2979, 117)
+        val dialogue = line("山海経？玄武商会？", 430, 1121, 1521, 1177)
+
+        assertEquals(listOf(dialogue), GameLayout.select(listOf(auto, menu, dialogue), frameHeight = 1440, frameWidth = 3200))
+    }
+
+    @Test
+    fun `an English game's MENU is translated`() {
+        val menu = line("MENU", 2799, 69, 2979, 117)
+        val dialogue = line("Where are you going?", 430, 1121, 1521, 1177)
+
+        assertEquals(2, GameLayout.select(listOf(menu, dialogue), frameHeight = 1440, frameWidth = 3200).size)
+    }
+
+    @Test
+    fun `a Latin word in the middle of the screen is not a control`() {
+        val choice = line("OK", 1500, 700, 1700, 760)
+        val dialogue = line("よろしいですか？", 430, 1121, 1521, 1177)
+
+        assertEquals(setOf<GameLine>(), GameLayout.controls(listOf(choice, dialogue), frameHeight = 1440, frameWidth = 3200))
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

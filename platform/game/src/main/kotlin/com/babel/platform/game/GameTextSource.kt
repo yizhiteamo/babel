@@ -16,6 +16,7 @@ import com.babel.core.model.TextElementId
 import com.babel.core.model.TextOrientation
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.domain.game.BackdropEdges
 import com.babel.domain.game.ChangedBand
 import com.babel.domain.game.GameLayout
 import com.babel.domain.game.GameLine
@@ -71,6 +72,7 @@ class GameTextSource @Inject constructor(
 
     private val lock = Mutex()
     private var lines = StableLines()
+    private var otherScript: Boolean? = null
 
     /**
      * Bumped when the screen is cleared. A conversation's lines share one, so
@@ -154,12 +156,19 @@ class GameTextSource @Inject constructor(
 
         // Speaker labels kept with their dialogue, wrapped lines joined into
         // one utterance (`GameLayout`).
-        val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height, frame.width))
+        // Which script the game is written in, remembered for the frames that
+        // show too little text to tell (`GameLayout.controls`).
+        GameLayout.writtenInOtherScript(read)?.let { otherScript = it }
+        val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height, frame.width, otherScript))
 
         lock.withLock {
             val update = lines.next(kept, now = System.currentTimeMillis(), sceneChanged = sceneChanged)
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
+            if (update.gone.isNotEmpty()) {
+                // Where and why, never what: the key's text is screen text.
+                logger.debug(TAG, "withdrawn " + update.gone.joinToString { "${it.substringAfterLast('@')} ${update.why[it]}" })
+            }
 
             val upserted = update.settled.map { settled ->
                 // Every line read, not only those kept: a name left untranslated
@@ -171,7 +180,9 @@ class GameTextSource @Inject constructor(
                     TAG,
                     "settled ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top}," +
                         "${settled.line.bounds.width}x${settled.line.bounds.height} type=${settled.line.typeHeight} " +
-                        "${if (element.style.backdrop != null) "erased" else "boxed"} after ${settled.settledAfterMs}ms",
+                        "${if (element.style.backdrop != null) "erased" else "boxed"} " +
+                        "outline=${element.style.outlineColor != null} weight=${element.style.strokeWeight?.let { "%.2f".format(it) }} " +
+                        "after ${settled.settledAfterMs}ms",
                 )
                 element
             }
@@ -196,6 +207,7 @@ class GameTextSource @Inject constructor(
             lines = StableLines()
             lastGrid = null
             lastLines = emptyList()
+            otherScript = null
             session += 1
         }
         events.emit(TextSourceEvent.Cleared(TextSourceType.GAME))
@@ -522,12 +534,68 @@ class GameTextSource @Inject constructor(
         // short piece can count more dark outline than light letter, and
         // measured, one cyan 風紀委員会 came back navy.
         val lighterInk = backdrop?.let { luma(it.colorAt(it.rows / 2, 0.5f)) < MID_LUMA }
+        val strokes = strokesOf(frame, line.bounds, lighterInk ?: true)
         return line to SourceStyle(
             foregroundColor = inkColour(frame, line.bounds, lighterInk),
             orientation = TextOrientation.HORIZONTAL,
             glyphSizePx = line.typeHeight,
             backdrop = backdrop,
+            outlineColor = strokes.outline,
+            strokeWeight = strokes.weight?.let { it / line.typeHeight.coerceAtLeast(1) },
         )
+    }
+
+    private class Strokes(val outline: Int?, val weight: Float?)
+
+    /**
+     * The original's edge and weight, from each row's runs of ink: what lies
+     * just either side of a run is outline if it is clearly darker than the
+     * panel (lighter, for dark ink), panel otherwise; the runs' typical
+     * length is the strokes' width.
+     */
+    private fun strokesOf(frame: Bitmap, box: TextBounds, lighterInk: Boolean): Strokes {
+        val w = box.width
+        val h = box.height
+        if (w <= 2 * OUTLINE_PROBE_PX || h <= 0) return Strokes(null, null)
+        val sign = if (lighterInk) 1.0 else -1.0
+        val above = (box.top - 2).coerceAtLeast(0)
+        val below = (box.bottom + 1).coerceAtMost(frame.height - 1)
+        val outsideTop = IntArray(w).also { frame.getPixels(it, 0, w, box.left, above, w, 1) }
+        val outsideBottom = IntArray(w).also { frame.getPixels(it, 0, w, box.left, below, w, 1) }
+        val panel = DoubleArray(w) { (luma(outsideTop[it]) + luma(outsideBottom[it])) / 2 }
+        val row = IntArray(w)
+        val runs = mutableListOf<Int>()
+        val edge = mutableListOf<Int>()
+        var probes = 0
+        for (y in box.top until box.bottom step 2) {
+            frame.getPixels(row, 0, w, box.left, y, w, 1)
+            fun ink(x: Int) = (luma(row[x]) - panel[x]) * sign >= INK_CONTRAST
+            var x = 0
+            while (x < w) {
+                if (!ink(x)) { x++; continue }
+                val start = x
+                while (x < w && ink(x)) x++
+                runs += x - start
+                for (probe in listOf(start - OUTLINE_PROBE_PX, x - 1 + OUTLINE_PROBE_PX)) {
+                    if (probe !in 0 until w) continue
+                    probes++
+                    if ((panel[probe] - luma(row[probe])) * sign >= OUTLINE_CONTRAST) edge += row[probe]
+                }
+            }
+        }
+        if (runs.isEmpty()) return Strokes(null, null)
+        runs.sort()
+        val weight = runs[runs.size / 2].toFloat()
+        val outline = if (probes > 0 && edge.size * 2 >= probes) {
+            Color.rgb(
+                edge.sumOf { Color.red(it) } / edge.size,
+                edge.sumOf { Color.green(it) } / edge.size,
+                edge.sumOf { Color.blue(it) } / edge.size,
+            )
+        } else {
+            null
+        }
+        return Strokes(outline, weight)
     }
 
     /**
@@ -554,8 +622,15 @@ class GameTextSource @Inject constructor(
         fun column(x: Int, top: Int, bottom: Int) =
             IntArray(bottom - top).also { frame.getPixels(it, 0, 1, x, top, 1, bottom - top) }
 
+        // Up across a small gap too: ruby over the line belongs to it, and
+        // left standing it read as stray Japanese above the translation. Not
+        // as far as the name row, which sits a whole line above.
         var top = box.top
-        while (top > 0 && box.top - top < reach && inked(row(top - 1))) top--
+        var y = box.top - 1
+        while (y >= 0 && box.top - y <= (reach * RUBY_REACH).toInt()) {
+            if (inked(row(y))) top = y else if (top - y > reach / RUBY_GAP_DIVISOR) break
+            y--
+        }
         var bottom = box.bottom
         while (bottom < frame.height && bottom - box.bottom < reach && inked(row(bottom))) bottom++
         // Along the line, across a gap as well: a 「！」 or 「……」 the recogniser
@@ -567,13 +642,15 @@ class GameTextSource @Inject constructor(
         // Room left for the patch's edge to be sampled on panel, inside the limits.
         val edge = SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS
         var x = box.left - 1
-        while (x >= leftLimit + edge && box.left - x <= reach) {
+        while (x >= leftLimit + edge && box.left - x <= reach * ALONG_REACH) {
             if (inked(column(x, top, bottom))) left = x else if (left - x > gap) break
             x--
         }
+        // Further along than up or down: a 「――」 the recogniser dropped ran
+        // 300 px past the end of the line and was left standing.
         var right = box.right
         x = box.right
-        while (x < rightLimit - edge && x - box.right < reach) {
+        while (x < rightLimit - edge && x - box.right < reach * ALONG_REACH) {
             if (inked(column(x, top, bottom))) right = x + 1 else if (x - right >= gap) break
             x++
         }
@@ -607,7 +684,8 @@ class GameTextSource @Inject constructor(
                 Color.rgb(r / EDGE_SAMPLE_COLUMNS, g / EDGE_SAMPLE_COLUMNS, b / EDGE_SAMPLE_COLUMNS)
             }
         }
-        return RowGradient(edge(left), edge(box.right + margin), margin, rowMargin)
+        val (l, r) = BackdropEdges.repaired(edge(left), edge(box.right + margin))
+        return RowGradient(l, r, margin, rowMargin)
     }
 
     /**
@@ -716,6 +794,10 @@ class GameTextSource @Inject constructor(
         const val ERASE_MARGIN_DIVISOR = 8
         const val MIN_ERASE_MARGIN_PX = 4
 
+        /** How far outside a stroke its outline is looked for, and how far from the panel it must be. */
+        const val OUTLINE_PROBE_PX = 2
+        const val OUTLINE_CONTRAST = 25.0
+
         /** The share of ink pixels, strongest first, that give the ink its colour. */
         const val INK_CORE_PERCENT = 30
 
@@ -726,6 +808,13 @@ class GameTextSource @Inject constructor(
 
         /** Middle of 0..255 brightness: a panel below it carries light ink. */
         const val MID_LUMA = 128.0
+
+        /** How far above a line, in type heights, ruby is looked for, and the gap it may leave (1/n). */
+        const val RUBY_REACH = 0.6
+        const val RUBY_GAP_DIVISOR = 4
+
+        /** How much further, in type heights, the ink is followed along a line than across it. */
+        const val ALONG_REACH = 8
 
         /** Ink pixels that make a row or column beyond the box part of the line. */
         const val EXTENT_MIN_INK = 2

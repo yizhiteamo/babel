@@ -112,6 +112,27 @@ class StableLinesTest {
         assertTrue(jitter.settled.isEmpty())
     }
 
+    /** Measured: the affiliation flipped between two readings one glyph apart, and flickered. */
+    @Test
+    fun `a short label misread by one character stays published`() {
+        val lines = StableLines()
+        lines.next(listOf(line("風紀委員会")), now = 0)
+        lines.next(listOf(line("風紀委員会")), now = 333)
+
+        val variant = lines.next(listOf(line("風紀委貝会")), now = 666)
+        assertTrue(variant.gone.isEmpty())
+        assertTrue(variant.settled.isEmpty())
+    }
+
+    @Test
+    fun `a two letter name one character off is a new name`() {
+        val lines = StableLines()
+        lines.next(listOf(line("アコ")), now = 0)
+        lines.next(listOf(line("アコ")), now = 333)
+
+        assertEquals(1, lines.next(listOf(line("ミコ")), now = 666).gone.size)
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {

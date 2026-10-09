@@ -34,4 +34,11 @@ data class RenderedTranslation(
      * that land on it and therefore can be (ADR 008's amendment).
      */
     val sourceType: TextSourceType = TextSourceType.ACCESSIBILITY,
+    /**
+     * Whether the text is dialogue rather than a label ([TextElement.conversational]).
+     * A game's labels sit on its buttons, so a renderer lets every touch on
+     * them straight through; only dialogue takes the long press that shows
+     * the original.
+     */
+    val conversational: Boolean = false,
 )

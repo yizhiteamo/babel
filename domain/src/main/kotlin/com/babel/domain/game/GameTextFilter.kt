@@ -11,8 +11,10 @@ package com.babel.domain.game
  * icons and numbers left alone. Five screens prove the signal, not the
  * thresholds; they are to be checked against other games.
  *
- * Short Latin words are **not** skipped: AUTO and MENU are interface labels a
- * player may well want translated, and an English game is made of them.
+ * Short Latin words are **not** skipped here: an English game is made of
+ * them. A game's controls in another script than the game — AUTO and MENU in
+ * a Japanese one — are left alone by [GameLayout.controls], which can see the
+ * rest of the frame.
  */
 object GameTextFilter {
 
