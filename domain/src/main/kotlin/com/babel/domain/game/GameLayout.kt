@@ -226,10 +226,17 @@ object GameLayout {
             val more = lines.filter { it !in kept && it !in controls && continues(it) }
             kept += more
         } while (more.isNotEmpty())
+        // A name set out to the left of the dialogue — Fate/Grand Order's tab,
+        // 107 px out — only when it sits on the panel: the scenery's 「CENTER」
+        // stood as far out (147 px) on busy art and was taken for a speaker.
+        fun speaks(label: GameLine, below: GameLine): Boolean {
+            if (!speaksAbove(label.bounds, below.bounds)) return false
+            val outLeft = below.bounds.left - label.bounds.left > label.bounds.height
+            return !outLeft || label.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * LONG_LINE_ALLOWANCE
+        }
         return lines.filter { line ->
             line in kept || (
-                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
-                    kept.any { below -> speaksAbove(line.bounds, below.bounds) }
+                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) && kept.any { below -> speaks(line, below) }
                 )
         }
     }
@@ -404,10 +411,9 @@ object GameLayout {
         val gap = line.top - label.bottom
         // Beside the name too: an affiliation is to its right, on the same row,
         // and the dialogue starts under the name, not under it.
-        // And not out to the left of it: lettering on the scenery beside the
-        // name row (a sign, 「CENTER」) sat 147 px left of the dialogue, was
-        // kept as a speaker and flickered in and out with the art.
+        // And at most a little out to the left of it: a game sets its name tab
+        // that way. How far out is too far depends on the backdrop ([select]).
         return gap in 0..label.height * 2 && line.left <= label.right &&
-            label.left - line.left in -label.height..label.height * 4
+            label.left - line.left in -label.height * 2..label.height * 4
     }
 }

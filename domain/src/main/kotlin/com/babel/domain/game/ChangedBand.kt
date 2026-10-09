@@ -42,6 +42,28 @@ object ChangedBand {
      * that reaches into the band is dropped, because the new reading holds
      * whatever is there now.
      */
+    /**
+     * [top] to [bottom] grown until no line of the last reading is cut by
+     * either edge, with [margin] to spare. A band through the middle of a
+     * line read neither half: measured, a blinking arrow beside the dialogue
+     * made a band 199 px tall that cut the first of two lines, which then
+     * dropped out of every reading and was left untranslated.
+     */
+    fun widened(previous: List<GameLine>, top: Int, bottom: Int, margin: Int, frameHeight: Int): Pair<Int, Int> {
+        var t = top
+        var b = bottom
+        do {
+            val before = t to b
+            for (line in previous) {
+                val cut = line.bounds.top < b && line.bounds.bottom > t
+                if (!cut) continue
+                if (line.bounds.top < t + margin) t = minOf(t, line.bounds.top - margin)
+                if (line.bounds.bottom > b - margin) b = maxOf(b, line.bounds.bottom + margin)
+            }
+        } while ((t to b) != before)
+        return t.coerceAtLeast(0) to b.coerceAtMost(frameHeight)
+    }
+
     fun merge(previous: List<GameLine>, inBand: List<GameLine>, top: Int, bottom: Int): List<GameLine> =
         previous.filter { it.bounds.bottom <= top || it.bounds.top >= bottom } + inBand
 }

@@ -58,4 +58,22 @@ class ChangedBandTest {
 
         assertEquals(emptyList(), ChangedBand.merge(listOf(straddling), emptyList(), top = 1000, bottom = 1300))
     }
+
+    @Test
+    fun `a band through a line grows to take the whole line`() {
+        val first = line("私はレフ・ライノール。", 1159)
+        val second = line("ここで働く技師の一人だ。", 1284)
+
+        val (top, bottom) = ChangedBand.widened(listOf(first, second), top = 1200, bottom = 1300, margin = 20, frameHeight = 1440)
+
+        assertEquals(1139, top)
+        assertEquals(true, bottom >= second.bounds.bottom)
+    }
+
+    @Test
+    fun `a band clear of every line stays as it is`() {
+        val first = line("私はレフ・ライノール。", 1159)
+
+        assertEquals(400 to 500, ChangedBand.widened(listOf(first), top = 400, bottom = 500, margin = 20, frameHeight = 1440))
+    }
 }

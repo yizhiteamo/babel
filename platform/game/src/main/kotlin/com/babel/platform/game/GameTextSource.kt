@@ -144,8 +144,13 @@ class GameTextSource @Inject constructor(
             how = "unchanged"
         } else {
             val cellHeight = frame.height.toFloat() / GRID_ROWS
-            val top = ((band.first - BAND_MARGIN_CELLS) * cellHeight).toInt().coerceAtLeast(0)
-            val bottom = ((band.last + 1 + BAND_MARGIN_CELLS) * cellHeight).toInt().coerceAtMost(frame.height)
+            val (top, bottom) = ChangedBand.widened(
+                lastLines,
+                ((band.first - BAND_MARGIN_CELLS) * cellHeight).toInt().coerceAtLeast(0),
+                ((band.last + 1 + BAND_MARGIN_CELLS) * cellHeight).toInt().coerceAtMost(frame.height),
+                margin = cellHeight.toInt() / 2,
+                frameHeight = frame.height,
+            )
             read = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
                 how = "whole"
                 recognise(frame, 0, frame.height)

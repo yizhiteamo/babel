@@ -248,6 +248,14 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a name tab set out to the left of the dialogue is a speaker`() {
+        val tab = line("レフ", 368, 1006, 550, 1075, error = 13.0)
+        val dialogue = line("ふむ、君と。召集された48名の適格者、その最後の一人か。", 475, 1159, 2284, 1237, error = 6.7)
+
+        assertEquals(2, GameLayout.select(listOf(tab, dialogue), frameHeight = 1440, frameWidth = 3200).size)
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 
