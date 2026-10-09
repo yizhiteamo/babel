@@ -91,9 +91,13 @@ object GameLayout {
      * type's height. Measured on Blue Archive: a wrapped line 34–38 px under a
      * 55–57 px one (0.65); the speaker row 59–72 px above the dialogue (0.86
      * and up) — less than a whole line, and with ruby over the dialogue its
-     * box grows to the speaker's height, so the gap is what tells them apart.
+     * box grows to the speaker's height. Fate/Grand Order sets its lines
+     * further apart, 48 px under a 64 px line (0.75), and at a limit of 0.75
+     * the two lines of one utterance were joined on one frame and apart on
+     * the next, each publishing over the other. The speaker row is told apart
+     * by its type's size and by sitting beside its affiliation, not by the gap.
      */
-    const val WRAP_GAP_FRACTION = 0.75
+    const val WRAP_GAP_FRACTION = 0.85
 
     /** How far in, in line heights, the first line of an utterance may start. */
     const val FIRST_LINE_INDENT = 2
@@ -331,15 +335,18 @@ object GameLayout {
      */
     fun controls(lines: List<GameLine>, frameHeight: Int, frameWidth: Int, otherScript: Boolean? = null): Set<GameLine> {
         val candidates = lines.filter { line ->
-            val text = line.text.trim()
-            val word = text.isNotEmpty() && text.length <= MAX_CONTROL_LETTERS && text.all(::isLatinLetter)
+            val word = isControlWord(line.text)
             val b = line.bounds
             val edge = b.top < frameHeight * EDGE_FRACTION || b.bottom > frameHeight * (1 - EDGE_FRACTION) ||
                 (frameWidth != Int.MAX_VALUE && (b.left < frameWidth * EDGE_FRACTION || b.right > frameWidth * (1 - EDGE_FRACTION)))
             word && edge
         }
         if (candidates.isEmpty()) return emptySet()
-        val inOtherScript = writtenInOtherScript(lines - candidates.toSet()) ?: otherScript ?: false
+        // Not yet known — a fade-in showing only 「SKIP」 — counts as another
+        // script: translated then, the word stayed translated (「跳过」) for the
+        // whole scene. An English game has its controls translated a moment
+        // later, once there is text enough to tell.
+        val inOtherScript = writtenInOtherScript(lines - candidates.toSet()) ?: otherScript ?: true
         return if (inOtherScript) candidates.toSet() else emptySet()
     }
 
@@ -350,10 +357,7 @@ object GameLayout {
      */
     fun writtenInOtherScript(all: List<GameLine>): Boolean? {
         // A control's own word does not say what the game is written in.
-        val lines = all.filterNot { line ->
-            val text = line.text.trim()
-            text.length <= MAX_CONTROL_LETTERS && text.all(::isLatinLetter)
-        }
+        val lines = all.filterNot { isControlWord(it.text) }
         val letters = lines.sumOf { line -> line.text.count { it.isLetter() } }
         if (letters < MIN_SCRIPT_LETTERS) return null
         val latin = lines.sumOf { line -> line.text.count(::isLatinLetter) }
@@ -361,6 +365,16 @@ object GameLayout {
     }
 
     private fun isLatinLetter(c: Char): Boolean = c.isLetter() && c.code < 0x250
+
+    /**
+     * One Latin word, with at most the arrows or marks a button draws beside
+     * it: Fate/Grand Order's 「SKIP▶▶」 read as 「SKIP»」 on some frames, and
+     * those frames translated it.
+     */
+    private fun isControlWord(text: String): Boolean {
+        val letters = text.filter { it.isLetterOrDigit() }
+        return letters.length in 2..MAX_CONTROL_LETTERS && letters.all(::isLatinLetter) && ' ' !in text.trim()
+    }
 
     /** Letters needed on a frame to tell which script a game is in. */
     const val MIN_SCRIPT_LETTERS = 6

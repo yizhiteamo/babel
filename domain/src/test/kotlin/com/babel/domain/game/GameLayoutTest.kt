@@ -123,6 +123,14 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `Fate Grand Order's wider line spacing still wraps`() {
+        val first = GameLine("フォウ！", TextBounds(509, 1169, 758, 1236, CoordinateSpace.SCREEN), 5.0, typeHeight = 64)
+        val second = GameLine("フォウ、フォーウ！", TextBounds(510, 1287, 1050, 1350, CoordinateSpace.SCREEN), 5.0, typeHeight = 63)
+
+        assertEquals(1, GameLayout.joinWrapped(listOf(first, second)).size)
+    }
+
+    @Test
     fun `two choices a button apart are not joined`() {
         val a = line("カッコイイ。", 1340, 468, 1824, 524)
         val b = line("どこかで聴いたことがあるような…。", 1027, 665, 2139, 725)
@@ -153,6 +161,14 @@ class GameLayoutTest {
         val dialogue = line("山海経？玄武商会？", 430, 1121, 1521, 1177)
 
         assertEquals(listOf(dialogue), GameLayout.select(listOf(auto, menu, dialogue), frameHeight = 1440, frameWidth = 3200))
+    }
+
+    @Test
+    fun `a control drawn with arrows is still a control`() {
+        val skip = line("SKIP»", 2560, 30, 2850, 110)
+        val dialogue = line("フォウ！フォウ、フォーウ！", 509, 1169, 1050, 1236)
+
+        assertEquals(listOf(dialogue), GameLayout.select(listOf(skip, dialogue), frameHeight = 1440, frameWidth = 3200))
     }
 
     @Test

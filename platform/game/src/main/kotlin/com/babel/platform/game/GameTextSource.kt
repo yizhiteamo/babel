@@ -74,6 +74,10 @@ class GameTextSource @Inject constructor(
     private var lines = StableLines()
     private var otherScript: Boolean? = null
 
+    /** How much of the recent frames changed whole, smoothed; see [BUSY_SCENE]. */
+    private var motion = 0.0
+    private var wasBusy = false
+
     /**
      * Bumped when the screen is cleared. A conversation's lines share one, so
      * the translator's dialogue context carries across them (`PageContext`
@@ -163,8 +167,20 @@ class GameTextSource @Inject constructor(
         val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected)))
 
         val dialogue = GameLayout.dialogue(kept)
+        // On a scene that never holds still — a battle — only what reads as
+        // dialogue is translated: an instruction, a line someone speaks. Its
+        // labels (a unit's class, an enemy's name, a skill) are read at a
+        // glance and change under the player's finger, and translating them
+        // was more noise than help. A still screen, a menu, keeps them all.
+        motion = motion * (1 - MOTION_SMOOTHING) + (if (how == "whole") MOTION_SMOOTHING else 0.0)
+        val busy = motion > BUSY_SCENE
+        val shown = if (busy) kept.filter { it in dialogue } else kept
+        if (busy != wasBusy) {
+            wasBusy = busy
+            logger.debug(TAG, if (busy) "busy scene: dialogue only" else "still scene: everything")
+        }
         lock.withLock {
-            val update = lines.next(kept, now = System.currentTimeMillis(), sceneChanged = sceneChanged)
+            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged)
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
             if (update.gone.isNotEmpty()) {
@@ -210,6 +226,7 @@ class GameTextSource @Inject constructor(
             lastGrid = null
             lastLines = emptyList()
             otherScript = null
+            motion = 0.0
             session += 1
         }
         events.emit(TextSourceEvent.Cleared(TextSourceType.GAME))
@@ -845,6 +862,13 @@ class GameTextSource @Inject constructor(
 
         /** A cell of slack above and below, so a line's edge is not cut off. */
         const val BAND_MARGIN_CELLS = 1
+
+        /**
+         * A scene is busy when most recent frames changed across half the
+         * screen or more ([motion], smoothed over a few frames).
+         */
+        const val BUSY_SCENE = 0.6
+        const val MOTION_SMOOTHING = 0.25
 
         /** Mean brightness change per grid cell, 0..255, that is a new scene. */
         const val SCENE_CHANGE_LUMA = 30.0
