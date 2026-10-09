@@ -200,6 +200,10 @@ object GameLayout {
         val gap = line.top - label.bottom
         // Beside the name too: an affiliation is to its right, on the same row,
         // and the dialogue starts under the name, not under it.
-        return gap in 0..label.height * 2 && line.left <= label.right && label.left - line.left <= label.height * 4
+        // And not out to the left of it: lettering on the scenery beside the
+        // name row (a sign, 「CENTER」) sat 147 px left of the dialogue, was
+        // kept as a speaker and flickered in and out with the art.
+        return gap in 0..label.height * 2 && line.left <= label.right &&
+            label.left - line.left in -label.height..label.height * 4
     }
 }

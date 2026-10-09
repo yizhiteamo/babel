@@ -139,6 +139,14 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `lettering on art out to the left of the dialogue is not a speaker`() {
+        val sign = line("センター", 283, 930, 627, 1026, error = 30.0)
+        val dialogue = line("山海経？玄武商会？", 430, 1121, 1521, 1177, error = 6.0)
+
+        assertEquals(listOf(dialogue), GameLayout.select(listOf(sign, dialogue), frameHeight = 1440))
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

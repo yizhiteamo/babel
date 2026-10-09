@@ -20,6 +20,12 @@ data class TranslationRequest(
      * characters. Accessibility text is exact; OCR's is a reading.
      */
     val recognised: Boolean = false,
+    /**
+     * Where the text was shown, so a provider can be told what it is
+     * translating: a game's 「AUTO」, sent as a comic's speech balloon, came
+     * back as the word for a car.
+     */
+    val sourceType: TextSourceType? = null,
     val metadata: Map<String, String> = emptyMap(),
 )
 

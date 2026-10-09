@@ -3,6 +3,7 @@ package com.babel.data.translation.remote
 import com.babel.core.common.BabelLogger
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.ProviderId
+import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationError
 import com.babel.core.model.TranslationRequest
 import com.babel.core.model.TranslationResult
@@ -215,7 +216,15 @@ class ChatTranslator(
      * different.
      */
     private fun instruction(request: TranslationRequest): String = buildString {
-        append("Translate the comic speech balloon the user sends")
+        // What the text is decides how a short one reads: a game's button
+        // 「AUTO」 sent as a speech balloon came back as 「汽车」.
+        if (request.sourceType == TextSourceType.GAME) {
+            append("Translate the text from a video game's screen the user sends —")
+            append(" a line of dialogue, a character's name, or an interface label")
+            append(" such as a button or a menu title, to be read as the game's own —")
+        } else {
+            append("Translate the comic speech balloon the user sends")
+        }
         request.languages.source?.let { append(" from ${nameOf(it)}") }
         append(" into ${nameOf(request.languages.target)}.")
         append(" Reply with the translation only: no explanation, no romanisation,")

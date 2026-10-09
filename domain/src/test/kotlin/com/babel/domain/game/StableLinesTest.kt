@@ -79,6 +79,17 @@ class StableLinesTest {
         assertEquals(listOf(key), lines.next(emptyList(), now = 666, sceneChanged = true).gone)
     }
 
+    @Test
+    fun `a line sliding into place settles where it stops`() {
+        val lines = StableLines()
+        lines.next(listOf(line("アコ", top = 1060)), now = 0)
+        assertTrue(lines.next(listOf(line("アコ", top = 1080)), now = 333).settled.isEmpty())
+        val stopped = lines.next(listOf(line("アコ", top = 1100)), now = 666)
+        assertTrue(stopped.settled.isEmpty())
+
+        assertEquals(1100, lines.next(listOf(line("アコ", top = 1100)), now = 1000).settled.single().line.bounds.top)
+    }
+
     /** The recogniser's box moves by a few pixels between frames; that is the same place. */
     @Test
     fun `a box that wobbles is the same line`() {

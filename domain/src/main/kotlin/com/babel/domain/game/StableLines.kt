@@ -82,6 +82,15 @@ class StableLines {
             }
             val growing = line.text.length > before.line.text.length &&
                 line.text.startsWith(before.line.text)
+            if (before.publishedKey == null && sliding(before.line.bounds, line.bounds) &&
+                (before.line.text == line.text || sameReading(before.line.text, line.text))
+            ) {
+                // Same words, still moving: a name sliding in. Settled there,
+                // its translation was drawn where the name was half-way, and
+                // the patch erased only the lower half of it.
+                next += Seen(line, before.firstSeenAt, publishedKey = null)
+                continue
+            }
             if (before.line.text == line.text || (!growing && sameReading(before.line.text, line.text))) {
                 // A published line keeps the reading it was published with: on
                 // moving art the recogniser reads one still line slightly
@@ -121,6 +130,13 @@ class StableLines {
         if (abs(a.length - b.length) > max(2, max(a.length, b.length) / 10)) return false
         val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
         return shared * 2.0 / (a.length + b.length) >= SAME_READING
+    }
+
+    /** Top and bottom both moved the same way by more than a recogniser's wobble. */
+    private fun sliding(a: TextBounds, b: TextBounds): Boolean {
+        val slack = max(MIN_SLIDE_PX, min(a.height, b.height) / SLIDE_DIVISOR)
+        return (b.top - a.top > slack && b.bottom - a.bottom > slack) ||
+            (a.top - b.top > slack && a.bottom - b.bottom > slack)
     }
 
     /**
@@ -172,6 +188,14 @@ class StableLines {
          * translation down and put it back again and again.
          */
         const val GRACE_FRAMES = 4
+
+        /**
+         * A still line's box wobbles a few pixels up or down between frames
+         * (measured up to 11 on a name 85 tall); more than this, both edges
+         * together, is the line moving.
+         */
+        const val MIN_SLIDE_PX = 6
+        const val SLIDE_DIVISOR = 6
 
         /** Share of characters two readings of one line have in common. */
         const val SAME_READING = 0.85
