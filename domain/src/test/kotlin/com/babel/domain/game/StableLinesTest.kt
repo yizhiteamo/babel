@@ -125,6 +125,15 @@ class StableLinesTest {
     }
 
     @Test
+    fun `an eight letter label misread in two places stays published`() {
+        val lines = StableLines()
+        lines.next(listOf(line("訓練用ゴーレム")), now = 0)
+        lines.next(listOf(line("訓練用ゴーレム")), now = 333)
+
+        assertTrue(lines.next(listOf(line("、訓練用ゴーレ厶")), now = 666).gone.isEmpty())
+    }
+
+    @Test
     fun `a two letter name one character off is a new name`() {
         val lines = StableLines()
         lines.next(listOf(line("アコ")), now = 0)

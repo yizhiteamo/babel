@@ -2,6 +2,7 @@ package com.babel.domain.game
 
 import com.babel.core.model.TextBounds
 import com.babel.domain.vision.LineJoin
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -151,10 +152,19 @@ object GameLayout {
         // a leading 「……」 is read on some frames and not others, and without
         // it the first line began 83 px right of the second and was not joined.
         val indent = above.bounds.left - below.bounds.left
-        return heights >= SAME_SIZE_RATIO &&
-            gap in 0..(min(above.bounds.height, below.bounds.height) * WRAP_GAP_FRACTION).toInt() &&
+        val leftAligned = gap in 0..(min(above.bounds.height, below.bounds.height) * WRAP_GAP_FRACTION).toInt() &&
             indent in -h..h * FIRST_LINE_INDENT
+        // Or centred, as a game sets an instruction in the middle of the
+        // screen — and a little further apart: Fate/Grand Order's tutorial
+        // leaves a blank half-line under its heading.
+        val centres = (above.bounds.left + above.bounds.right) / 2 - (below.bounds.left + below.bounds.right) / 2
+        // Boxes of tightly set lines overlap by a pixel or two.
+        val centred = abs(centres) <= h / 2 && gap in -h / 4..(h * CENTRED_GAP_LINES).toInt()
+        return heights >= SAME_SIZE_RATIO && (leftAligned || centred)
     }
+
+    /** The space a centred block may leave between its lines, in line heights. */
+    const val CENTRED_GAP_LINES = 1.25
 
     /**
      * The lines worth translating: [GameTextFilter]'s verdicts, plus a speaker
@@ -190,6 +200,21 @@ object GameLayout {
         fun continues(line: GameLine) =
             (verdicts[line] == GameTextFilter.Verdict.TOO_SHORT || onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE)) &&
                 kept.any { other -> wraps(other, line) || wraps(line, other) }
+        // A block of sentences drawn over the art — an instruction over a
+        // battle — is the game speaking to the player, not lettering in the
+        // scene, which is a word or a line. Two lines or more, one of them a
+        // sentence, however busy the art behind: with a limit, one line of
+        // the block scored either side of it frame by frame, and the block's
+        // translation was withdrawn and drawn again every time.
+        val onArt = lines.filter { it !in kept && it !in controls && verdicts[it] == GameTextFilter.Verdict.ON_ARTWORK }
+        val blocks = mutableListOf<MutableSet<GameLine>>()
+        for (line in onArt.sortedBy { it.bounds.top }) {
+            val block = blocks.firstOrNull { b -> b.any { wraps(it, line) || wraps(line, it) } }
+            if (block != null) block += line else blocks += mutableSetOf(line)
+        }
+        for (block in blocks) {
+            if (block.size >= 2 && block.any { isSentence(it.text) }) kept += block
+        }
         do {
             val more = lines.filter { it !in kept && it !in controls && continues(it) }
             kept += more
@@ -201,6 +226,96 @@ object GameLayout {
                 )
         }
     }
+
+    /**
+     * Which of [lines] are dialogue — what a player reads, rather than a
+     * button they press. Dialogue takes the long press that shows the
+     * original, and carries the lines before it as context; anything else is
+     * drawn so that every touch goes through to the game.
+     *
+     * A line is dialogue when it reads as a sentence — a sentence's
+     * punctuation or a sentence's length — and so is everything in the same
+     * block of text: a piece on the same row (Fate/Grand Order sets
+     * 「塩基配列　ヒトゲノム確認」 with wide spaces, and the recogniser returns
+     * the halves apart), a line wrapping on to or under it, and the speaker's
+     * name above it. Judged by its words alone, 「塩基配列」 was a label; its
+     * window let a long press through and the game moved on a line.
+     */
+    fun dialogue(lines: List<GameLine>): Set<GameLine> {
+        val found = lines.filter { isSentence(it.text) }.toMutableSet()
+        do {
+            val more = lines.filter { line ->
+                line !in found && found.any { d ->
+                    sameRow(line.bounds, d.bounds) || wraps(line, d) || wraps(d, line) || speaksAbove(line.bounds, d.bounds)
+                }
+            }
+            found += more
+        } while (more.isNotEmpty())
+        return found
+    }
+
+    /**
+     * Pieces of one line of dialogue set apart by wide spaces, joined back
+     * into the line. Fate/Grand Order writes 「貴方は本日　最後の来館者です。」
+     * with a gap the recogniser cuts at, and translated apart the halves came
+     * back as "you today" and "you are the last visitor".
+     *
+     * Only dialogue ([dialogue]), only type of one size — a speaker's name is
+     * set larger than the affiliation beside it, and the two stay apart — and
+     * only gaps of a few characters. The gap is kept as a wide space, so the
+     * translation can keep it too.
+     */
+    fun joinRows(lines: List<GameLine>, dialogue: Set<GameLine>): List<GameLine> {
+        val out = mutableListOf<GameLine>()
+        for (line in lines.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))) {
+            val i = if (line !in dialogue) {
+                -1
+            } else {
+                out.indexOfLast { before ->
+                    before in dialogue && sameRow(before.bounds, line.bounds) &&
+                        line.bounds.left >= before.bounds.right &&
+                        line.bounds.left - before.bounds.right <= max(before.typeHeight, line.typeHeight) * ROW_GAP_LINES &&
+                        min(before.typeHeight, line.typeHeight).toDouble() / max(before.typeHeight, line.typeHeight) >= SAME_ROW_SIZE_RATIO
+                }
+            }
+            if (i < 0) {
+                out += line
+                continue
+            }
+            val before = out[i]
+            out[i] = GameLine(
+                text = before.text.trimEnd() + WIDE_SPACE + line.text.trimStart(),
+                bounds = TextBounds(
+                    before.bounds.left,
+                    min(before.bounds.top, line.bounds.top),
+                    line.bounds.right,
+                    max(before.bounds.bottom, line.bounds.bottom),
+                    before.bounds.space,
+                ),
+                backdropError = (before.backdropError * before.bounds.width + line.backdropError * line.bounds.width) /
+                    (before.bounds.width + line.bounds.width).coerceAtLeast(1),
+                typeHeight = max(before.typeHeight, line.typeHeight),
+            )
+        }
+        return out
+    }
+
+    /** The widest gap, in characters, inside one line of dialogue. */
+    const val ROW_GAP_LINES = 4
+
+    /** Name 70 px against affiliation 55 is 0.79; pieces of one line are one size. */
+    const val SAME_ROW_SIZE_RATIO = 0.85
+
+    private const val WIDE_SPACE = '　'
+
+    /** A sentence's punctuation, or more letters than a label has. */
+    fun isSentence(text: String): Boolean =
+        text.any { it in SENTENCE_MARKS } || text.count { it.isLetter() } > MAX_LABEL_LETTERS
+
+    const val SENTENCE_MARKS = "。、？！?!…「」『』"
+
+    /** Longer than this without punctuation is still a sentence, not a label. */
+    const val MAX_LABEL_LETTERS = 12
 
     /**
      * A game's own controls written in another script than the game — AUTO,

@@ -155,7 +155,10 @@ class StableLines {
         // label; a two-letter name keeps the strict rule, where one character
         // is half the name.
         val longer = max(a.length, b.length)
-        if (longer >= MIN_EDITABLE_LENGTH && editDistance(a, b) <= max(1, longer / 10)) return true
+        // Two in eight or more: an enemy's name over its health bar on a
+        // battlefield came back four ways — a stray 「、」 or 「1」 in front, its
+        // last glyph misread — and every variant withdrew the last.
+        if (longer >= MIN_EDITABLE_LENGTH && editDistance(a, b) <= ((longer + 1) / 4).coerceIn(1, 3)) return true
         if (abs(a.length - b.length) > max(2, max(a.length, b.length) / 10)) return false
         val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
         return shared * 2.0 / (a.length + b.length) >= SAME_READING

@@ -185,6 +185,51 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `the pieces of a spaced-out line of dialogue are all dialogue`() {
+        val first = line("塩基配列", 733, 1135, 1018, 1200)
+        val second = line("ヒトゲノムと確認。", 1168, 1135, 1740, 1200)
+        val third = line("霊器属性", 733, 1225, 1018, 1290)
+        val button = line("戻る", 2900, 60, 3100, 120)
+
+        assertEquals(setOf(first, second, third), GameLayout.dialogue(listOf(first, second, third, button)))
+    }
+
+    @Test
+    fun `a line of dialogue cut at a wide space is joined back`() {
+        val first = GameLine("貴方は本日", TextBounds(733, 1225, 1018, 1290, CoordinateSpace.SCREEN), 5.0, typeHeight = 60)
+        val second = GameLine("最後の来館者です。", TextBounds(1168, 1225, 1740, 1290, CoordinateSpace.SCREEN), 5.0, typeHeight = 60)
+
+        val joined = GameLayout.joinRows(listOf(first, second), GameLayout.dialogue(listOf(first, second)))
+
+        assertEquals(listOf("貴方は本日　最後の来館者です。"), joined.map { it.text })
+    }
+
+    @Test
+    fun `a name and its affiliation stay apart`() {
+        val name = GameLine("チナツ", TextBounds(429, 977, 678, 1061, CoordinateSpace.SCREEN), 5.0, typeHeight = 70)
+        val affiliation = GameLine("風紀委員会", TextBounds(678, 977, 980, 1061, CoordinateSpace.SCREEN), 5.0, typeHeight = 55)
+        val dialogue = GameLine("いえ……あんこ抜きのどら焼きを。", TextBounds(435, 1122, 2078, 1179, CoordinateSpace.SCREEN), 5.0, typeHeight = 54)
+        val lines = listOf(name, affiliation, dialogue)
+
+        assertEquals(3, GameLayout.joinRows(lines, GameLayout.dialogue(lines)).size)
+    }
+
+    /** Fate/Grand Order's battle tutorial, centred over the battlefield. */
+    @Test
+    fun `a centred instruction over the art is kept and joined`() {
+        val heading = line("模擬戦闘を開始します", 1228, 372, 1970, 442, error = 17.5)
+        val first = line("Attackをタッチして、", 1185, 520, 1971, 598, error = 30.3)
+        val second = line("サーヴァントへの行動指示を", 1116, 597, 2082, 675, error = 46.8)
+        val third = line("開始してください", 1305, 673, 1897, 742, error = 41.0)
+        val lines = listOf(heading, first, second, third)
+
+        val kept = GameLayout.select(lines, frameHeight = 1440, frameWidth = 3200)
+
+        assertEquals(4, kept.size)
+        assertEquals(1, GameLayout.joinWrapped(kept).size)
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

@@ -159,8 +159,10 @@ class GameTextSource @Inject constructor(
         // Which script the game is written in, remembered for the frames that
         // show too little text to tell (`GameLayout.controls`).
         GameLayout.writtenInOtherScript(read)?.let { otherScript = it }
-        val kept = GameLayout.joinWrapped(GameLayout.select(read, frame.height, frame.width, otherScript))
+        val selected = GameLayout.select(read, frame.height, frame.width, otherScript)
+        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected)))
 
+        val dialogue = GameLayout.dialogue(kept)
         lock.withLock {
             val update = lines.next(kept, now = System.currentTimeMillis(), sceneChanged = sceneChanged)
             val gone = update.gone.mapNotNull { published.remove(it) }
@@ -174,7 +176,7 @@ class GameTextSource @Inject constructor(
                 // Every line read, not only those kept: a name left untranslated
                 // still has ink an affiliation's patch must not grow into.
                 val (inked, look) = lookOf(frame, settled.line, read)
-                val element = toElement(settled.key, inked, look, windowBounds, packageName)
+                val element = toElement(settled.key, inked, look, settled.line in dialogue, windowBounds, packageName)
                 published[settled.key] = element.id
                 logger.debug(
                     TAG,
@@ -734,11 +736,14 @@ class GameTextSource @Inject constructor(
         )
     }
 
-    /** A sentence, not a label: it has a sentence's punctuation, or a sentence's length. */
-    private fun isUtterance(text: String): Boolean =
-        text.any { it in SENTENCE_MARKS } || text.count { it.isLetter() } > MAX_LABEL_LETTERS
-
-    private fun toElement(key: String, line: GameLine, style: SourceStyle, window: TextBounds, packageName: String): TextElement {
+    private fun toElement(
+        key: String,
+        line: GameLine,
+        style: SourceStyle,
+        conversational: Boolean,
+        window: TextBounds,
+        packageName: String,
+    ): TextElement {
         val b = line.bounds
         val grow = style.backdrop?.marginPx ?: 0
         val growRows = style.backdrop?.rowMarginPx ?: 0
@@ -758,7 +763,7 @@ class GameTextSource @Inject constructor(
             // Dialogue carries the lines before it as context; a label does
             // not. A menu's 「エピソードリスト」, given the story's lines as
             // context, came back as the chapter's title.
-            conversational = isUtterance(line.text),
+            conversational = conversational,
             source = SourceIdentity(packageName = packageName),
             revision = Revision(session),
             sourceLanguage = JAPANESE.takeIf { JapaneseScript.isJapanese(line.text) },
@@ -808,11 +813,6 @@ class GameTextSource @Inject constructor(
 
         /** The share of ink pixels, strongest first, that give the ink its colour. */
         const val INK_CORE_PERCENT = 30
-
-        const val SENTENCE_MARKS = "。、？！?!…「」『』"
-
-        /** Longer than this without punctuation is still a sentence, not a label. */
-        const val MAX_LABEL_LETTERS = 12
 
         /** Middle of 0..255 brightness: a panel below it carries light ink. */
         const val MID_LUMA = 128.0
