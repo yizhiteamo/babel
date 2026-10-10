@@ -8,7 +8,10 @@ Minimize unnecessary handling and persistence of user-visible screen content.
 
 - process only content required for translation
 - exclude password-like/protected input
-- avoid persisting raw screen text by default
+- avoid persisting raw screen text by default — the one exception is a game's
+  short labels (names, buttons) and their translations, kept on the device so a
+  name stays the same name (`docs/systems/cache.md`); never dialogue, never
+  another app's text, never in a backup
 - avoid full source text in normal logs
 - route provider access through the translation layer
 - make local vs remote processing boundaries explicit

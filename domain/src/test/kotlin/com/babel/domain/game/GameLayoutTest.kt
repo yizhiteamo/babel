@@ -274,6 +274,14 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a stray stroke off a name tab's edge is taken off`() {
+        assertEquals("マシュ", GameLayout.withoutStrayStroke("マシュ1"))
+        assertEquals("マシュ", GameLayout.withoutStrayStroke("|マシュ"))
+        assertEquals("通行人A", GameLayout.withoutStrayStroke("通行人A"))
+        assertEquals("LV1", GameLayout.withoutStrayStroke("LV1"))
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

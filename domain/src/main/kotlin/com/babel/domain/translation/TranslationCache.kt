@@ -63,5 +63,14 @@ interface TranslationCache {
 
     suspend fun put(key: TranslationCacheKey, translatedText: String)
 
+    /**
+     * Like [put], and kept across restarts: a game's names and interface
+     * words, so that 「レフ」 is the same name tomorrow — reinstalled, the
+     * in-memory cache came back with 「列夫」 where it had said 「雷夫」.
+     * Only labels, never dialogue (`docs/systems/privacy.md`). An
+     * implementation that keeps nothing on disk may treat it as [put].
+     */
+    suspend fun putDurable(key: TranslationCacheKey, translatedText: String) = put(key, translatedText)
+
     suspend fun clear()
 }

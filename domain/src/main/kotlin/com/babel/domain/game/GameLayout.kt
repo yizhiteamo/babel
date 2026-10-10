@@ -331,6 +331,24 @@ object GameLayout {
 
     private const val WIDE_SPACE = '　'
 
+    /**
+     * A label without the stray stroke the recogniser reads off the edge of
+     * its frame: Fate/Grand Order's name tab came back as 「マシュ1」 on some
+     * frames, translated as 「玛修1」. Only a single 1, l, I or | standing
+     * against a letter of another script is taken off — 「通行人A」 and a
+     * Latin word keep everything.
+     */
+    fun withoutStrayStroke(text: String): String {
+        if (isSentence(text)) return text
+        var t = text.trim()
+        fun foreign(c: Char) = c.isLetter() && c.code >= 0x250
+        if (t.length >= 3 && t.last() in STRAY_STROKES && foreign(t[t.length - 2])) t = t.dropLast(1).trimEnd()
+        if (t.length >= 3 && t.first() in STRAY_STROKES && foreign(t[1])) t = t.drop(1).trimStart()
+        return t
+    }
+
+    private const val STRAY_STROKES = "1lI|丨｜"
+
     /** A sentence's punctuation, or more letters than a label has. */
     fun isSentence(text: String): Boolean =
         text.any { it in SENTENCE_MARKS } || text.count { it.isLetter() } > MAX_LABEL_LETTERS

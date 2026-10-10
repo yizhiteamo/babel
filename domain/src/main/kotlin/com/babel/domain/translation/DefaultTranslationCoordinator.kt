@@ -16,6 +16,7 @@ import com.babel.core.model.TranslationResult
 import com.babel.core.model.TranslationRuntimeState
 import com.babel.core.model.TranslationStatus
 import com.babel.domain.acquisition.TextSourceEvent
+import com.babel.domain.game.GameLayout
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.privacy.SensitiveContentPolicy
 import com.babel.domain.render.RenderUpdate
@@ -508,7 +509,11 @@ class DefaultTranslationCoordinator(
                     )
                     when (val status = result.status) {
                         TranslationStatus.Translated -> {
-                            cache.put(key, result.translatedText)
+                            if (isDurableLabel(element)) {
+                                cache.putDurable(key, result.translatedText)
+                            } else {
+                                cache.put(key, result.translatedText)
+                            }
                             mailbox.send(
                                 Message.Translated(element.id, result.translatedText, key),
                             )
@@ -625,6 +630,14 @@ class DefaultTranslationCoordinator(
             conversational = element.conversational,
         )
     }
+
+    /**
+     * A game's name or interface word, worth remembering across restarts: a
+     * label by its words — no sentence punctuation, a label's length — so a
+     * line of dialogue is never written to disk.
+     */
+    private fun isDurableLabel(element: TextElement): Boolean =
+        element.sourceType == TextSourceType.GAME && !GameLayout.isSentence(element.text)
 
     private sealed interface Message {
         data class Source(val event: TextSourceEvent) : Message

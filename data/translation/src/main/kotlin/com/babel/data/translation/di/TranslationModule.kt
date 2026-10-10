@@ -1,6 +1,7 @@
 package com.babel.data.translation.di
 
-import com.babel.data.translation.InMemoryTranslationCache
+import android.content.Context
+import com.babel.data.translation.DurableTranslationCache
 import com.babel.data.translation.mlkit.MlKitLanguages
 import com.babel.data.translation.mlkit.MlKitTranslator
 import com.babel.domain.language.DefaultLanguageResolver
@@ -23,7 +24,9 @@ import com.babel.domain.translation.Translator
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import javax.inject.Singleton
 
 @Module
@@ -85,7 +88,8 @@ object TranslationModule {
 
     @Provides
     @Singleton
-    fun provideTranslationCache(): TranslationCache = InMemoryTranslationCache()
+    fun provideTranslationCache(@ApplicationContext context: Context): TranslationCache =
+        DurableTranslationCache(File(context.noBackupFilesDir, "game-labels.json"))
 
     /**
      * Bound here rather than in `:app` because the supported-language list is a

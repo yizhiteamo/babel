@@ -273,7 +273,7 @@ class GameTextSource @Inject constructor(
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
             val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
-            GameLine(text, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
+            GameLine(GameLayout.withoutStrayStroke(text), bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
         }
         // Only a speaker's row is cut by colour: a name and its affiliation
         // sit over a line of dialogue. A label over a progress bar has its

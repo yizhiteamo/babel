@@ -159,6 +159,11 @@ internal class OverlayWindow(
         var longPressed = false
         val switch = Runnable {
             longPressed = true
+            // Touchable again at once: an untouchable overlay is held to 80%
+            // opacity, and for the rest of the hold the original showed
+            // through the translation (measured on Fate/Grand Order). Nothing
+            // is handed on after a long press, so nothing needs to fall through.
+            setTouchable(view, true)
             showGameOriginal(!gameShowingOriginal)
         }
         view.setOnTouchListener { _, event ->
@@ -294,7 +299,9 @@ internal class OverlayWindow(
             val existing = views[translation.elementId]
             // A new line of a game brings every translation back: the reader
             // looked at the original of the last one, and is reading on.
-            if (game && existing == null && gameShowingOriginal) showGameOriginal(false)
+            // Only a line of dialogue: a name or a label drawn again — the
+            // tab sliding back in — is not the reader moving on.
+            if (game && translation.conversational && existing == null && gameShowingOriginal) showGameOriginal(false)
             val held = if (existing != null && existing.matches(vertical, ownWindow, game, erased, passthrough)) {
                 existing
             } else {
