@@ -14,6 +14,7 @@ import com.babel.data.translation.remote.RemoteTranslator
 import com.babel.domain.settings.SettingsRepository
 import com.babel.data.translation.remote.TranslatingRemoteProbe
 import com.babel.domain.translation.FragmentingTranslator
+import com.babel.domain.translation.KeptWordsTranslator
 import com.babel.domain.translation.RemoteProbe
 import com.babel.domain.translation.RoutingTranslator
 import com.babel.domain.translation.TranslationCache
@@ -61,7 +62,7 @@ object TranslationModule {
         // One scope for both followers of settings: they live exactly as long
         // as each other and as long as the translator they make up.
         val scope = CoroutineScope(SupervisorJob() + dispatchers.default)
-        return RoutingTranslator(
+        return KeptWordsTranslator(RoutingTranslator(
             local = FragmentingTranslator(MlKitTranslator(logger = logger)),
             remote = RemoteTranslator(
                 chat = ChatTranslator(settingsRepository, logger),
@@ -71,7 +72,7 @@ object TranslationModule {
             ),
             settingsRepository = settingsRepository,
             scope = scope,
-        )
+        ))
     }
 
     /**
