@@ -186,6 +186,8 @@ object GameLayout {
         frameWidth: Int = Int.MAX_VALUE,
         otherScript: Boolean? = null,
         before: List<GameLine> = emptyList(),
+        /** Where speakers' names have stood before; see [speakerSpots]. */
+        speakerSpots: List<TextBounds> = emptyList(),
     ): List<GameLine> {
         val verdicts = lines.associateWith { GameTextFilter.judge(it, frameHeight) }
         fun onArtWithin(line: GameLine, allowance: Double) =
@@ -233,7 +235,19 @@ object GameLayout {
         fun speaks(label: GameLine, below: GameLine): Boolean {
             if (!speaksAbove(label.bounds, below.bounds)) return false
             val outLeft = below.bounds.left - label.bounds.left > label.bounds.height
-            return !outLeft || label.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * LONG_LINE_ALLOWANCE
+            // Out to the left on busy art, a name is still a name when it is
+            // written in a script other than Latin: the scenery's 「CENTER」
+            // was Latin lettering, and 「フォウ」, 「Dr.ロマン」 over a character
+            // behind Fate/Grand Order's tab scored up to 32.
+            val named = label.text.any { it.isLetter() && it.code >= 0x250 }
+            return !outLeft || label.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * LONG_LINE_ALLOWANCE ||
+                named || speakerSpots.any { at(it, label.bounds) }
+        }
+        // A line of silence — 「……………」 — has nothing to translate, but its
+        // speaker is still named above it: 「フォウ」 stood untranslated over
+        // every one.
+        val silences = lines.filter { line ->
+            line.text.length >= 2 && line.text.all { it in SILENCE_MARKS } && line.bounds.width >= line.bounds.height * 2
         }
         // A speaker kept on the last frame stays while it reads the same in
         // the same place: as the next line starts typing, the dialogue under
@@ -245,7 +259,8 @@ object GameLayout {
         }
         return lines.filter { line ->
             line in kept || (
-                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) && (kept.any { below -> speaks(line, below) } || stays(line))
+                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
+                    ((kept + silences).any { below -> speaks(line, below) } || stays(line))
                 )
         }
     }
@@ -349,6 +364,8 @@ object GameLayout {
 
     private const val STRAY_STROKES = "1lI|丨｜"
 
+    private const val SILENCE_MARKS = "…‥・.。、！？!?―ー─ "
+
     /** A sentence's punctuation, or more letters than a label has. */
     fun isSentence(text: String): Boolean =
         text.any { it in SENTENCE_MARKS } || text.count { it.isLetter() } > MAX_LABEL_LETTERS
@@ -376,7 +393,11 @@ object GameLayout {
             val b = line.bounds
             val edge = b.top < frameHeight * EDGE_FRACTION || b.bottom > frameHeight * (1 - EDGE_FRACTION) ||
                 (frameWidth != Int.MAX_VALUE && (b.left < frameWidth * EDGE_FRACTION || b.right > frameWidth * (1 - EDGE_FRACTION)))
-            word && edge
+            // Or a name in Latin letters over a line of dialogue: in a game
+            // written in another script that is a name the player typed —
+            // 「yizhiteamo」 came back as 「一支队伍」, "a team".
+            val name = isLatinName(line.text) && lines.any { it !== line && isSentence(it.text) && speaksAbove(b, it.bounds) }
+            (word && edge) || name
         }
         if (candidates.isEmpty()) return emptySet()
         // Not yet known — a fade-in showing only 「SKIP」 — counts as another
@@ -394,7 +415,9 @@ object GameLayout {
      */
     fun writtenInOtherScript(all: List<GameLine>): Boolean? {
         // A control's own word does not say what the game is written in.
-        val lines = all.filterNot { isControlWord(it.text) }
+        // Nor does a name the player typed in Latin letters: 「yizhiteamo」
+        // over a line of 「……！」 made a Japanese game read as Latin.
+        val lines = all.filterNot { isLatinName(it.text) }
         val letters = lines.sumOf { line -> line.text.count { it.isLetter() } }
         if (letters < MIN_SCRIPT_LETTERS) return null
         val latin = lines.sumOf { line -> line.text.count(::isLatinLetter) }
@@ -408,6 +431,14 @@ object GameLayout {
      * it: Fate/Grand Order's 「SKIP▶▶」 read as 「SKIP»」 on some frames, and
      * those frames translated it.
      */
+    private fun isLatinName(text: String): Boolean {
+        val letters = text.filter { it.isLetterOrDigit() }
+        return letters.length in 2..MAX_LATIN_NAME && letters.all(::isLatinLetter) && ' ' !in text.trim()
+    }
+
+    /** A player's name: Fate/Grand Order allows twelve characters. */
+    private const val MAX_LATIN_NAME = 16
+
     private fun isControlWord(text: String): Boolean {
         val letters = text.filter { it.isLetterOrDigit() }
         return letters.length in 2..MAX_CONTROL_LETTERS && letters.all(::isLatinLetter) && ' ' !in text.trim()
@@ -432,6 +463,21 @@ object GameLayout {
     /** A line this wide of the frame is dialogue, not lettering on the art. */
     const val LONG_LINE_FRACTION = 0.4
     const val LONG_LINE_ALLOWANCE = 2.0
+
+    /**
+     * Where [selected] has a speaker's name: a label kept above dialogue. A
+     * game sets every name in the same tab, so a name found there once marks
+     * the place, and a longer name over a busier part of the art behind the
+     * tab is still a name: 「Dr.ロマン」 scored 32 where 「マシュ」 scored 13.
+     */
+    fun speakerSpots(selected: List<GameLine>, frameHeight: Int): List<TextBounds> =
+        selected.filter { label ->
+            GameTextFilter.judge(label, frameHeight) == GameTextFilter.Verdict.ON_ARTWORK &&
+                selected.any { it !== label && isSentence(it.text) && speaksAbove(label.bounds, it.bounds) }
+        }.map { it.bounds }
+
+    private fun at(spot: TextBounds, b: TextBounds): Boolean =
+        abs(spot.left - b.left) <= b.height / 2 && abs(spot.top - b.top) <= b.height / 2
 
     /** Whether [label] sits where a speaker's name does, just above and over the start of [line]. */
     fun speaksAbove(label: TextBounds, line: TextBounds): Boolean {

@@ -90,6 +90,15 @@ class StableLinesTest {
         assertEquals(1100, lines.next(listOf(line("アコ", top = 1100)), now = 1000).settled.single().line.bounds.top)
     }
 
+    @Test
+    fun `a line whose place went blank is withdrawn at once`() {
+        val lines = StableLines()
+        lines.next(listOf(line("選択肢")), now = 0)
+        val key = lines.next(listOf(line("選択肢")), now = 333).settled.single().key
+
+        assertEquals(listOf(key), lines.next(emptyList(), now = 666, stillInked = { false }).gone)
+    }
+
     /** The recogniser's box moves by a few pixels between frames; that is the same place. */
     @Test
     fun `a box that wobbles is the same line`() {

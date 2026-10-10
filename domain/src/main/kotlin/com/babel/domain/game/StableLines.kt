@@ -33,7 +33,7 @@ class StableLines {
     data class Settled(val key: String, val line: GameLine, val settledAfterMs: Long)
 
     /** Why a published line was withdrawn, for the log: the numbers say which rule fires. */
-    enum class Why { MOVED, CUT_SHORT, NEW_WORDS, MISSED, SCENE }
+    enum class Why { MOVED, CUT_SHORT, NEW_WORDS, MISSED, SCENE, BLANK }
 
     data class Update(val settled: List<Settled>, val gone: List<String>, val why: Map<String, Why> = emptyMap())
 
@@ -54,7 +54,19 @@ class StableLines {
      * a patch of the last one (measured: a name and a line left on a black
      * fade for over a second).
      */
-    fun next(lines: List<GameLine>, now: Long, sceneChanged: Boolean = false): Update {
+    fun next(
+        lines: List<GameLine>,
+        now: Long,
+        sceneChanged: Boolean = false,
+        /**
+         * Whether the frame still shows ink where a line was. A line the
+         * recogniser missed is still there and keeps its grace; a line whose
+         * place is blank panel is gone. Measured: between two lines of
+         * Fate/Grand Order the box stood empty for four frames, the last
+         * translation stayed over it, and the next line typed out under it.
+         */
+        stillInked: (GameLine) -> Boolean = { true },
+    ): Update {
         val settled = mutableListOf<Settled>()
         val gone = mutableListOf<String>()
         val why = mutableMapOf<String, Why>()
@@ -128,10 +140,15 @@ class StableLines {
         for (missing in unmatched) {
             val key = missing.publishedKey
             if (key == null) continue
-            missing.misses += if (sceneChanged) GRACE_FRAMES else 1
+            val blank = !sceneChanged && !stillInked(missing.line)
+            missing.misses += if (sceneChanged || blank) GRACE_FRAMES else 1
             if (missing.misses >= GRACE_FRAMES) {
                 gone += key
-                why[key] = if (sceneChanged) Why.SCENE else Why.MISSED
+                why[key] = when {
+                    sceneChanged -> Why.SCENE
+                    blank -> Why.BLANK
+                    else -> Why.MISSED
+                }
             } else {
                 next += missing
             }

@@ -150,7 +150,7 @@ class GameLayoutTest {
 
     @Test
     fun `lettering on art out to the left of the dialogue is not a speaker`() {
-        val sign = line("センター", 283, 930, 627, 1026, error = 30.0)
+        val sign = line("CENTER", 283, 930, 627, 1026, error = 30.0)
         val dialogue = line("山海経？玄武商会？", 430, 1121, 1521, 1177, error = 6.0)
 
         assertEquals(listOf(dialogue), GameLayout.select(listOf(sign, dialogue), frameHeight = 1440))
@@ -279,6 +279,41 @@ class GameLayoutTest {
         assertEquals("マシュ", GameLayout.withoutStrayStroke("|マシュ"))
         assertEquals("通行人A", GameLayout.withoutStrayStroke("通行人A"))
         assertEquals("LV1", GameLayout.withoutStrayStroke("LV1"))
+    }
+
+    @Test
+    fun `a name out to the left on busy art is a speaker`() {
+        val roman = line("Dr.ロマン", 362, 1006, 753, 1078, error = 32.0)
+        val dialogue = line("ボクは医療部門のトップ、ロマニ・アーキマン。", 475, 1159, 2000, 1237)
+        val spot = TextBounds(368, 1003, 553, 1075, CoordinateSpace.SCREEN)
+
+        assertEquals(2, GameLayout.select(listOf(roman, dialogue), frameHeight = 1440, frameWidth = 3200).size)
+        assertEquals(2, GameLayout.select(listOf(roman, dialogue), frameHeight = 1440, frameWidth = 3200, speakerSpots = listOf(spot)).size)
+    }
+
+    @Test
+    fun `the speaker of a line of silence is still named`() {
+        val tab = line("フォウ", 368, 1003, 553, 1075, error = 20.0)
+        val silence = line("……………", 475, 1159, 860, 1210)
+
+        assertEquals(listOf(tab), GameLayout.select(listOf(tab, silence), frameHeight = 1440, frameWidth = 3200))
+    }
+
+    @Test
+    fun `a player's Latin name over Japanese dialogue is left as it is`() {
+        val name = line("yizhiteamo", 368, 1003, 700, 1075, error = 8.0)
+        val dialogue = line("……………………。", 475, 1159, 1100, 1210)
+        val other = line("ここが爆発の基点だろう。", 475, 900, 1400, 960)
+
+        assertEquals(false, name in GameLayout.select(listOf(name, dialogue, other), frameHeight = 1440, frameWidth = 3200))
+    }
+
+    @Test
+    fun `a Latin name does not make a frame Latin`() {
+        val name = line("yizhiteamo", 392, 1010, 818, 1093)
+        val dialogue = line("……！", 475, 1159, 700, 1210)
+
+        assertEquals(null, GameLayout.writtenInOtherScript(listOf(name, dialogue)))
     }
 
     @Test

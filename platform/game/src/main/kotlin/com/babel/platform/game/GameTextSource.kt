@@ -74,6 +74,7 @@ class GameTextSource @Inject constructor(
     private var lines = StableLines()
     private var otherScript: Boolean? = null
     private var lastSelected: List<GameLine> = emptyList()
+    private var speakerSpots: List<TextBounds> = emptyList()
 
     /** How much of the recent frames changed whole, smoothed; see [BUSY_SCENE]. */
     private var motion = 0.0
@@ -169,8 +170,14 @@ class GameTextSource @Inject constructor(
         // Which script the game is written in, remembered for the frames that
         // show too little text to tell (`GameLayout.controls`).
         GameLayout.writtenInOtherScript(read)?.let { otherScript = it }
-        val selected = GameLayout.select(read, frame.height, frame.width, otherScript, before = lastSelected)
+        val selected = GameLayout.select(
+            read, frame.height, frame.width, otherScript, before = lastSelected, speakerSpots = speakerSpots,
+        )
         lastSelected = selected
+        for (spot in GameLayout.speakerSpots(selected, frame.height)) {
+            val others = speakerSpots.filter { abs(it.left - spot.left) > spot.height / 2 || abs(it.top - spot.top) > spot.height / 2 }
+            speakerSpots = (listOf(spot) + others).take(MAX_SPEAKER_SPOTS)
+        }
         val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected)))
 
         val dialogue = GameLayout.dialogue(kept)
@@ -187,7 +194,13 @@ class GameTextSource @Inject constructor(
             logger.debug(TAG, if (busy) "busy scene: dialogue only" else "still scene: everything")
         }
         lock.withLock {
-            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged)
+            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged) { gone ->
+                // Still there only if its place still holds ink, and not other
+                // words: a new speaker's name read in the tab before it is
+                // kept left the last speaker's translation over it for four
+                // frames (「雷夫」 over 「Dr.ロマン」).
+                inked(frame, gone.bounds) && read.none { otherWords(it.text, gone.text) && overlaps(it.bounds, gone.bounds) }
+            }
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
             if (update.gone.isNotEmpty()) {
@@ -228,6 +241,41 @@ class GameTextSource @Inject constructor(
         }
     }
 
+    /**
+     * Whether [box] still holds ink on this frame: samples far from their
+     * row's middle value. A blank panel, plain or graded, has none.
+     */
+    private fun inked(frame: Bitmap, box: TextBounds): Boolean {
+        val left = box.left.coerceIn(0, frame.width - 1)
+        val right = box.right.coerceIn(left + 1, frame.width)
+        val w = right - left
+        val row = IntArray(w)
+        var ink = 0
+        var samples = 0
+        var y = box.top.coerceAtLeast(0)
+        while (y < box.bottom.coerceAtMost(frame.height)) {
+            frame.getPixels(row, 0, w, left, y, w, 1)
+            val lumas = DoubleArray((w + SAMPLE_STEP - 1) / SAMPLE_STEP) { luma(row[it * SAMPLE_STEP]) }
+            val middle = lumas.sortedArray()[lumas.size / 2]
+            for (l in lumas) if (abs(l - middle) >= INK_CONTRAST) ink++
+            samples += lumas.size
+            y += SAMPLE_STEP
+        }
+        return samples > 0 && ink * 1000 >= samples * MIN_INK_PER_MILLE
+    }
+
+    /** Mostly different characters: another line, not the same one read a little differently. */
+    private fun otherWords(a: String, b: String): Boolean {
+        val shared = a.toSet().intersect(b.toSet()).size
+        return shared * 2 < minOf(a.toSet().size, b.toSet().size)
+    }
+
+    private fun overlaps(a: TextBounds, b: TextBounds): Boolean {
+        val w = minOf(a.right, b.right) - maxOf(a.left, b.left)
+        val h = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+        return w > 0 && h > 0 && w.toLong() * h * 2 >= minOf(a.width.toLong() * a.height, b.width.toLong() * b.height)
+    }
+
     /** Mean brightness of a [GRID_COLUMNS] x [GRID_ROWS] grid, for [ChangedBand]. */
     private fun gridOf(frame: Bitmap): IntArray {
         val small = Bitmap.createScaledBitmap(frame, GRID_COLUMNS, GRID_ROWS, true)
@@ -246,6 +294,7 @@ class GameTextSource @Inject constructor(
             lastLines = emptyList()
             otherScript = null
             lastSelected = emptyList()
+            speakerSpots = emptyList()
             motion = 0.0
             session += 1
         }
@@ -401,7 +450,12 @@ class GameTextSource @Inject constructor(
             last = y
             best = max(best, y - start + 1)
         }
-        return if (best == 0) h else best
+        // Never far under the recogniser's box: over art the rows outside the
+        // box are not panel, the ink is judged against the wrong side, and a
+        // name tab's type measured 32 px in a 75 px box — its translation was
+        // set at half the size of the name it replaced. Type fills at least
+        // two thirds of a box around one line.
+        return if (best == 0) h else max(best, (h * MIN_TYPE_OF_BOX).toInt())
     }
 
     /** What a line was split into last time, so a still line is not re-read every frame. */
@@ -576,7 +630,16 @@ class GameTextSource @Inject constructor(
         // translation was shrunk to about 60% of the original to fit.
         val lineRoom = (line.typeHeight * TYPE_LINE_RATIO).toInt() - line.bounds.height
         val rowMargin = maxOf(MIN_ERASE_MARGIN_PX, line.typeHeight / ERASE_MARGIN_DIVISOR, lineRoom / 2 + 2)
-        val backdrop = if (line.backdropError <= MAX_ERASE_ERROR) rowGradient(frame, line.bounds, SIDE_MARGIN_PX, rowMargin) else null
+        // Over art, painted from its start alone: the panel under a name is
+        // where the name begins, and Fate/Grand Order's tab fades into the
+        // picture before the end of a long name, where the far end's colour
+        // drew a black block behind 「罗曼医生」.
+        val onArt = line.backdropError > GameTextFilter.MAX_BACKDROP_ERROR
+        val backdrop = if (line.backdropError <= MAX_ERASE_ERROR) {
+            rowGradient(frame, line.bounds, SIDE_MARGIN_PX, rowMargin, fromStartOnly = onArt)
+        } else {
+            null
+        }
         // Where the panel is known, the ink is whatever stands out of it: a
         // short piece can count more dark outline than light letter, and
         // measured, one cyan 風紀委員会 came back navy.
@@ -710,7 +773,7 @@ class GameTextSource @Inject constructor(
      * columns, so one stray pixel of outline does not colour a whole row.
      * Null where the box runs off the frame.
      */
-    private fun rowGradient(frame: Bitmap, box: TextBounds, margin: Int, rowMargin: Int): RowGradient? {
+    private fun rowGradient(frame: Bitmap, box: TextBounds, margin: Int, rowMargin: Int, fromStartOnly: Boolean = false): RowGradient? {
         val top = box.top - rowMargin
         val bottom = box.bottom + rowMargin
         val left = box.left - margin - EDGE_SAMPLE_COLUMNS
@@ -731,8 +794,31 @@ class GameTextSource @Inject constructor(
                 Color.rgb(r / EDGE_SAMPLE_COLUMNS, g / EDGE_SAMPLE_COLUMNS, b / EDGE_SAMPLE_COLUMNS)
             }
         }
+        if (fromStartOnly) {
+            val inside = insideRows(frame, box, top, rows)
+            return RowGradient(inside, inside, margin, rowMargin)
+        }
         val (l, r) = BackdropEdges.repaired(edge(left), edge(box.right + margin))
         return RowGradient(l, r, margin, rowMargin)
+    }
+
+    /**
+     * Each row's own panel colour, from inside the line: the middle colour of
+     * the row by brightness, which is panel wherever the type is the
+     * minority. Over art the ends of a line are not panel — a name's tab
+     * fades into the picture, and its pointed end is dark — while what lies
+     * between the glyphs is.
+     */
+    private fun insideRows(frame: Bitmap, box: TextBounds, top: Int, rows: Int): List<Int> {
+        val w = box.width
+        val row = IntArray(w)
+        val all = List(rows) { i ->
+            val y = (top + i).coerceIn(0, frame.height - 1)
+            frame.getPixels(row, 0, w, box.left, y, w, 1)
+            val sampled = (0 until w step SAMPLE_STEP).map { row[it] }.sortedBy { luma(it) }
+            sampled[sampled.size / 2]
+        }
+        return all
     }
 
     /**
@@ -850,6 +936,15 @@ class GameTextSource @Inject constructor(
 
         /** The share of ink pixels, strongest first, that give the ink its colour. */
         const val INK_CORE_PERCENT = 30
+
+        /** Ink, per thousand samples, that means a line is still there; a line of type has 50-200. */
+        const val MIN_INK_PER_MILLE = 8
+
+        /** Places remembered where a speaker's name has stood. */
+        const val MAX_SPEAKER_SPOTS = 4
+
+        /** The least of its one-line box a line's type fills. */
+        const val MIN_TYPE_OF_BOX = 0.67
 
         /** Middle of 0..255 brightness: a panel below it carries light ink. */
         const val MID_LUMA = 128.0
