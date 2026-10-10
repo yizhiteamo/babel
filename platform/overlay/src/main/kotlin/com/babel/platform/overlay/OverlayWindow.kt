@@ -125,7 +125,8 @@ internal class OverlayWindow(
 
     fun attach(): Boolean {
         if (attached) return true
-        if (!canDraw()) return false
+        // A connected service draws without the permission (trusted windows).
+        if (!canDraw() && trusted?.context == null) return false
         attached = true
         return true
     }
@@ -373,12 +374,18 @@ internal class OverlayWindow(
             val view: TranslationView = if (erased) ErasedTextView(service) else TranslationTextView(service)
             return Held(view, ownWindow, game, passthrough = true, manager = service.getSystemService(WindowManager::class.java))
         }
+        // A game's dialogue is the service's window too, as its labels are:
+        // it needs no draw-over-apps permission, which MIUI took back for a
+        // minute after an update and every translation was refused, and it
+        // is held to no opacity limit while it lets a tap fall through.
+        val service = if (game) trusted?.context else null
+        val owner = service ?: context
         val view: TranslationView = when {
-            erased -> ErasedTextView(context)
-            vertical -> VerticalTranslationView(context)
-            else -> TranslationTextView(context)
+            erased -> ErasedTextView(owner)
+            vertical -> VerticalTranslationView(owner)
+            else -> TranslationTextView(owner)
         }
-        val held = Held(view, ownWindow, game)
+        val held = Held(view, ownWindow, game, manager = service?.getSystemService(WindowManager::class.java))
 
         if (game) {
             passTapsThrough(held)
@@ -444,7 +451,11 @@ internal class OverlayWindow(
             return
         }
 
-        val params = if (held.passthrough) passthroughParams(left, top, w, h) else ownWindowParams(left, top, w, h)
+        val params = when {
+            held.passthrough -> passthroughParams(left, top, w, h)
+            held.manager != null -> ownWindowParams(left, top, w, h, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+            else -> ownWindowParams(left, top, w, h)
+        }
         val manager = held.manager ?: windowManager
         if (held.view.view.isAttachedToWindow) {
             runCatching { manager.updateViewLayout(held.view.view, params) }
@@ -531,11 +542,17 @@ internal class OverlayWindow(
             alpha = 1f
         }
 
-    private fun ownWindowParams(left: Int, top: Int, width: Int, height: Int) =
+    private fun ownWindowParams(
+        left: Int,
+        top: Int,
+        width: Int,
+        height: Int,
+        type: Int = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+    ) =
         WindowManager.LayoutParams(
             width,
             height,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            type,
             // Touchable on purpose, and measured — see the note on this class.
             OWN_WINDOW_FLAGS,
             // Translucent so the view can step aside and let the artwork show.

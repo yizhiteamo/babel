@@ -20,6 +20,7 @@ object GameTextFilter {
 
     enum class Verdict { TRANSLATE, NUMBER, ON_ARTWORK, TOO_LARGE, TOO_SHORT, TOO_SMALL }
 
+    /** [frameHeight] is the frame's short side — its height when the game is held sideways. */
     fun judge(line: GameLine, frameHeight: Int): Verdict {
         val text = line.text.trim()
         val letters = text.count { it.isLetter() }

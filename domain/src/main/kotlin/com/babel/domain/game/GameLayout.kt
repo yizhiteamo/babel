@@ -226,7 +226,10 @@ object GameLayout {
         /** Where speakers' names have stood before; see [speakerSpots]. */
         speakerSpots: List<TextBounds> = emptyList(),
     ): List<GameLine> {
-        val verdicts = lines.associateWith { GameTextFilter.judge(it, frameHeight) }
+        // Sizes against the screen's short side: held upright, a game's frame
+        // is 3200 tall, and its 50 px body text measured as scenery.
+        val scale = min(frameHeight, frameWidth)
+        val verdicts = lines.associateWith { GameTextFilter.judge(it, scale) }
         fun onArtWithin(line: GameLine, allowance: Double) =
             verdicts[line] == GameTextFilter.Verdict.ON_ARTWORK &&
                 line.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * allowance
@@ -260,7 +263,10 @@ object GameLayout {
             if (block != null) block += line else blocks += mutableSetOf(line)
         }
         for (block in blocks) {
-            if (block.size >= 2 && block.any { isSentence(it.text) }) kept += block
+            // A sentence by its punctuation, not its length: a title logo of
+            // three words over the art — 「SHATTERED / PIXEL / DUNGEON」 — is long
+            // enough to pass for one, and was translated.
+            if (block.size >= 2 && block.any { line -> line.text.any { it in SENTENCE_MARKS } }) kept += block
         }
         do {
             val more = lines.filter { it !in kept && it !in controls && continues(it) }
@@ -518,8 +524,8 @@ object GameLayout {
     /** Letters needed on a frame to tell which script a game is in. */
     const val MIN_SCRIPT_LETTERS = 6
 
-    /** A control's word is at most this long. */
-    const val MAX_CONTROL_LETTERS = 8
+    /** A control's word is at most this long: 「SHATTERED」 is nine. */
+    const val MAX_CONTROL_LETTERS = 12
 
     
     /**

@@ -74,6 +74,13 @@ class GameTextSource @Inject constructor(
     private var lines = StableLines()
     private var otherScript: Boolean? = null
     private var latinVotes = 0.0
+
+    /**
+     * Kana seen lately: a game written in Japanese. Its kanji-only names —
+     * 「風紀委員会」 — are then Japanese too, and are translated rather than
+     * taken for Chinese already in the reader's language.
+     */
+    private var kanaVotes = 0.0
     private var otherVotes = 0.0
     private var lastSelected: List<GameLine> = emptyList()
     private var speakerSpots: List<TextBounds> = emptyList()
@@ -175,6 +182,7 @@ class GameTextSource @Inject constructor(
         // Which script the game is written in, voted over recent frames so one
         // frame of a shout in Latin letters does not change it.
         val (latin, other) = GameLayout.scriptLetters(read)
+        kanaVotes = kanaVotes * SCRIPT_VOTE_DECAY + read.sumOf { line -> line.text.count { JapaneseScript.isPresentIn(it.toString()) } }
         latinVotes = latinVotes * SCRIPT_VOTE_DECAY + latin
         otherVotes = otherVotes * SCRIPT_VOTE_DECAY + other
         if (latinVotes + otherVotes >= GameLayout.MIN_SCRIPT_LETTERS) otherScript = latinVotes * 2 < latinVotes + otherVotes
@@ -182,7 +190,7 @@ class GameTextSource @Inject constructor(
             read, frame.height, frame.width, otherScript, before = lastSelected, speakerSpots = speakerSpots,
         )
         lastSelected = selected
-        for (spot in GameLayout.speakerSpots(selected, frame.height)) {
+        for (spot in GameLayout.speakerSpots(selected, minOf(frame.height, frame.width))) {
             val others = speakerSpots.filter { abs(it.left - spot.left) > spot.height / 2 || abs(it.top - spot.top) > spot.height / 2 }
             speakerSpots = (listOf(spot) + others).take(MAX_SPEAKER_SPOTS)
         }
@@ -202,12 +210,16 @@ class GameTextSource @Inject constructor(
         // charge, turns and enemies left — six numbers a frame, where a story
         // shows none. Its labels came and went as the art behind them moved,
         // and 「緑のカード」 was translated as a green car.
-        val numbers = read.count { GameTextFilter.judge(it, frame.height) == GameTextFilter.Verdict.NUMBER }
+        val numbers = read.count { GameTextFilter.judge(it, minOf(frame.height, frame.width)) == GameTextFilter.Verdict.NUMBER }
         counters = counters * (1 - MOTION_SMOOTHING) + numbers * MOTION_SMOOTHING
+        // Motion alone is not play: a title screen with animated art behind
+        // its menu — Shattered Pixel Dungeon's — changed whole every frame
+        // and its buttons were never translated. Moving and showing a few
+        // counters is.
         val busy = if (wasBusy) {
-            motion > BUSY_SCENE_LEAVE || counters > PLAY_COUNTERS_LEAVE
+            (motion > BUSY_SCENE_LEAVE && counters > MOVING_PLAY_COUNTERS) || counters > PLAY_COUNTERS_LEAVE
         } else {
-            motion > BUSY_SCENE || counters > PLAY_COUNTERS
+            (motion > BUSY_SCENE && counters > MOVING_PLAY_COUNTERS) || counters > PLAY_COUNTERS
         }
         val shown = if (busy) kept.filter { it in dialogue } else kept
         if (busy != wasBusy) {
@@ -255,7 +267,7 @@ class GameTextSource @Inject constructor(
             logger.debug(
                 TAG,
                 "left out " + left.joinToString { l ->
-                    "${GameTextFilter.judge(l, frame.height)}@${l.bounds.left},${l.bounds.top},${l.bounds.width}x${l.bounds.height}" +
+                    "${GameTextFilter.judge(l, minOf(frame.height, frame.width))}@${l.bounds.left},${l.bounds.top},${l.bounds.width}x${l.bounds.height}" +
                         " t=${l.typeHeight} e=${"%.0f".format(l.backdropError)}"
                 },
             )
@@ -315,6 +327,7 @@ class GameTextSource @Inject constructor(
             lastLines = emptyList()
             otherScript = null
             latinVotes = 0.0
+            kanaVotes = 0.0
             otherVotes = 0.0
             lastSelected = emptyList()
             speakerSpots = emptyList()
@@ -818,13 +831,37 @@ class GameTextSource @Inject constructor(
                 Color.rgb(r / EDGE_SAMPLE_COLUMNS, g / EDGE_SAMPLE_COLUMNS, b / EDGE_SAMPLE_COLUMNS)
             }
         }
-        if (fromStartOnly) {
-            val inside = insideRows(frame, box, top, rows)
-            return RowGradient(inside, inside, margin, rowMargin)
-        }
+        // The panel per row from above and below the text, not from inside
+        // it alone: a pixel font's strokes fill more than half of some rows,
+        // and their middle colour was the ink — drawn as lines through the
+        // patch. Inside the row only what is near that panel colour counts.
+        val above = rowMiddle(frame, box, (top - 1).coerceAtLeast(0))
+        val below = rowMiddle(frame, box, (top + rows).coerceAtMost(frame.height - 1))
+        val band = List(rows) { i -> blend(above, below, i / (rows - 1f).coerceAtLeast(1f)) }
+        val inside = insideRows(frame, box, top, rows, near = band, overArt = fromStartOnly)
+        if (fromStartOnly) return RowGradient(inside, inside, margin, rowMargin)
         val (l, r) = BackdropEdges.repaired(edge(left), edge(box.right + margin))
-        return RowGradient(l, r, margin, rowMargin)
+        // An end that is not the panel the text sits on — a button's border,
+        // a bevel's highlight just outside the box — takes the row's own
+        // panel colour instead: Shattered Pixel Dungeon's buttons came out
+        // striped where rows of border were interpolated across the patch.
+        fun fit(ends: List<Int>) = ends.mapIndexed { i, c ->
+            if (abs(luma(c) - luma(inside[i])) > EDGE_PANEL_LUMA) inside[i] else c
+        }
+        return RowGradient(fit(l), fit(r), margin, rowMargin)
     }
+
+    private fun rowMiddle(frame: Bitmap, box: TextBounds, y: Int): Int {
+        val row = IntArray(box.width)
+        frame.getPixels(row, 0, box.width, box.left, y, box.width, 1)
+        return (0 until box.width step SAMPLE_STEP).map { row[it] }.sortedBy { luma(it) }.let { it[it.size / 2] }
+    }
+
+    private fun blend(a: Int, b: Int, t: Float): Int = Color.rgb(
+        (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
+        (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
+        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt(),
+    )
 
     /**
      * Each row's own panel colour, from inside the line: the middle colour of
@@ -833,14 +870,34 @@ class GameTextSource @Inject constructor(
      * fades into the picture, and its pointed end is dark — while what lies
      * between the glyphs is.
      */
-    private fun insideRows(frame: Bitmap, box: TextBounds, top: Int, rows: Int): List<Int> {
+    private fun insideRows(frame: Bitmap, box: TextBounds, top: Int, rows: Int, near: List<Int>, overArt: Boolean): List<Int> {
         val w = box.width
         val row = IntArray(w)
         val all = List(rows) { i ->
             val y = (top + i).coerceIn(0, frame.height - 1)
             frame.getPixels(row, 0, w, box.left, y, w, 1)
             val sampled = (0 until w step SAMPLE_STEP).map { row[it] }.sortedBy { luma(it) }
-            sampled[sampled.size / 2]
+            val panelLike = sampled.filter { abs(luma(it) - luma(near[i])) <= EDGE_PANEL_LUMA }
+            // Too little of the row near the band — art behind a name's tab —
+            // and the row's own middle colour is the better guess.
+            // Over art the rows outside the line are art too, and say nothing
+            // about the tab under a name: there, the row alone decides.
+            when {
+                !overArt && panelLike.size * 4 >= sampled.size -> panelLike[panelLike.size / 2]
+                // Over art, the middle of what is not type: the middle of a row
+                // full of yellow type was yellow, and was drawn as lines
+                // through the patch.
+                overArt -> {
+                    // The row without its ink: everything near the row's
+                    // lightest (light type) or darkest pixel left out.
+                    val light = luma(near[i]) < MID_LUMA
+                    val extreme = luma(if (light) sampled.last() else sampled.first())
+                    val rest = sampled.filter { abs(luma(it) - extreme) > INK_CONTRAST / 2 }
+                    if (rest.isEmpty()) sampled[sampled.size / 2] else rest[rest.size / 2]
+                }
+                // A row the type fills: the panel above and below is the panel.
+                else -> near[i]
+            }
         }
         return all
     }
@@ -913,7 +970,10 @@ class GameTextSource @Inject constructor(
             conversational = conversational,
             source = SourceIdentity(packageName = packageName),
             revision = Revision(session),
-            sourceLanguage = JAPANESE.takeIf { JapaneseScript.isJapanese(line.text) },
+            sourceLanguage = JAPANESE.takeIf {
+                JapaneseScript.isJapanese(line.text) ||
+                    (kanaVotes >= JAPANESE_GAME_KANA && JapaneseScript.couldBeJapanese(line.text))
+            },
             style = style,
         )
     }
@@ -970,6 +1030,9 @@ class GameTextSource @Inject constructor(
         /** The least of its one-line box a line's type fills. */
         const val MIN_TYPE_OF_BOX = 0.67
 
+        /** Kana, decayed over recent frames, that make a game a Japanese one. */
+        const val JAPANESE_GAME_KANA = 20.0
+
         /** Middle of 0..255 brightness: a panel below it carries light ink. */
         const val MID_LUMA = 128.0
 
@@ -982,6 +1045,9 @@ class GameTextSource @Inject constructor(
 
         /** Ink pixels that make a row or column beyond the box part of the line. */
         const val EXTENT_MIN_INK = 2
+
+        /** How far (0..255) an end's colour may stand from the row's panel and still be panel. */
+        const val EDGE_PANEL_LUMA = 30.0
 
         /** Columns averaged at each end of a row for its colour. */
         const val EDGE_SAMPLE_COLUMNS = 3
@@ -1012,6 +1078,9 @@ class GameTextSource @Inject constructor(
         /** Numbers on a frame, smoothed, that make it a screen of play rather than story. */
         const val PLAY_COUNTERS = 4.5
         const val PLAY_COUNTERS_LEAVE = 2.5
+
+        /** Counters that, on a scene in motion, make it play. */
+        const val MOVING_PLAY_COUNTERS = 1.5
 
         /** How much of the script vote each frame keeps from the last: about the last 50 frames count. */
         const val SCRIPT_VOTE_DECAY = 0.98

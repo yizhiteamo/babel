@@ -344,6 +344,16 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a title logo of words over the art is not an instruction`() {
+        val a = line("SHATTERED", 112, 501, 1325, 650, error = 30.0).copy(typeHeight = 150)
+        val b = line("PIXEL", 400, 680, 1050, 830, error = 30.0).copy(typeHeight = 150)
+        val c = line("DUNGEON", 200, 860, 1300, 1010, error = 30.0).copy(typeHeight = 150)
+        val chinese = line("破碎的像素地牢补丁已经成功安装！", 280, 1790, 1130, 1840)
+
+        assertEquals(listOf(chinese), GameLayout.select(listOf(a, b, c, chinese), frameHeight = 3200, frameWidth = 1440))
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 
