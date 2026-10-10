@@ -244,7 +244,10 @@ class ChatTranslator(
         // 「yizhiteamo君」 — came back as 「一直team君」: the model read the
         // letters as words to translate.
         append(" Words written in the Latin alphabet inside non-Latin text —")
-        append(" a player's name, a term, a brand — are kept exactly as written.")
+        append(" a player's name, a term, a brand — are kept exactly as written,")
+        // And kept at all: 「同伴者はyizhiteamo一名」 came back as 「同行者一名」,
+        // the name dropped.
+        append(" in the translation, never left out or replaced by a description.")
         // Two things a user reported on real pages: misread characters carried
         // straight into the translation (嶺幻 read as 積幻, 真実 as 基実 —
         // `docs/milestones/v2.md` measured both), and translations that follow

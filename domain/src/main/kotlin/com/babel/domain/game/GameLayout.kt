@@ -102,8 +102,13 @@ object GameLayout {
      */
     const val WRAP_GAP_FRACTION = 0.9
 
-    /** How far in, in line heights, the first line of an utterance may start. */
-    const val FIRST_LINE_INDENT = 2
+    /**
+     * How far in, in line heights, the first line of an utterance may start.
+     * Fate/Grand Order's 「――ふう。」 read without its dash began 194 px (3.0
+     * heights) in, was joined on the frames that read the dash and apart on
+     * the others, and showed as one box or two.
+     */
+    const val FIRST_LINE_INDENT = 3.5
 
     /** Line heights within this ratio are the same size of type. */
     const val SAME_SIZE_RATIO = 0.85
@@ -192,7 +197,7 @@ object GameLayout {
         // it the first line began 83 px right of the second and was not joined.
         val indent = above.bounds.left - below.bounds.left
         val leftAligned = gap in 0..(max(above.bounds.height, below.bounds.height) * WRAP_GAP_FRACTION).toInt() &&
-            indent in -h..h * FIRST_LINE_INDENT
+            indent in -h..(h * FIRST_LINE_INDENT).toInt()
         // Or centred, as a game sets an instruction in the middle of the
         // screen — and a little further apart: Fate/Grand Order's tutorial
         // leaves a blank half-line under its heading.

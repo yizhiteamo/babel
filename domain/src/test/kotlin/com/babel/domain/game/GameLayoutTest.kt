@@ -143,6 +143,14 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a first line read without its leading dash is still joined`() {
+        val first = GameLine("ふう。", TextBounds(697, 1165, 894, 1237, CoordinateSpace.SCREEN), 5.0, typeHeight = 64)
+        val second = GameLine("不安でしたが、なんとかなりました。", TextBounds(503, 1283, 1678, 1351, CoordinateSpace.SCREEN), 5.0, typeHeight = 67)
+
+        assertEquals(1, GameLayout.joinWrapped(listOf(first, second)).size)
+    }
+
+    @Test
     fun `two choices a button apart are not joined`() {
         val a = line("カッコイイ。", 1340, 468, 1824, 524)
         val b = line("どこかで聴いたことがあるような…。", 1027, 665, 2139, 725)
