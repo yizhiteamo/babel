@@ -207,12 +207,44 @@ class StableLines {
      * is.
      */
     private fun lostItsEnd(published: String, read: String): Boolean =
-        read.length * 2 >= published.length &&
+        read.length * 3 >= published.length && read.length >= MIN_CUT_LENGTH &&
             read.length < published.length - max(2, published.length / 10) &&
-            (published.startsWith(read) || sameReading(published.take(read.length), read))
+            (
+                published.startsWith(read) || sameReading(published.take(read.length), read) ||
+                    // Or any part of it, every character in order: over the
+                    // animated art behind a history screen, a two-line entry
+                    // was read whole on one frame and without its first line
+                    // on the next (20 characters, then 13), and each reading
+                    // withdrew the other.
+                    isSubsequence(read, published) ||
+                    // Its start, a mark or two misread: 「……あの」 for
+                    // 「……あの……せん、ぱい」 with an ellipsis read as dots.
+                    editDistance(published.take(read.length), read) <= max(1, read.length / 5) ||
+                    // Or most of it in order, a character or two misread or
+                    // stray — 「あ·」, 「Lアンサモン…」 for 「「アンサモン…」.
+                    commonSubsequence(read, published) >= read.length - max(1, read.length * 15 / 100)
+                )
+
+    private fun commonSubsequence(a: String, b: String): Int {
+        var previous = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            val current = IntArray(b.length + 1)
+            for (j in 1..b.length) {
+                current[j] = if (a[i - 1] == b[j - 1]) previous[j - 1] + 1 else maxOf(previous[j], current[j - 1])
+            }
+            previous = current
+        }
+        return previous[b.length]
+    }
+
+    private fun isSubsequence(part: String, whole: String): Boolean {
+        var i = 0
+        for (c in whole) if (i < part.length && part[i] == c) i++
+        return i == part.length
+    }
 
     /** A line without the dots an animation adds and takes away at its end. */
-    private fun core(text: String): String = text.trimEnd('.', '。', '…', '・', '‥', '･', ' ')
+    private fun core(text: String): String = text.trimEnd(*TRAILING_MARKS)
 
     private fun editDistance(a: String, b: String): Int {
         var previous = IntArray(b.length + 1) { it }
@@ -265,6 +297,16 @@ class StableLines {
 
         /** Shortest reading one misread character may differ in and stay the same line. */
         const val MIN_EDITABLE_LENGTH = 4
+
+        /**
+         * What an animation or a misread adds and takes away at a line's end:
+         * dots counting up, and — on a history screen over moving art — a
+         * closing 「」」 or 「！」 read on one frame and not the next.
+         */
+        val TRAILING_MARKS = charArrayOf('.', '。', '…', '・', '‥', '･', ' ', '!', '！', '?', '？', '」', '』', '"', '”', '|', '｜')
+
+        /** A reading shorter than this is too little to be sure it is the same line cut short. */
+        const val MIN_CUT_LENGTH = 3
 
         /** Share of characters two readings of one line have in common. */
         const val SAME_READING = 0.85

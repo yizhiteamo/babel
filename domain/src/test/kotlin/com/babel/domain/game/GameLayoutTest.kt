@@ -132,6 +132,16 @@ class GameLayoutTest {
         assertEquals(1, GameLayout.joinWrapped(listOf(first, second)).size)
     }
 
+    /** Fate/Grand Order's history screen: utterance, next speaker's name, next utterance. */
+    @Test
+    fun `a speaker's name between two utterances joins neither`() {
+        val first = GameLine("「…………あの……………せん、ぱい」", TextBounds(344, 621, 1706, 690, CoordinateSpace.SCREEN), 5.0, typeHeight = 69)
+        val name = GameLine("マシュ", TextBounds(344, 734, 604, 800, CoordinateSpace.SCREEN), 5.0, typeHeight = 60)
+        val second = GameLine("「手を、握ってもらえますか？」", TextBounds(337, 820, 1480, 890, CoordinateSpace.SCREEN), 5.0, typeHeight = 69)
+
+        assertEquals(3, GameLayout.joinWrapped(listOf(first, name, second)).size)
+    }
+
     @Test
     fun `two choices a button apart are not joined`() {
         val a = line("カッコイイ。", 1340, 468, 1824, 524)
@@ -235,10 +245,11 @@ class GameLayoutTest {
     /** Fate/Grand Order's battle tutorial, centred over the battlefield. */
     @Test
     fun `a centred instruction over the art is kept and joined`() {
-        val heading = line("模擬戦闘を開始します", 1228, 372, 1970, 442, error = 17.5)
-        val first = line("Attackをタッチして、", 1185, 520, 1971, 598, error = 30.3)
-        val second = line("サーヴァントへの行動指示を", 1116, 597, 2082, 675, error = 46.8)
-        val third = line("開始してください", 1305, 673, 1897, 742, error = 41.0)
+        // Type heights as measured; the boxes vary more than the type.
+        val heading = line("模擬戦闘を開始します", 1228, 372, 1970, 442, error = 17.5).copy(typeHeight = 70)
+        val first = line("Attackをタッチして、", 1185, 520, 1971, 598, error = 30.3).copy(typeHeight = 68)
+        val second = line("サーヴァントへの行動指示を", 1116, 597, 2082, 675, error = 46.8).copy(typeHeight = 70)
+        val third = line("開始してください", 1305, 673, 1897, 742, error = 41.0).copy(typeHeight = 69)
         val lines = listOf(heading, first, second, third)
 
         val kept = GameLayout.select(lines, frameHeight = 1440, frameWidth = 3200)

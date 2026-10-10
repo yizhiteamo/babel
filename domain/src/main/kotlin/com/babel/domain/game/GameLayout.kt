@@ -118,12 +118,22 @@ object GameLayout {
         // label, not a line of a paragraph. Its height alone does not say so:
         // with ruby over the dialogue, the dialogue's box grew to the name's
         // height and the two were joined (measured on the live game).
-        val labels = lines.filter { line -> lines.any { it !== line && sameRow(it.bounds, line.bounds) } }.toSet()
+        val labels = lines.filter { line ->
+            lines.any { it !== line && sameRow(it.bounds, line.bounds) } || namesNext(line, lines)
+        }.toSet()
         // Each utterance so far, and the last line it took in: a third line
         // wraps under the second, not under the two of them.
         val out = mutableListOf<Pair<GameLine, GameLine>>()
         for (line in lines.sortedBy { it.bounds.top }) {
-            val i = if (line in labels) -1 else out.indexOfLast { (_, last) -> last !in labels && wraps(last, line) }
+            // A label in smaller type under a line is the next speaker's name,
+            // not the line's last word — even with nothing kept under it: the
+            // 「2」 under 「アナウンス」 was a number, left out, and the name was
+            // read as the end of the line above (「……还有3，播报」).
+            val nameLike = !isSentence(line.text)
+            val i = if (line in labels) -1 else out.indexOfLast { (_, last) ->
+                last !in labels && wraps(last, line) &&
+                    !(nameLike && line.typeHeight.toDouble() / last.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO)
+            }
             if (i < 0) {
                 out += line to line
                 continue
@@ -147,6 +157,28 @@ object GameLayout {
         }
         return out.map { it.first }
     }
+
+    /**
+     * A speaker's name between two utterances, as a history screen lists
+     * them: a label in smaller type with a sentence starting under it. Joined
+     * as the last line of the utterance above, it came back as
+     * 「……那个，前辈。玛修」 — and only on the frames where the art behind the
+     * history happened to let the two be read alike, so the line flickered.
+     */
+    private fun namesNext(line: GameLine, lines: List<GameLine>): Boolean {
+        if (isSentence(line.text)) return false
+        return lines.any { below ->
+            below !== line && isSentence(below.text) && below.bounds.top >= line.bounds.bottom - line.bounds.height / 4 &&
+                speaksAbove(line.bounds, below.bounds) &&
+                // At the line's margin or out to its left; a centred heading
+                // over centred lines starts further in.
+                line.bounds.left - below.bounds.left <= line.bounds.height / 2 &&
+                line.typeHeight.toDouble() / below.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO
+        }
+    }
+
+    /** A name is set this much smaller than its line, or less: measured 0.84–0.93 against 1.0 for a wrap. */
+    const val NAME_TYPE_RATIO = 0.95
 
     private fun sameRow(a: TextBounds, b: TextBounds): Boolean =
         min(a.bottom, b.bottom) - max(a.top, b.top) > min(a.height, b.height) / 2
@@ -305,15 +337,21 @@ object GameLayout {
      */
     fun joinRows(lines: List<GameLine>, dialogue: Set<GameLine>): List<GameLine> {
         val out = mutableListOf<GameLine>()
+        // Never a speaker's name: on a history screen, lines set close, the
+        // name 「アナウンス」 overlapped the row of the line after it and was
+        // joined in front of it on some frames.
+        val names = lines.filter { namesNext(it, lines) }.toSet()
         for (line in lines.sortedWith(compareBy({ it.bounds.top }, { it.bounds.left }))) {
             val i = if (line !in dialogue) {
                 -1
             } else {
                 out.indexOfLast { before ->
-                    before in dialogue && sameRow(before.bounds, line.bounds) &&
+                    before in dialogue && before !in names && line !in names && sameRow(before.bounds, line.bounds) &&
                         line.bounds.left >= before.bounds.right &&
                         line.bounds.left - before.bounds.right <= max(before.typeHeight, line.typeHeight) * ROW_GAP_LINES &&
-                        min(before.typeHeight, line.typeHeight).toDouble() / max(before.typeHeight, line.typeHeight) >= SAME_ROW_SIZE_RATIO
+                        min(before.typeHeight, line.typeHeight).toDouble() / max(before.typeHeight, line.typeHeight) >=
+                        // A label beside a line must be its own size to be part of it.
+                        if (isSentence(before.text) && isSentence(line.text)) SAME_ROW_SIZE_RATIO else NAME_TYPE_RATIO
                 }
             }
             if (i < 0) {

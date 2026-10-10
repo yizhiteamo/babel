@@ -162,6 +162,43 @@ class StableLinesTest {
         assertTrue(more.settled.isEmpty())
     }
 
+    @Test
+    fun `an entry read without its first line stays published`() {
+        val lines = StableLines()
+        val whole = "「プログラム　スタート。霊子変換を開始します。」"
+        lines.next(listOf(line(whole)), now = 0)
+        lines.next(listOf(line(whole)), now = 333)
+
+        assertTrue(lines.next(listOf(line("霊子変換を開始します。」")), now = 666).gone.isEmpty())
+    }
+
+    @Test
+    fun `a closing mark read on one frame and not the next is the same line`() {
+        val lines = StableLines()
+        lines.next(listOf(line("「…………あの……………せん、ぱい」")), now = 0)
+        lines.next(listOf(line("「…………あの……………せん、ぱい」")), now = 333)
+
+        assertTrue(lines.next(listOf(line("「…………あの……………せん、ぱい」！")), now = 666).gone.isEmpty())
+    }
+
+    @Test
+    fun `half a line with a mark misread is a miss`() {
+        val lines = StableLines()
+        lines.next(listOf(line("「……あの……せん、ぱい」")), now = 0)
+        lines.next(listOf(line("「……あの……せん、ぱい」")), now = 333)
+
+        assertTrue(lines.next(listOf(line("「……あ·")), now = 666).gone.isEmpty())
+    }
+
+    @Test
+    fun `a few characters of a still line with one misread is a miss`() {
+        val lines = StableLines()
+        lines.next(listOf(line("「…あの…せん、ぱい」")), now = 0)
+        lines.next(listOf(line("「…あの…せん、ぱい」")), now = 333)
+
+        assertTrue(lines.next(listOf(line("「あの·")), now = 666).gone.isEmpty())
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {
