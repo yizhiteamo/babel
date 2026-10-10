@@ -192,11 +192,11 @@ class GameLayoutTest {
     }
 
     @Test
-    fun `a Latin word in the middle of the screen is not a control`() {
-        val choice = line("OK", 1500, 700, 1700, 760)
+    fun `a Latin word anywhere in a Japanese game is a control`() {
+        val touch = line("Touch", 1500, 700, 1700, 760)
         val dialogue = line("よろしいですか？", 430, 1121, 1521, 1177)
 
-        assertEquals(setOf<GameLine>(), GameLayout.controls(listOf(choice, dialogue), frameHeight = 1440, frameWidth = 3200))
+        assertEquals(setOf(touch), GameLayout.controls(listOf(touch, dialogue), frameHeight = 1440, frameWidth = 3200))
     }
 
     /** Fate/Grand Order's profile text, on a patterned panel: kept whole, not one line in two. */

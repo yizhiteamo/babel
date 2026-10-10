@@ -278,8 +278,11 @@ object GameLayout {
         // A line of silence — 「……………」 — has nothing to translate, but its
         // speaker is still named above it: 「フォウ」 stood untranslated over
         // every one.
+        // So is a line that is only a number — a countdown's 「2」 under
+        // 「アナウンス」.
         val silences = lines.filter { line ->
-            line.text.length >= 2 && line.text.all { it in SILENCE_MARKS } && line.bounds.width >= line.bounds.height * 2
+            (line.text.length >= 2 && line.text.all { it in SILENCE_MARKS } && line.bounds.width >= line.bounds.height * 2) ||
+                (verdicts[line] == GameTextFilter.Verdict.NUMBER && line.text.any { it.isDigit() })
         }
         // A speaker kept on the last frame stays while it reads the same in
         // the same place: as the next line starts typing, the dialogue under
@@ -420,7 +423,7 @@ object GameLayout {
      * word alone guessed wrong (AUTO came back as "car"), and a translation
      * over them stands between the player and the button.
      *
-     * All of: Latin letters only, one word; at the edge of the screen; and on
+     * Both of: Latin letters only, one word, anywhere on screen; and on
      * a frame whose text is mostly in another script. In an English game the
      * same words are the game's language and are translated, and a choice or
      * a menu entry, set in the game's own script, never qualifies.
@@ -429,13 +432,13 @@ object GameLayout {
         val candidates = lines.filter { line ->
             val word = isControlWord(line.text)
             val b = line.bounds
-            val edge = b.top < frameHeight * EDGE_FRACTION || b.bottom > frameHeight * (1 - EDGE_FRACTION) ||
-                (frameWidth != Int.MAX_VALUE && (b.left < frameWidth * EDGE_FRACTION || b.right > frameWidth * (1 - EDGE_FRACTION)))
             // Or a name in Latin letters over a line of dialogue: in a game
             // written in another script that is a name the player typed —
             // 「yizhiteamo」 came back as 「一支队伍」, "a team".
             val name = isLatinName(line.text) && lines.any { it !== line && isSentence(it.text) && speaksAbove(b, it.bounds) }
-            (word && edge) || name
+            // Anywhere, not only at the edge: a map's 「Touch」 by its marker
+            // flickered between itself and 「触摸」 as the arrow beside it moved.
+            word || name
         }
         if (candidates.isEmpty()) return emptySet()
         // Not yet known — a fade-in showing only 「SKIP」 — counts as another
@@ -488,9 +491,7 @@ object GameLayout {
     /** A control's word is at most this long. */
     const val MAX_CONTROL_LETTERS = 8
 
-    /** The band along each side of the screen where controls sit. */
-    const val EDGE_FRACTION = 0.15
-
+    
     /**
      * How far over the backdrop threshold a speaker label may be. The name row
      * sits on the panel's translucent edge with a character behind it:

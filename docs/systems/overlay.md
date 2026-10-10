@@ -41,7 +41,8 @@ A game's text is drawn in one of three ways, chosen per line:
 - **Boxed** (`TranslationTextView`) — no backdrop: the line sits on artwork the
   interpolation cannot paint back.
 - **Not drawn** — the game's own controls in another script than the game
-  (`GameLayout.controls`: AUTO, MENU in a Japanese game).
+  (`GameLayout.controls`: single Latin words such as AUTO, MENU, Touch, and a
+  player's typed name, in a game written in another script).
 
 Touches:
 
