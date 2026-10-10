@@ -184,6 +184,14 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a shout in Latin letters does not make a Japanese game Latin`() {
+        val skip = line("SKIP", 2560, 30, 2850, 110)
+        val shout = line("Gi——GAAAAAAAAAAAA!", 430, 1121, 1521, 1177)
+
+        assertEquals(setOf(skip), GameLayout.controls(listOf(skip, shout), frameHeight = 1440, frameWidth = 3200, otherScript = true))
+    }
+
+    @Test
     fun `an English game's MENU is translated`() {
         val menu = line("MENU", 2799, 69, 2979, 117)
         val dialogue = line("Where are you going?", 430, 1121, 1521, 1177)

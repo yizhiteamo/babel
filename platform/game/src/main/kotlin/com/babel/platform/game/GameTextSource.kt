@@ -73,11 +73,14 @@ class GameTextSource @Inject constructor(
     private val lock = Mutex()
     private var lines = StableLines()
     private var otherScript: Boolean? = null
+    private var latinVotes = 0.0
+    private var otherVotes = 0.0
     private var lastSelected: List<GameLine> = emptyList()
     private var speakerSpots: List<TextBounds> = emptyList()
 
     /** How much of the recent frames changed whole, smoothed; see [BUSY_SCENE]. */
     private var motion = 0.0
+    private var counters = 0.0
     private var wasBusy = false
 
     /**
@@ -169,7 +172,12 @@ class GameTextSource @Inject constructor(
         // one utterance (`GameLayout`).
         // Which script the game is written in, remembered for the frames that
         // show too little text to tell (`GameLayout.controls`).
-        GameLayout.writtenInOtherScript(read)?.let { otherScript = it }
+        // Which script the game is written in, voted over recent frames so one
+        // frame of a shout in Latin letters does not change it.
+        val (latin, other) = GameLayout.scriptLetters(read)
+        latinVotes = latinVotes * SCRIPT_VOTE_DECAY + latin
+        otherVotes = otherVotes * SCRIPT_VOTE_DECAY + other
+        if (latinVotes + otherVotes >= GameLayout.MIN_SCRIPT_LETTERS) otherScript = latinVotes * 2 < latinVotes + otherVotes
         val selected = GameLayout.select(
             read, frame.height, frame.width, otherScript, before = lastSelected, speakerSpots = speakerSpots,
         )
@@ -187,7 +195,20 @@ class GameTextSource @Inject constructor(
         // glance and change under the player's finger, and translating them
         // was more noise than help. A still screen, a menu, keeps them all.
         motion = motion * (1 - MOTION_SMOOTHING) + (if (how == "whole") MOTION_SMOOTHING else 0.0)
-        val busy = motion > BUSY_SCENE
+        // With some hysteresis: a battle's quieter frames dropped the scene to
+        // "still" and back, and its labels came and went with it.
+        // A screen full of counters is play, too, however still: a battle
+        // waiting for the player's turn moved little, but showed hit points,
+        // charge, turns and enemies left — six numbers a frame, where a story
+        // shows none. Its labels came and went as the art behind them moved,
+        // and 「緑のカード」 was translated as a green car.
+        val numbers = read.count { GameTextFilter.judge(it, frame.height) == GameTextFilter.Verdict.NUMBER }
+        counters = counters * (1 - MOTION_SMOOTHING) + numbers * MOTION_SMOOTHING
+        val busy = if (wasBusy) {
+            motion > BUSY_SCENE_LEAVE || counters > PLAY_COUNTERS_LEAVE
+        } else {
+            motion > BUSY_SCENE || counters > PLAY_COUNTERS
+        }
         val shown = if (busy) kept.filter { it in dialogue } else kept
         if (busy != wasBusy) {
             wasBusy = busy
@@ -293,9 +314,12 @@ class GameTextSource @Inject constructor(
             lastGrid = null
             lastLines = emptyList()
             otherScript = null
+            latinVotes = 0.0
+            otherVotes = 0.0
             lastSelected = emptyList()
             speakerSpots = emptyList()
             motion = 0.0
+            counters = 0.0
             session += 1
         }
         events.emit(TextSourceEvent.Cleared(TextSourceType.GAME))
@@ -983,6 +1007,14 @@ class GameTextSource @Inject constructor(
          * screen or more ([motion], smoothed over a few frames).
          */
         const val BUSY_SCENE = 0.6
+        const val BUSY_SCENE_LEAVE = 0.25
+
+        /** Numbers on a frame, smoothed, that make it a screen of play rather than story. */
+        const val PLAY_COUNTERS = 4.5
+        const val PLAY_COUNTERS_LEAVE = 2.5
+
+        /** How much of the script vote each frame keeps from the last: about the last 50 frames count. */
+        const val SCRIPT_VOTE_DECAY = 0.98
         const val MOTION_SMOOTHING = 0.25
 
         /** Mean brightness change per grid cell, 0..255, that is a new scene. */

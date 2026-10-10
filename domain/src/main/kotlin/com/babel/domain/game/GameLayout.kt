@@ -319,7 +319,8 @@ object GameLayout {
         do {
             val more = lines.filter { line ->
                 line !in found && found.any { d ->
-                    sameRow(line.bounds, d.bounds) || wraps(line, d) || wraps(d, line) || speaksAbove(line.bounds, d.bounds)
+                    (sameRow(line.bounds, d.bounds) && nearAlongRow(line, d)) ||
+                        wraps(line, d) || wraps(d, line) || speaksAbove(line.bounds, d.bounds)
                 }
             }
             found += more
@@ -407,6 +408,16 @@ object GameLayout {
 
     private const val SILENCE_MARKS = "…‥・.。、！？!?―ー─ "
 
+    /**
+     * Close enough along a row to be pieces of one line: a battle's 「バトル」
+     * at the screen's edge shared a row with the tutorial's sentence across
+     * the screen, and was taken for dialogue.
+     */
+    private fun nearAlongRow(a: GameLine, b: GameLine): Boolean {
+        val gap = max(a.bounds.left, b.bounds.left) - min(a.bounds.right, b.bounds.right)
+        return gap <= max(a.typeHeight, b.typeHeight) * ROW_GAP_LINES
+    }
+
     /** A sentence's punctuation, or more letters than a label has. */
     fun isSentence(text: String): Boolean =
         text.any { it in SENTENCE_MARKS } || text.count { it.isLetter() } > MAX_LABEL_LETTERS
@@ -445,7 +456,10 @@ object GameLayout {
         // script: translated then, the word stayed translated (「跳过」) for the
         // whole scene. An English game has its controls translated a moment
         // later, once there is text enough to tell.
-        val inOtherScript = writtenInOtherScript(lines - candidates.toSet()) ?: otherScript ?: true
+        // The game's script as remembered over many frames comes first: one
+        // frame of 「Gi——GAAAAAAAAAAAA！」 read as a Latin game and translated
+        // 「SKIP」 for a moment.
+        val inOtherScript = otherScript ?: writtenInOtherScript(lines - candidates.toSet()) ?: true
         return if (inOtherScript) candidates.toSet() else emptySet()
     }
 
@@ -465,6 +479,14 @@ object GameLayout {
         return latin * 2 < letters
     }
 
+    /** Latin letters and other letters on [all], for a vote kept across frames; see [writtenInOtherScript]. */
+    fun scriptLetters(all: List<GameLine>): Pair<Int, Int> {
+        val lines = all.filterNot { isLatinName(it.text) }
+        val latin = lines.sumOf { line -> line.text.count(::isLatinLetter) }
+        val other = lines.sumOf { line -> line.text.count { it.isLetter() && !isLatinLetter(it) } }
+        return latin to other
+    }
+
     private fun isLatinLetter(c: Char): Boolean = c.isLetter() && c.code < 0x250
 
     /**
@@ -482,7 +504,10 @@ object GameLayout {
 
     private fun isControlWord(text: String): Boolean {
         val letters = text.filter { it.isLetterOrDigit() }
-        return letters.length in 2..MAX_CONTROL_LETTERS && letters.all(::isLatinLetter) && ' ' !in text.trim()
+        // A space inside is allowed — 「To uch」 was read on the frames where a
+        // highlight crossed the word — as long as it is a word's worth of letters.
+        return letters.length in 2..MAX_CONTROL_LETTERS && letters.all(::isLatinLetter) &&
+            text.trim().count { it == ' ' } <= 1
     }
 
     /** Letters needed on a frame to tell which script a game is in. */
