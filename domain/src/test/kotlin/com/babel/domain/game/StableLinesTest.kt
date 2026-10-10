@@ -199,6 +199,27 @@ class StableLinesTest {
         assertTrue(lines.next(listOf(line("「あの·")), now = 666).gone.isEmpty())
     }
 
+    @Test
+    fun `a speaker's name seen before is published at once`() {
+        val lines = StableLines()
+        lines.next(listOf(line("マシュ")), now = 0)
+        lines.next(listOf(line("マシュ")), now = 333)
+        lines.next(listOf(line("ロマン", left = 400)), now = 666)
+        lines.next(listOf(line("ロマン", left = 400)), now = 1000)
+
+        assertEquals("マシュ", lines.next(listOf(line("マシュ")), now = 1333).settled.single().line.text)
+    }
+
+    @Test
+    fun `a line of dialogue seen before still waits for a second frame`() {
+        val lines = StableLines()
+        lines.next(listOf(line("はい。")), now = 0)
+        lines.next(listOf(line("はい。")), now = 333)
+        lines.next(listOf(line("いいえ、ちがいます。")), now = 666)
+
+        assertTrue(lines.next(listOf(line("はい。")), now = 1000).settled.isEmpty())
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {
@@ -216,9 +237,10 @@ class StableLinesTest {
         lines.next(listOf(line("風紀委員会", left = 589)), now = 0)
         val shown = lines.next(listOf(line("風紀委員会", left = 589)), now = 333).settled.single().key
 
+        // Known words: drawn again where they are at once.
         val moved = lines.next(listOf(line("風紀委員会", left = 674)), now = 666)
         assertEquals(listOf(shown), moved.gone)
-        assertEquals(674, lines.next(listOf(line("風紀委員会", left = 674)), now = 1000).settled.single().line.bounds.left)
+        assertEquals(674, moved.settled.single().line.bounds.left)
     }
 
     /** The recogniser's box for one still line takes in more on one side some frames. */

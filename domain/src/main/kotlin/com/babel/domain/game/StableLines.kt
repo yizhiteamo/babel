@@ -76,7 +76,7 @@ class StableLines {
         for (line in lines) {
             val before = unmatched.firstOrNull { samePlace(it.line.bounds, line.bounds) }
             if (before == null) {
-                next += Seen(line, now, publishedKey = null)
+                next += fresh(line, now, settled)
                 continue
             }
             unmatched -= before
@@ -86,7 +86,7 @@ class StableLines {
                 // speaker's was and covered this one's name.
                 gone += before.publishedKey!!
                 why[before.publishedKey!!] = Why.MOVED
-                next += Seen(line, now, publishedKey = null)
+                next += fresh(line, now, settled)
                 continue
             }
             if (before.publishedKey != null && lostItsEnd(before.line.text, line.text)) {
@@ -124,6 +124,7 @@ class StableLines {
                 val shown = if (before.publishedKey != null) before.line else line
                 val key = before.publishedKey ?: keyOf(line).also {
                     settled += Settled(it, line, now - before.firstSeenAt)
+                    remember(line)
                 }
                 next += Seen(shown, before.firstSeenAt, key)
             } else {
@@ -133,7 +134,7 @@ class StableLines {
                     why[it] = Why.NEW_WORDS
                 }
                 val stillGrowing = line.text.startsWith(before.line.text)
-                next += Seen(line, if (stillGrowing) before.firstSeenAt else now, publishedKey = null)
+                next += if (stillGrowing) Seen(line, before.firstSeenAt, publishedKey = null) else fresh(line, now, settled)
             }
         }
 
@@ -260,6 +261,30 @@ class StableLines {
         return previous[b.length]
     }
 
+    /**
+     * Labels published before, by their words: a speaker's name comes back
+     * line after line, and waiting for two frames to agree on it showed the
+     * original name for a moment at every change of speaker. A label read
+     * exactly as one already published is published at once. Only labels — a
+     * line of dialogue the same as an earlier one may be the start of a
+     * longer line still typing.
+     */
+    private val knownLabels = LinkedHashSet<String>()
+
+    private fun remember(line: GameLine) {
+        if (GameLayout.isSentence(line.text)) return
+        knownLabels.remove(line.text)
+        knownLabels += line.text
+        while (knownLabels.size > MAX_KNOWN_LABELS) knownLabels.remove(knownLabels.first())
+    }
+
+    private fun fresh(line: GameLine, now: Long, settled: MutableList<Settled>): Seen {
+        if (line.text !in knownLabels) return Seen(line, now, publishedKey = null)
+        val key = keyOf(line)
+        settled += Settled(key, line, 0)
+        return Seen(line, now, key)
+    }
+
     /** Everything published, for clearing the screen. */
     fun reset(): List<String> {
         val keys = seen.mapNotNull { it.publishedKey }
@@ -294,6 +319,9 @@ class StableLines {
          */
         const val MIN_SLIDE_PX = 6
         const val SLIDE_DIVISOR = 6
+
+        /** Labels remembered for publishing at once; see [knownLabels]. */
+        const val MAX_KNOWN_LABELS = 256
 
         /** Shortest reading one misread character may differ in and stay the same line. */
         const val MIN_EDITABLE_LENGTH = 4
