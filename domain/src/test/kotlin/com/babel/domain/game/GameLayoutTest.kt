@@ -256,6 +256,24 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a speaker stays while the next line is still too short to keep`() {
+        val tab = line("レフ", 368, 1003, 553, 1075, error = 12.8)
+        val typing = line("「", 508, 1171, 565, 1234)
+
+        val before = listOf(tab)
+        assertEquals(listOf(tab), GameLayout.select(listOf(tab, typing), frameHeight = 1440, frameWidth = 3200, before = before))
+        assertEquals(emptyList(), GameLayout.select(listOf(tab, typing), frameHeight = 1440, frameWidth = 3200))
+    }
+
+    @Test
+    fun `dialogue starting a little after the name still has its speaker`() {
+        val tab = line("レフ", 368, 1003, 553, 1075, error = 12.8)
+        val dialogue = line("もし他に質問がなければ、管制室へ行こう。", 627, 1170, 1731, 1237)
+
+        assertEquals(2, GameLayout.select(listOf(tab, dialogue), frameHeight = 1440, frameWidth = 3200).size)
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

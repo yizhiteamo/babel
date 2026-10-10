@@ -73,6 +73,7 @@ class GameTextSource @Inject constructor(
     private val lock = Mutex()
     private var lines = StableLines()
     private var otherScript: Boolean? = null
+    private var lastSelected: List<GameLine> = emptyList()
 
     /** How much of the recent frames changed whole, smoothed; see [BUSY_SCENE]. */
     private var motion = 0.0
@@ -168,7 +169,8 @@ class GameTextSource @Inject constructor(
         // Which script the game is written in, remembered for the frames that
         // show too little text to tell (`GameLayout.controls`).
         GameLayout.writtenInOtherScript(read)?.let { otherScript = it }
-        val selected = GameLayout.select(read, frame.height, frame.width, otherScript)
+        val selected = GameLayout.select(read, frame.height, frame.width, otherScript, before = lastSelected)
+        lastSelected = selected
         val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected)))
 
         val dialogue = GameLayout.dialogue(kept)
@@ -243,6 +245,7 @@ class GameTextSource @Inject constructor(
             lastGrid = null
             lastLines = emptyList()
             otherScript = null
+            lastSelected = emptyList()
             motion = 0.0
             session += 1
         }

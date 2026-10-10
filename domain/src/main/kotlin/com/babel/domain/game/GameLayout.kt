@@ -185,6 +185,7 @@ object GameLayout {
         frameHeight: Int,
         frameWidth: Int = Int.MAX_VALUE,
         otherScript: Boolean? = null,
+        before: List<GameLine> = emptyList(),
     ): List<GameLine> {
         val verdicts = lines.associateWith { GameTextFilter.judge(it, frameHeight) }
         fun onArtWithin(line: GameLine, allowance: Double) =
@@ -234,9 +235,17 @@ object GameLayout {
             val outLeft = below.bounds.left - label.bounds.left > label.bounds.height
             return !outLeft || label.backdropError <= GameTextFilter.MAX_BACKDROP_ERROR * LONG_LINE_ALLOWANCE
         }
+        // A speaker kept on the last frame stays while it reads the same in
+        // the same place: as the next line starts typing, the dialogue under
+        // it is a character or two too short to keep, and the name dropped
+        // out, was withdrawn and translated again on every line.
+        fun stays(line: GameLine) = before.any { b ->
+            b.text == line.text && abs(b.bounds.left - line.bounds.left) <= line.bounds.height / 2 &&
+                abs(b.bounds.top - line.bounds.top) <= line.bounds.height / 2
+        }
         return lines.filter { line ->
             line in kept || (
-                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) && kept.any { below -> speaks(line, below) }
+                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) && (kept.any { below -> speaks(line, below) } || stays(line))
                 )
         }
     }
@@ -413,7 +422,9 @@ object GameLayout {
         // and the dialogue starts under the name, not under it.
         // And at most a little out to the left of it: a game sets its name tab
         // that way. How far out is too far depends on the backdrop ([select]).
-        return gap in 0..label.height * 2 && line.left <= label.right &&
-            label.left - line.left in -label.height * 2..label.height * 4
+        // The dialogue may start a little after the name ends: a line opening
+        // with 「 or …… the recogniser left out began 74 px past the name.
+        return gap in 0..label.height * 2 && line.left <= label.right + label.height * 2 &&
+            label.left - line.left in -label.height * 4..label.height * 4
     }
 }
