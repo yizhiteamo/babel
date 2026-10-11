@@ -274,7 +274,9 @@ class DefaultTranslationCoordinator(
                 null
             }
             val others = if (context != null) pageContext.renderingsBesides(element.text) else emptyList()
-            entry.job = launchTranslation(element, pair, key, context, others)
+            // Read here, in the mailbox: the translation runs elsewhere.
+            val known = if (element.conversational) NameMarks.namesIn(element.text, names) else emptyMap()
+            entry.job = launchTranslation(element, pair, key, context, others, known)
         }
 
         if (toHide.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(toHide))
@@ -487,6 +489,7 @@ class DefaultTranslationCoordinator(
         key: TranslationCacheKey,
         context: String?,
         others: List<String> = emptyList(),
+        known: Map<String, String> = emptyMap(),
     ): Job? {
         val active = scope ?: return null
         return active.launch {
@@ -505,7 +508,7 @@ class DefaultTranslationCoordinator(
 
                 permits.withPermit {
                     val waitedMs = System.currentTimeMillis() - started
-                    val first = translateWithRetry(element, pair, context)
+                    val first = translateWithRetry(element, pair, context, known)
                     // The page's context can make the model translate the wrong
                     // line: measured on a character sheet, three of four
                     // descriptions came back as another character's, and with no
@@ -517,7 +520,7 @@ class DefaultTranslationCoordinator(
                         EchoGuard.repeatsAnother(first.translatedText, others)
                     ) {
                         logger.debug(TAG, "answer echoed another line; asking again without context")
-                        translateWithRetry(element, pair, context = null)
+                        translateWithRetry(element, pair, context = null, known = known)
                     } else {
                         first
                     }
@@ -579,14 +582,20 @@ class DefaultTranslationCoordinator(
         element: TextElement,
         pair: LanguagePair,
         context: String?,
+        known: Map<String, String> = emptyMap(),
     ): TranslationResult {
+        // Speakers' names go as marks and come back as the names' own
+        // translations (`NameMarks`); a glossary in the context alone was
+        // not always followed — a choice read 「美奈和阿子」 under tabs saying
+        // 「米娜」 and 「阿科」.
+        val marked = NameMarks.mark(element.text, known)
         var attempt = 0
         while (true) {
             val request = TranslationRequest(
                 requestId = RequestId("req-${requestIds.incrementAndGet()}"),
                 elementId = element.id,
                 revision = element.revision,
-                sourceText = element.text,
+                sourceText = marked.text,
                 languages = pair.forElement(element),
                 context = context,
                 recognised = element.sourceType != TextSourceType.ACCESSIBILITY,
@@ -595,7 +604,7 @@ class DefaultTranslationCoordinator(
             )
             val result = translator.translate(request)
             val status = result.status
-            if (status !is TranslationStatus.Failed) return result
+            if (status !is TranslationStatus.Failed) return marked.restore(result, element.text)
 
             attempt++
             if (!status.error.retryable || attempt > config.maxRetries) return result

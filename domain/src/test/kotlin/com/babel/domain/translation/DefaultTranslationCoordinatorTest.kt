@@ -476,7 +476,7 @@ class DefaultTranslationCoordinatorTest {
     }
 
     @Test
-    fun `a line that names a speaker is told how the name was translated`() = runTest {
+    fun `a line that names a speaker uses the name's translation`() = runTest {
         val coordinator = start()
         coordinator.submit(
             TextSourceEvent.Upserted(
@@ -501,8 +501,9 @@ class DefaultTranslationCoordinatorTest {
         )
         advanceUntilIdle()
 
-        val context = translator.requests.last { it.sourceText == "アコ、ありがとう。" }.context.orEmpty()
-        assertTrue("Names: アコ = <アコ>" in context, context)
+        // Sent as a mark, put back as the name's own translation.
+        assertTrue(translator.requests.any { it.sourceText == "{N1}、ありがとう。" })
+        assertTrue("<<アコ>、ありがとう。>" in renderer.visibleText, renderer.visibleText.toString())
         coordinator.stop()
     }
 
