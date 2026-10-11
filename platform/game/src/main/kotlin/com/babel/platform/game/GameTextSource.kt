@@ -83,12 +83,11 @@ class GameTextSource @Inject constructor(
     private var kanaVotes = 0.0
     private var otherVotes = 0.0
     private var lastSelected: List<GameLine> = emptyList()
+
+    /** Where a conversation has been lately, and when; see [GameLayout.conversationPlaces]. */
+    private val conversation = mutableListOf<Pair<TextBounds, Long>>()
     private var speakerSpots: List<TextBounds> = emptyList()
 
-    /** How much of the recent frames changed whole, smoothed; see [BUSY_SCENE]. */
-    private var motion = 0.0
-    private var counters = 0.0
-    private var wasBusy = false
 
     /**
      * Bumped when the screen is cleared. A conversation's lines share one, so
@@ -198,38 +197,27 @@ class GameTextSource @Inject constructor(
             val others = speakerSpots.filter { abs(it.left - spot.left) > spot.height / 2 || abs(it.top - spot.top) > spot.height / 2 }
             speakerSpots = (listOf(spot) + others).take(MAX_SPEAKER_SPOTS)
         }
-        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected)))
+        val now = System.currentTimeMillis()
+        for (place in GameLayout.conversationPlaces(selected)) {
+            conversation.removeAll { (old, _) -> covers(old, place) }
+            conversation += place to now
+        }
+        conversation.removeAll { (_, at) -> now - at > CONVERSATION_KEPT_MS }
+        while (conversation.size > MAX_CONVERSATION_PLACES) conversation.removeAt(0)
+        val places = conversation.map { it.first }
+        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places)))
 
-        val dialogue = GameLayout.dialogue(kept)
-        // On a scene that never holds still — a battle — only what reads as
-        // dialogue is translated: an instruction, a line someone speaks. Its
-        // labels (a unit's class, an enemy's name, a skill) are read at a
-        // glance and change under the player's finger, and translating them
-        // was more noise than help. A still screen, a menu, keeps them all.
-        motion = motion * (1 - MOTION_SMOOTHING) + (if (how == "whole") MOTION_SMOOTHING else 0.0)
-        // With some hysteresis: a battle's quieter frames dropped the scene to
-        // "still" and back, and its labels came and went with it.
-        // A screen full of counters is play, too, however still: a battle
-        // waiting for the player's turn moved little, but showed hit points,
-        // charge, turns and enemies left — six numbers a frame, where a story
-        // shows none. Its labels came and went as the art behind them moved,
-        // and 「緑のカード」 was translated as a green car.
-        val numbers = read.count { GameTextFilter.judge(it, minOf(frame.height, frame.width)) == GameTextFilter.Verdict.NUMBER }
-        counters = counters * (1 - MOTION_SMOOTHING) + numbers * MOTION_SMOOTHING
-        // Motion alone is not play: a title screen with animated art behind
-        // its menu — Shattered Pixel Dungeon's — changed whole every frame
-        // and its buttons were never translated. Moving and showing a few
-        // counters is.
-        val busy = if (wasBusy) {
-            (motion > BUSY_SCENE_LEAVE && counters > MOVING_PLAY_COUNTERS) || counters > PLAY_COUNTERS_LEAVE
-        } else {
-            (motion > BUSY_SCENE && counters > MOVING_PLAY_COUNTERS) || counters > PLAY_COUNTERS
-        }
-        val shown = if (busy) kept.filter { it in dialogue } else kept
-        if (busy != wasBusy) {
-            wasBusy = busy
-            logger.debug(TAG, if (busy) "busy scene: dialogue only" else "still scene: everything")
-        }
+        val dialogue = GameLayout.dialogue(kept, places)
+        // Only what reads as dialogue: a line someone speaks, a narration, a
+        // choice, an instruction or a pop-up's sentence — and the speaker's
+        // name over it. A game's interface is left as it is. Measured on Blue
+        // Archive's mission menu and Fate/Grand Order's battles: its labels
+        // are short words, most of them kanji a Chinese reader reads anyway,
+        // drawn on art the patch cannot paint back cleanly; translated, they
+        // came out half-covered (「合同火力演習」 as 「大决战」 and 「演习」 over
+        // what was left of it), came and went as the art moved, and stood
+        // between the player and the buttons — for words learnt in an hour.
+        val shown = kept.filter { it in dialogue }
         lock.withLock {
             val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged) { gone ->
                 // Still there only if its place still holds ink, and not other
@@ -425,9 +413,8 @@ class GameTextSource @Inject constructor(
             kanaVotes = 0.0
             otherVotes = 0.0
             lastSelected = emptyList()
+            conversation.clear()
             speakerSpots = emptyList()
-            motion = 0.0
-            counters = 0.0
             session += 1
         }
         events.emit(TextSourceEvent.Cleared(TextSourceType.GAME))
@@ -1172,22 +1159,15 @@ class GameTextSource @Inject constructor(
         const val BAND_MARGIN_CELLS = 1
 
         /**
-         * A scene is busy when most recent frames changed across half the
-         * screen or more ([motion], smoothed over a few frames).
+         * How long a place a conversation was in stays a place for dialogue:
+         * long enough for a story's silences, short enough that a menu shown
+         * after the story is not read as one.
          */
-        const val BUSY_SCENE = 0.6
-        const val BUSY_SCENE_LEAVE = 0.25
-
-        /** Numbers on a frame, smoothed, that make it a screen of play rather than story. */
-        const val PLAY_COUNTERS = 4.5
-        const val PLAY_COUNTERS_LEAVE = 2.5
-
-        /** Counters that, on a scene in motion, make it play. */
-        const val MOVING_PLAY_COUNTERS = 1.5
+        const val CONVERSATION_KEPT_MS = 60_000L
+        const val MAX_CONVERSATION_PLACES = 12
 
         /** How much of the script vote each frame keeps from the last: about the last 50 frames count. */
         const val SCRIPT_VOTE_DECAY = 0.98
-        const val MOTION_SMOOTHING = 0.25
 
         /** Mean brightness change per grid cell, 0..255, that is a new scene. */
         const val SCENE_CHANGE_LUMA = 30.0

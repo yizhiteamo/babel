@@ -354,6 +354,21 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `two tiles read as one line are not a sentence`() {
+        assertEquals(false, GameLayout.isSentence("戦術対抗戦 制約解除決戦"))
+        assertEquals(true, GameLayout.isSentence("今日はいい天気ですね本当に気持ちがいい"))
+    }
+
+    @Test
+    fun `a short line in the dialogue box is dialogue`() {
+        val box = TextBounds(433, 1121, 2000, 1178, CoordinateSpace.SCREEN)
+        val un = line("うん", 432, 1123, 695, 1178)
+        val tile = line("任務", 1700, 380, 1900, 440)
+
+        assertEquals(setOf(un), GameLayout.dialogue(listOf(un, tile), places = listOf(box)))
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

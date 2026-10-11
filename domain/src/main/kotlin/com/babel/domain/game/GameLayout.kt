@@ -134,7 +134,7 @@ object GameLayout {
             // not the line's last word — even with nothing kept under it: the
             // 「2」 under 「アナウンス」 was a number, left out, and the name was
             // read as the end of the line above (「……还有3，播报」).
-            val nameLike = !isSentence(line.text)
+            val nameLike = isLabel(line.text)
             val i = if (line in labels) -1 else out.indexOfLast { (_, last) ->
                 last !in labels && wraps(last, line) &&
                     !(nameLike && line.typeHeight.toDouble() / last.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO)
@@ -171,7 +171,7 @@ object GameLayout {
      * history happened to let the two be read alike, so the line flickered.
      */
     private fun namesNext(line: GameLine, lines: List<GameLine>): Boolean {
-        if (isSentence(line.text)) return false
+        if (!isLabel(line.text)) return false
         return lines.any { below ->
             below !== line && isSentence(below.text) && below.bounds.top >= line.bounds.bottom - line.bounds.height / 4 &&
                 speaksAbove(line.bounds, below.bounds) &&
@@ -325,8 +325,11 @@ object GameLayout {
      * name above it. Judged by its words alone, 「塩基配列」 was a label; its
      * window let a long press through and the game moved on a line.
      */
-    fun dialogue(lines: List<GameLine>): Set<GameLine> {
-        val found = lines.filter { isSentence(it.text) }.toMutableSet()
+    fun dialogue(lines: List<GameLine>, places: List<TextBounds> = emptyList()): Set<GameLine> {
+        // Or anything where dialogue has been: a game's dialogue box and its
+        // name tab ([conversationPlaces]). 「うん」 says nothing a sentence
+        // would, but it is a line someone speaks, in the box they speak in.
+        val found = lines.filter { line -> isSentence(line.text) || places.any { inside(line.bounds, it) } }.toMutableSet()
         do {
             val more = lines.filter { line ->
                 line !in found && found.any { d ->
@@ -429,11 +432,71 @@ object GameLayout {
         return gap <= max(a.typeHeight, b.typeHeight) * ROW_GAP_LINES
     }
 
+    /**
+     * Where [lines] hold a conversation: a sentence with a speaker's name over
+     * it, and the name. Remembered by the caller, these are the dialogue box
+     * and the name tab, and whatever appears there later is dialogue too.
+     */
+    fun conversationPlaces(lines: List<GameLine>): List<TextBounds> {
+        val places = mutableListOf<TextBounds>()
+        for (line in lines) {
+            if (!isSentence(line.text) || line.text.count { it.isLetter() } < MIN_CONVERSATION_LETTERS) continue
+            val speaker = lines.firstOrNull { it !== line && isLabel(it.text) && speaksAbove(it.bounds, line.bounds) } ?: continue
+            places += line.bounds
+            places += speaker.bounds
+        }
+        return places
+    }
+
+    /** Most of [line] within [place], with half a line of slack. */
+    private fun inside(line: TextBounds, place: TextBounds): Boolean {
+        val slack = place.height / 2
+        val w = min(line.right, place.right + slack) - max(line.left, place.left - slack)
+        val h = min(line.bottom, place.bottom + slack) - max(line.top, place.top - slack)
+        return w > 0 && h > 0 && w.toLong() * h * 2 >= line.width.toLong() * line.height
+    }
+
     /** A sentence's punctuation, or more letters than a label has. */
     fun isSentence(text: String): Boolean =
-        text.any { it in SENTENCE_MARKS } || text.count { it.isLetter() } > MAX_LABEL_LETTERS
+        // A badge's 「開催中!」 has a sentence's mark and a label's length.
+        (punctuated(text) && text.count { it.isLetter() } >= MIN_SENTENCE_LETTERS) ||
+            // Long, but without punctuation and with a space between words of
+            // a script written without spaces: two labels side by side —
+            // Blue Archive's tiles 「戦術対抗戦 制約解除決戦」 read as one line.
+            (text.count { it.isLetter() } > MAX_LABEL_LETTERS && !spacedLabels(text))
+
+    /**
+     * A sentence's punctuation. A quotation's bracket counts only with its
+     * pair: one 「 was read off the edge of a tile and made two of Blue
+     * Archive's buttons a sentence.
+     */
+    private fun punctuated(text: String): Boolean =
+        text.any { it in SENTENCE_MARKS && it !in BRACKETS } ||
+            ('「' in text && '」' in text) || ('『' in text && '』' in text)
+
+    private const val BRACKETS = "「」『』"
+
+    /** A name or an interface word: no sentence's mark and not a sentence's length. */
+    fun isLabel(text: String): Boolean = !punctuated(text) && !isSentence(text)
+
+    private fun spacedLabels(text: String): Boolean {
+        val t = text.trim()
+        return t.indices.any { i ->
+            t[i].isWhitespace() && i > 0 && i < t.length - 1 &&
+                t[i - 1].let { it.isLetter() && it.code >= 0x2E80 } && t[i + 1].let { it.isLetter() && it.code >= 0x2E80 }
+        }
+    }
 
     const val SENTENCE_MARKS = "。、？！?!…「」『』"
+
+    /**
+     * Letters a punctuated line needs to be a sentence on its own. Shorter
+     * replies — 「うん。」 — are dialogue by where they are ([dialogue]'s places).
+     */
+    const val MIN_SENTENCE_LETTERS = 4
+
+    /** Letters a line under a name needs before the place counts as a conversation. */
+    const val MIN_CONVERSATION_LETTERS = 6
 
     /** Longer than this without punctuation is still a sentence, not a label. */
     const val MAX_LABEL_LETTERS = 12

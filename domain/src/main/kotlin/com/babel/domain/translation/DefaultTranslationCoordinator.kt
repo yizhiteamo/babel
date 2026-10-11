@@ -637,7 +637,7 @@ class DefaultTranslationCoordinator(
      * line of dialogue is never written to disk.
      */
     private fun isDurableLabel(element: TextElement): Boolean =
-        element.sourceType == TextSourceType.GAME && !GameLayout.isSentence(element.text)
+        element.sourceType == TextSourceType.GAME && GameLayout.isLabel(element.text)
 
     private sealed interface Message {
         data class Source(val event: TextSourceEvent) : Message

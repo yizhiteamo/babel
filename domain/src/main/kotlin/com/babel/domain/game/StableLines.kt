@@ -291,7 +291,7 @@ class StableLines {
         // of another: scrolled back into view on a history screen, each line
         // waited two frames to agree on words it had already been published
         // with. A shorter one may be a line still typing.
-        if (GameLayout.isSentence(line.text) && line.text.length < MIN_KNOWN_SENTENCE) return
+        if (!GameLayout.isLabel(line.text) && line.text.length < MIN_KNOWN_SENTENCE) return
         knownLabels.remove(line.text)
         knownLabels += line.text
         while (knownLabels.size > MAX_KNOWN_LABELS) knownLabels.remove(knownLabels.first())
