@@ -47,8 +47,9 @@ A game's text is drawn in one of three ways, chosen per line:
 Touches:
 
 - **Dialogue** (`conversational`) is a touchable window. A short tap is handed
-  to the game; a **long press switches the whole screen** between translation
-  and original. The original state lasts until the next line appears, or
+  to the game; a **long press released before 1 s switches the whole screen**
+  between translation and original; **held past 1 s, the press goes on to the
+  game** as a held press (`TapForwarder.hold`) until the finger lifts. The original state lasts until the next line appears, or
   another long press on the same spot; a small bar in the line's ink marks
   where a translation is standing aside.
 - **Labels** (buttons, menu entries, names) are trusted

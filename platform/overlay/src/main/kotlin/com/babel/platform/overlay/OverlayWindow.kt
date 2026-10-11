@@ -133,7 +133,8 @@ internal class OverlayWindow(
 
     /**
      * A game's translation: a short tap goes on to the game, a long press
-     * switches between the translation and the original
+     * released switches between the translation and the original, and a
+     * press held on goes on to the game as a hold
      * (`docs/features/v3-game-translation.md`).
      *
      * A switch rather than a hold: held, the finger covered the line it was
@@ -158,38 +159,70 @@ internal class OverlayWindow(
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var downAt = 0L
         var longPressed = false
-        val switch = Runnable {
+        var holding: com.babel.platform.screen.TapForwarder.Hold? = null
+        var x = 0f
+        var y = 0f
+        // Past the long press the switch is taken on release, and a tick says
+        // so. Touchable again at once: an untouchable overlay is held to 80%
+        // opacity, and for the rest of the press the original showed through
+        // the translation (measured on Fate/Grand Order).
+        val longPress = Runnable {
             longPressed = true
-            // Touchable again at once: an untouchable overlay is held to 80%
-            // opacity, and for the rest of the hold the original showed
-            // through the translation (measured on Fate/Grand Order). Nothing
-            // is handed on after a long press, so nothing needs to fall through.
             setTouchable(view, true)
-            showGameOriginal(!gameShowingOriginal)
+            view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        }
+        // Held on past that, the player is holding the dialogue as Fate/Grand
+        // Order's players do to fast-forward: the press goes on to the game,
+        // from where the finger is, until it lifts, and nothing is switched.
+        val holdOn = Runnable {
+            val forwarder = taps
+            if (forwarder != null && forwarder.canForward) {
+                setTouchable(view, false)
+                handler.postDelayed({ if (longPressed) holding = forwarder.hold(x, y) }, UNTOUCHABLE_SETTLE_MS)
+            }
+        }
+        fun released(hold: com.babel.platform.screen.TapForwarder.Hold?) {
+            if (hold == null) setTouchable(view, true) else hold.release { view.post { setTouchable(view, true) } }
         }
         view.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
                     downAt = android.os.SystemClock.uptimeMillis()
                     longPressed = false
+                    holding = null
+                    x = event.rawX
+                    y = event.rawY
                     setTouchable(view, false)
-                    handler.postDelayed(switch, LONG_PRESS_MS)
+                    handler.postDelayed(longPress, LONG_PRESS_MS)
+                    handler.postDelayed(holdOn, HOLD_ON_MS)
                 }
                 android.view.MotionEvent.ACTION_UP -> {
-                    handler.removeCallbacks(switch)
-                    if (longPressed) {
-                        setTouchable(view, true)
-                    } else {
-                        val x = event.rawX
-                        val y = event.rawY
-                        val wait = (UNTOUCHABLE_SETTLE_MS - (android.os.SystemClock.uptimeMillis() - downAt))
-                            .coerceAtLeast(0)
-                        handler.postDelayed({ forward(view, x, y) }, wait)
+                    handler.removeCallbacks(longPress)
+                    handler.removeCallbacks(holdOn)
+                    val heldFor = android.os.SystemClock.uptimeMillis() - downAt
+                    val hold = holding
+                    holding = null
+                    when {
+                        hold != null || (longPressed && heldFor >= HOLD_ON_MS) -> released(hold)
+                        longPressed -> {
+                            setTouchable(view, true)
+                            showGameOriginal(!gameShowingOriginal)
+                        }
+                        else -> {
+                            val wait = (UNTOUCHABLE_SETTLE_MS - heldFor).coerceAtLeast(0)
+                            val tx = event.rawX
+                            val ty = event.rawY
+                            handler.postDelayed({ forward(view, tx, ty) }, wait)
+                        }
                     }
+                    longPressed = false
                 }
                 android.view.MotionEvent.ACTION_CANCEL -> {
-                    handler.removeCallbacks(switch)
-                    setTouchable(view, true)
+                    handler.removeCallbacks(longPress)
+                    handler.removeCallbacks(holdOn)
+                    released(holding)
+                    holding = null
+                    longPressed = false
                 }
             }
             true
@@ -582,6 +615,13 @@ internal class OverlayWindow(
 
 /** How long a press must be held to show the original under a game's translation. */
 private const val LONG_PRESS_MS = 450L
+
+/**
+ * A press held this long on a game's translation is the game's: its "hold to
+ * fast-forward". Released between [LONG_PRESS_MS] and this, it switches to
+ * the original.
+ */
+private const val HOLD_ON_MS = 1000L
 
 /** Time for an untouchable window to reach the input system (spike 3: ~80 ms). */
 private const val UNTOUCHABLE_SETTLE_MS = 90L
