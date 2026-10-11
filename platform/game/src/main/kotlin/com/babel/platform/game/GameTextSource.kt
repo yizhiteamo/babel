@@ -516,8 +516,10 @@ class GameTextSource @Inject constructor(
         val height = frame.height
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
-            val bounds = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
-            GameLine(GameLayout.withoutStrayStroke(text), bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
+            val read = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
+            val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), read)
+            if (kept.isBlank()) return@mapNotNull null
+            GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
         }
         // Only a speaker's row is cut by colour: a name and its affiliation
         // sit over a line of dialogue. A label over a progress bar has its
@@ -569,6 +571,45 @@ class GameTextSource @Inject constructor(
             group.forEach { rect.union(it.boundingBox!!) }
             group.joinToString(" ") { it.text } to rect
         }
+    }
+
+    /**
+     * [text] without a last mark that was never there: the tail of a chat
+     * bubble the text nearly fills. MomoTalk's 「それはよかった」 was read now
+     * and then as 「それはよかった?」 — the box the same, its end on the
+     * bubble's edge and the pointed tail past it — and translated as a
+     * question. A real 「?」 has type in the line's last glyph's width; there
+     * a read mark has nothing but the page running in from the box's end.
+     */
+    private fun withoutTail(frame: Bitmap, text: String, box: TextBounds): Pair<String, TextBounds> {
+        val trimmed = text.trimEnd()
+        val last = trimmed.lastOrNull() ?: return text to box
+        if (last !in TAIL_MARKS || trimmed.length < 2) return text to box
+        val tail = (box.height * TAIL_WIDTH_OF_HEIGHT).toInt().coerceAtMost(box.width / 3)
+        if (tail < 2 || box.left < 0 || box.right > frame.width || box.top < 2 || box.bottom + 1 >= frame.height) return text to box
+        // The panel just above and below the line, not inside it: a short
+        // line of heavy type is more type than panel.
+        val outside = IntArray(box.width - tail)
+        val lumas = mutableListOf<Double>()
+        for (y in listOf(box.top - 2, box.bottom + 1)) {
+            frame.getPixels(outside, 0, outside.size, box.left, y, outside.size, 1)
+            for (x in outside.indices step 2) lumas += luma(outside[x])
+        }
+        val panel = lumas.sorted()[lumas.size / 2]
+        val sign = if (panel < MID_LUMA) 1.0 else -1.0
+        val row = IntArray(tail)
+        var ink = 0
+        for (y in box.top until box.bottom) {
+            frame.getPixels(row, 0, tail, box.right - tail, y, tail, 1)
+            val inked = BooleanArray(tail) { (luma(row[it]) - panel) * sign >= INK_CONTRAST }
+            // Not what runs in from the box's end: the page past the bubble.
+            var end = tail
+            while (end > 0 && inked[end - 1]) end--
+            for (x in 0 until end) if (inked[x]) ink++
+        }
+        val share = ink.toDouble() / (tail * box.height)
+        if (share >= TAIL_MAX_INK) return text to box
+        return trimmed.dropLast(1).trimEnd() to box
     }
 
     /**
@@ -1391,6 +1432,13 @@ class GameTextSource @Inject constructor(
 
         /** A panel this far from the line's own is a different one: a bubble's page. */
         const val OTHER_PANEL_LUMA = 80.0
+
+        /** How much of the line's end, against its height, a last mark is looked for in: about one narrow glyph. */
+        const val TAIL_WIDTH_OF_HEIGHT = 0.4
+        const val TAIL_MARKS = "?？>〉"
+
+        /** Less type than this in the last mark's width, and the mark was not there. */
+        const val TAIL_MAX_INK = 0.05
 
         /** How far the panel under a painted-out line may change before it is painted again. */
         const val PANEL_CHANGED_LUMA = 10.0
