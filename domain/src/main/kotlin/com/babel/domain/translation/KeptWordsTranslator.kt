@@ -39,7 +39,17 @@ class KeptWordsTranslator(private val delegate: Translator) : Translator {
         val result = delegate.translate(request.copy(sourceText = masked))
         if (result.status != TranslationStatus.Translated) return result.copy(originalText = text)
         var restored = result.translatedText
-        order.forEachIndexed { i, word -> restored = restored.replace(mark(i), word) }
+        order.forEachIndexed { i, word ->
+            restored = if (mark(i) in restored) {
+                restored.replace(mark(i), word)
+            } else if (masked.startsWith(mark(i))) {
+                // Dropped, as the name a line opens with often is: 「{1}。緊急事態
+                // という事で…」 came back without it. Put back where it stood.
+                word + FULL_STOP_COMMA + restored
+            } else {
+                restored
+            }
+        }
         return result.copy(originalText = text, translatedText = restored)
     }
 
@@ -51,5 +61,7 @@ class KeptWordsTranslator(private val delegate: Translator) : Translator {
 
         /** Letters of another script that make a line not an English one. */
         const val MIN_OTHER_LETTERS = 2
+
+        const val FULL_STOP_COMMA = "，"
     }
 }

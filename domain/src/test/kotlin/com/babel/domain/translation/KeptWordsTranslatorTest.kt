@@ -57,4 +57,15 @@ class KeptWordsTranslatorTest {
 
         assertEquals(listOf("yizhiteamoちゃん。"), seen)
     }
+
+    @Test
+    fun `a name the answer dropped from the start is put back`() = runBlocking {
+        val dropping = object : Translator by inner {
+            override suspend fun translate(request: TranslationRequest) = inner.translate(request).let {
+                it.copy(translatedText = "紧急事态。")
+            }
+        }
+
+        assertEquals("yizhiteamo，紧急事态。", KeptWordsTranslator(dropping).translate(request("yizhiteamo。緊急事態という事で")).translatedText)
+    }
 }

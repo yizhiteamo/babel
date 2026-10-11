@@ -233,7 +233,11 @@ class ChatTranslator(
         append(" or nonsense — reply with it exactly as given and nothing else;")
         append(" never address the user and never explain what you cannot do.")
         append(" Write the whole reply in ${nameOf(request.languages.target)}:")
-        append(" leave no word of the source language standing in it.")
+        append(" leave no word of the source language standing in it,")
+        // Katakana loanwords came back in English — 「コフィン」 as "coffin",
+        // 「シフト」 as "shift" — sitting in the middle of a Chinese sentence.
+        append(" and do not turn loanwords into English or any third language:")
+        append(" give them in ${nameOf(request.languages.target)} too.")
         // The fifth, and the one a user reported: 「선생님, 줄게!」 came back as
         // 「给你徐世妮」 — a form of address rendered as a personal name. In
         // isolation that is a defensible reading, which is why saying it

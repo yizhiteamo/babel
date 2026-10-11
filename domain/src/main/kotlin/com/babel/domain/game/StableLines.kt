@@ -131,7 +131,7 @@ class StableLines {
             } else {
                 // Same place, new words: the old line is over, whatever it was.
                 val published = before.publishedKey
-                if (published != null && flips(before.line, line)) {
+                if (published != null && (flips(before.line, line) || akin(before.line.text, line.text))) {
                     // Two readings that have taken turns here before: one
                     // place read two ways, not a new line. Kept as a miss.
                     before.misses += 1
@@ -277,17 +277,21 @@ class StableLines {
     }
 
     /**
-     * Labels published before, by their words: a speaker's name comes back
+     * Lines published before, by their words: a speaker's name comes back
      * line after line, and waiting for two frames to agree on it showed the
-     * original name for a moment at every change of speaker. A label read
-     * exactly as one already published is published at once. Only labels — a
-     * line of dialogue the same as an earlier one may be the start of a
-     * longer line still typing.
+     * original name for a moment at every change of speaker. A line read
+     * exactly as one already published is published at once. Labels always;
+     * dialogue only from [MIN_KNOWN_SENTENCE] characters — a short one may be
+     * the start of a longer line still typing.
      */
     private val knownLabels = LinkedHashSet<String>()
 
     private fun remember(line: GameLine) {
-        if (GameLayout.isSentence(line.text)) return
+        // A line of dialogue too, once it is long enough not to be the start
+        // of another: scrolled back into view on a history screen, each line
+        // waited two frames to agree on words it had already been published
+        // with. A shorter one may be a line still typing.
+        if (GameLayout.isSentence(line.text) && line.text.length < MIN_KNOWN_SENTENCE) return
         knownLabels.remove(line.text)
         knownLabels += line.text
         while (knownLabels.size > MAX_KNOWN_LABELS) knownLabels.remove(knownLabels.first())
@@ -321,6 +325,20 @@ class StableLines {
         flipping.removeAll { it.first.text == line.text }
         flipping += line to back.by
         while (flipping.size > MAX_FLIPPING) flipping.removeAt(0)
+    }
+
+    /**
+     * Mostly the same characters, though more than a misread apart: the same
+     * place read with something else mixed in. Over a history screen laid on
+     * the game's dialogue box, one entry came back in six readings, the
+     * dimmed line behind taken in or not, and each withdrew the last. A new
+     * line in the same place shares far fewer: measured under 0.4, these 0.6
+     * and over.
+     */
+    private fun akin(a: String, b: String): Boolean {
+        if (a.length < MIN_AKIN_LENGTH || b.length < MIN_AKIN_LENGTH) return false
+        val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
+        return shared * 2.0 / (a.length + b.length) >= AKIN_SHARE
     }
 
     private fun flips(published: GameLine, read: GameLine): Boolean =
@@ -364,12 +382,19 @@ class StableLines {
         const val MIN_SLIDE_PX = 6
         const val SLIDE_DIVISOR = 6
 
+        /** See [akin]. */
+        const val AKIN_SHARE = 0.6
+        const val MIN_AKIN_LENGTH = 8
+
         /** How long a withdrawn line is watched for coming back; see [Replaced]. */
         const val FLIP_WINDOW_MS = 4000L
         const val MAX_FLIPPING = 16
 
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256
+
+        /** Dialogue this long is published at once when read again exactly. */
+        const val MIN_KNOWN_SENTENCE = 12
 
         /** Shortest reading one misread character may differ in and stay the same line. */
         const val MIN_EDITABLE_LENGTH = 4

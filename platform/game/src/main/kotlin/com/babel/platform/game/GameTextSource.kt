@@ -106,6 +106,9 @@ class GameTextSource @Inject constructor(
     private var lastGrid: IntArray? = null
     private var lastLines: List<GameLine> = emptyList()
 
+    /** What each line of [lastLines] looked like, for [keepUnchanged]. */
+    private var lastLooks: Map<GameLine, IntArray> = emptyMap()
+
     override suspend fun read(
         windowId: Int,
         windowBounds: TextBounds,
@@ -163,13 +166,14 @@ class GameTextSource @Inject constructor(
                 margin = cellHeight.toInt() / 2,
                 frameHeight = frame.height,
             )
-            read = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
+            val fresh = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
                 how = "whole"
                 frontLayer(frame, recognise(frame, 0, frame.height))
             } else {
                 how = "band ${bottom - top}px"
                 frontLayer(frame, ChangedBand.merge(lastLines, recognise(frame, top, bottom), top, bottom))
             }
+            read = keepUnchanged(frame, fresh)
             lastGrid = grid
             lastLines = read
         }
@@ -281,6 +285,70 @@ class GameTextSource @Inject constructor(
     private fun inked(frame: Bitmap, box: TextBounds): Boolean = inkPerMille(frame, box) >= MIN_INK_PER_MILLE
 
     /**
+     * A line whose pixels have not changed keeps its last reading. Over
+     * moving art the recogniser reads the same still line differently from
+     * frame to frame, and behind a translucent history screen it took in the
+     * dimmed dialogue box or did not — six readings of one entry, each
+     * withdrawing the last. Where the line's own pixels are the same as they
+     * were, so is its text; only a line whose pixels changed — typed, scrolled,
+     * replaced — is read again.
+     */
+    private fun keepUnchanged(frame: Bitmap, fresh: List<GameLine>): List<GameLine> {
+        val looks = HashMap<GameLine, IntArray>()
+        val still = lastLines.filter { old ->
+            val before = lastLooks[old] ?: return@filter false
+            val now = lookOf(frame, old.bounds) ?: return@filter false
+            looks[old] = now
+            largestDifference(before, now) <= STILL_LOOK_LUMA
+        }
+        // A fresh reading that reaches past the still line — a typewriter's
+        // next characters, outside the box the line had — is a changed line.
+        fun within(inner: TextBounds, outer: TextBounds): Boolean {
+            val slack = outer.height / 2
+            return inner.left >= outer.left - slack && inner.right <= outer.right + slack &&
+                inner.top >= outer.top - slack && inner.bottom <= outer.bottom + slack
+        }
+        val grown = still.filter { old -> fresh.any { covers(old.bounds, it.bounds) && !within(it.bounds, old.bounds) } }.toSet()
+        val stillKept = still - grown
+        val kept = fresh.filter { line -> stillKept.none { covers(it.bounds, line.bounds) } } + stillKept
+        for (line in kept) if (line !in looks) lookOf(frame, line.bounds)?.let { looks[line] = it }
+        lastLooks = looks
+        return kept
+    }
+
+    /** The line's box as a small grid of mean brightness. */
+    private fun lookOf(frame: Bitmap, box: TextBounds): IntArray? {
+        val left = box.left.coerceIn(0, frame.width - 1)
+        val right = box.right.coerceIn(left + 1, frame.width)
+        val top = box.top.coerceIn(0, frame.height - 1)
+        val bottom = box.bottom.coerceIn(top + 1, frame.height)
+        val w = right - left
+        val h = bottom - top
+        if (w < LOOK_COLUMNS || h < LOOK_ROWS) return null
+        val row = IntArray(w)
+        val sums = IntArray(LOOK_COLUMNS * LOOK_ROWS)
+        val counts = IntArray(LOOK_COLUMNS * LOOK_ROWS)
+        var y = top
+        while (y < bottom) {
+            frame.getPixels(row, 0, w, left, y, w, 1)
+            val r = (y - top) * LOOK_ROWS / h
+            var x = 0
+            while (x < w) {
+                val c = x * LOOK_COLUMNS / w
+                sums[r * LOOK_COLUMNS + c] += luma(row[x]).toInt()
+                counts[r * LOOK_COLUMNS + c]++
+                x += SAMPLE_STEP
+            }
+            y += SAMPLE_STEP
+        }
+        return IntArray(sums.size) { if (counts[it] == 0) 0 else sums[it] / counts[it] }
+    }
+
+    /** The largest change of any cell: one new glyph in a long line moves the mean by little. */
+    private fun largestDifference(a: IntArray, b: IntArray): Double =
+        if (a.size != b.size) Double.MAX_VALUE else a.indices.maxOf { abs(a[it] - b[it]) }.toDouble()
+
+    /**
      * Of lines read over each other, the one in front: a history screen is
      * drawn translucent over the game's dialogue box, the recogniser read
      * now the history and now the dimmed dialogue behind it, and each
@@ -351,6 +419,7 @@ class GameTextSource @Inject constructor(
             lines = StableLines()
             lastGrid = null
             lastLines = emptyList()
+            lastLooks = emptyMap()
             otherScript = null
             latinVotes = 0.0
             kanaVotes = 0.0
@@ -1046,6 +1115,11 @@ class GameTextSource @Inject constructor(
 
         /** The share of ink pixels, strongest first, that give the ink its colour. */
         const val INK_CORE_PERCENT = 30
+
+        /** A line's look: this grid, and how far (0..255) any cell may change and be the same. */
+        const val LOOK_COLUMNS = 24
+        const val LOOK_ROWS = 4
+        const val STILL_LOOK_LUMA = 12.0
 
         /** A line with this many times less ink than one over it is behind it. */
         const val BEHIND_RATIO = 3

@@ -234,6 +234,17 @@ class StableLinesTest {
         assertTrue(lines.next(listOf(b), now = 1666).gone.isEmpty())
     }
 
+    @Test
+    fun `a long line seen before is published at once when scrolled back`() {
+        val lines = StableLines()
+        val long = "ゼロではない。いいえ、ゼロにはならない。"
+        lines.next(listOf(line(long)), now = 0)
+        lines.next(listOf(line(long)), now = 333)
+        lines.next(emptyList(), now = 666, sceneChanged = true)
+
+        assertEquals(1, lines.next(listOf(line(long, top = 500)), now = 1000).settled.size)
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {
