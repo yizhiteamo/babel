@@ -588,7 +588,7 @@ class DefaultTranslationCoordinator(
         // translations (`NameMarks`); a glossary in the context alone was
         // not always followed — a choice read 「美奈和阿子」 under tabs saying
         // 「米娜」 and 「阿科」.
-        val marked = NameMarks.mark(element.text, known)
+        var marked = NameMarks.mark(element.text, known)
         var attempt = 0
         while (true) {
             val request = TranslationRequest(
@@ -604,6 +604,13 @@ class DefaultTranslationCoordinator(
             )
             val result = translator.translate(request)
             val status = result.status
+            // An answer that lost a mark is asked again without them: given
+            // 「{N1}ちゃんそれ何回目？」 the model handed back the Japanese with
+            // the name written in, untranslated.
+            if (status == TranslationStatus.Translated && marked.hasMarks && !marked.keptIn(result.translatedText)) {
+                marked = NameMarks.mark(element.text, emptyMap())
+                continue
+            }
             if (status !is TranslationStatus.Failed) return marked.restore(result, element.text)
 
             attempt++

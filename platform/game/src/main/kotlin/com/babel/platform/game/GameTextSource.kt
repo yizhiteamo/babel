@@ -754,7 +754,21 @@ class GameTextSource @Inject constructor(
         val row = others.filter { it.bounds != b && sameRow(it.bounds, b) }
         val leftLimit = row.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0
         val rightLimit = row.filter { it.bounds.left >= b.right }.minOfOrNull { (it.bounds.left + b.right) / 2 } ?: frame.width
-        val line = recognised.copy(bounds = inkExtent(frame, b, recognised.typeHeight, leftLimit, rightLimit))
+        val extent = inkExtent(frame, b, recognised.typeHeight, leftLimit, rightLimit)
+        // Centred on the screen — a choice, a banner — and set again centred,
+        // over a box made even about the centre: the ink to one side reached
+        // further than the other once a closing 」 stood apart, and was left
+        // standing beside a translation set from the left.
+        val mid = frame.width / 2
+        val centred = row.isEmpty() && extent.width < frame.width * MAX_CENTRED_WIDTH &&
+            abs((extent.left + extent.right) / 2 - mid) <= frame.width * CENTRED_TOLERANCE
+        // Followed across wider gaps too: a choice's quotation marks stand a
+        // character and a half off its words, and were left beside them.
+        val wide = if (centred) inkExtent(frame, extent, recognised.typeHeight, leftLimit, rightLimit, gapLines = CENTRED_GAP_LINES) else extent
+        val half = max(mid - wide.left, wide.right - mid)
+        val line = recognised.copy(
+            bounds = if (centred) TextBounds(mid - half, wide.top, mid + half, wide.bottom, wide.space) else extent,
+        )
         // Room for a line of type the original's height: a typeface's line is
         // taller than its glyphs' ink, and in the recogniser's tight box the
         // translation was shrunk to about 60% of the original to fit.
@@ -782,6 +796,7 @@ class GameTextSource @Inject constructor(
             backdrop = backdrop,
             outlineColor = strokes.outline,
             strokeWeight = strokes.weight?.let { it / line.typeHeight.coerceAtLeast(1) },
+            centred = centred,
         )
     }
 
@@ -847,7 +862,14 @@ class GameTextSource @Inject constructor(
     private fun sameRow(a: TextBounds, b: TextBounds): Boolean =
         minOf(a.bottom, b.bottom) - maxOf(a.top, b.top) > minOf(a.height, b.height) / 2
 
-    private fun inkExtent(frame: Bitmap, box: TextBounds, reach: Int, leftLimit: Int, rightLimit: Int): TextBounds {
+    private fun inkExtent(
+        frame: Bitmap,
+        box: TextBounds,
+        reach: Int,
+        leftLimit: Int,
+        rightLimit: Int,
+        gapLines: Double = 1.0 / 3,
+    ): TextBounds {
         if (box.width <= 0 || box.height <= 0) return box
         fun inked(pixels: IntArray, lighter: Boolean): Boolean {
             val lumas = pixels.map { luma(it) }
@@ -877,7 +899,7 @@ class GameTextSource @Inject constructor(
         // left out stands a little apart from the rest, and missed, the
         // patch's edge was sampled on it and drew a white bar.
         // A third of the type: a name and its affiliation stand further apart.
-        val gap = reach / 3
+        val gap = (reach * gapLines).toInt()
         var left = box.left
         // Room left for the patch's edge to be sampled on panel, inside the limits.
         val edge = SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS
@@ -1128,6 +1150,11 @@ class GameTextSource @Inject constructor(
 
         /** Ink, per thousand samples, that means a line is still there; a line of type has 50-200. */
         const val MIN_INK_PER_MILLE = 8
+
+        /** A line whose middle is this close (of the width) to the screen's is centred, if not too wide. */
+        const val CENTRED_TOLERANCE = 0.02
+        const val MAX_CENTRED_WIDTH = 0.8
+        const val CENTRED_GAP_LINES = 2.0
 
         /** Places remembered where a speaker's name has stood. */
         const val MAX_SPEAKER_SPOTS = 4

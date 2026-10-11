@@ -14,6 +14,11 @@ import com.babel.core.model.TranslationStatus
 object NameMarks {
 
     class Marked(val text: String, private val marks: Map<String, String>) {
+        /** Whether [answer] kept every mark it was sent with. */
+        fun keptIn(answer: String): Boolean = marks.keys.all { it in answer }
+
+        val hasMarks: Boolean get() = marks.isNotEmpty()
+
         fun restore(result: TranslationResult, original: String): TranslationResult {
             if (marks.isEmpty()) return result
             if (result.status != TranslationStatus.Translated) return result.copy(originalText = original)

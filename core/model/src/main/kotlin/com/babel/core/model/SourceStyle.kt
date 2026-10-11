@@ -57,6 +57,8 @@ data class SourceStyle(
      * type's height. Null where it was not measured.
      */
     val strokeWeight: Float? = null,
+    /** The original was centred on its panel — a choice, a banner — not set from its left. */
+    val centred: Boolean = false,
 ) {
     val isEmpty: Boolean
         get() = backgroundColor == null && foregroundColor == null &&

@@ -66,11 +66,32 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
             null
         }
         outlineWidth = maxOf(MIN_OUTLINE_PX, glyph * OUTLINE_RATIO)
-        typeface = if ((style.strokeWeight ?: 0f) >= BOLD_WEIGHT) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+        typeface = typefaceFor(style.strokeWeight)
 
+        centred = style.centred
         text = translation.text
         configureSize(glyph, translation.bounds.height)
     }
+
+    /**
+     * A weight for the original's strokes, not just bold or not: Blue
+     * Archive's names are set heavier than its dialogue (strokes 0.17–0.19 of
+     * the type's height against 0.13–0.15), and a translated name in plain
+     * bold read lighter than the name it replaced.
+     */
+    private fun typefaceFor(strokes: Float?): Typeface {
+        val ratio = strokes ?: return Typeface.DEFAULT
+        if (ratio < BOLD_WEIGHT) return Typeface.DEFAULT
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return Typeface.DEFAULT_BOLD
+        val weight = when {
+            ratio >= HEAVY_WEIGHT -> 900
+            ratio >= SEMI_HEAVY_WEIGHT -> 800
+            else -> 700
+        }
+        return Typeface.create(Typeface.DEFAULT, weight, false)
+    }
+
+    private var centred = false
 
     private var outline: Int? = null
     private var outlineWidth = 0f
@@ -154,7 +175,8 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
         // One line sits where the original's did, in the middle of its box:
         // set from the top, a smaller affiliation beside a larger name came
         // out low, across the rule under the name.
-        gravity = if (maxLines == 1) Gravity.CENTER_VERTICAL or Gravity.START else Gravity.TOP or Gravity.START
+        val horizontal = if (centred) Gravity.CENTER_HORIZONTAL else Gravity.START
+        gravity = if (maxLines == 1) Gravity.CENTER_VERTICAL or horizontal else Gravity.TOP or horizontal
         setAutoSizeTextTypeUniformWithConfiguration(smallest, size, 1, TypedValue.COMPLEX_UNIT_PX)
     }
 
@@ -172,9 +194,17 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
     private class GradientBackdrop(gradient: RowGradient) : Drawable() {
         private val bitmap: Bitmap = Bitmap.createBitmap(COLUMNS, gradient.rows.coerceAtLeast(1), Bitmap.Config.ARGB_8888).apply {
             val pixels = IntArray(width * height)
+            // Faded out over the margin it was given above and below: a patch
+            // with a hard edge showed as a rectangle on the art behind a name,
+            // where the panel it paints is a guess. Not at its ends, which sit
+            // right at the ink — faded there, a choice's quotation marks showed.
+            val fadeRows = gradient.rowMarginPx.coerceAtLeast(1)
             for (y in 0 until height) {
+                val rowAlpha = minOf(1f, (y + 1f) / (fadeRows + 1), (height - y).toFloat() / (fadeRows + 1))
                 for (x in 0 until width) {
-                    pixels[y * width + x] = gradient.colorAt(y, x / (width - 1f))
+                    val c = gradient.colorAt(y, x / (width - 1f))
+                    val a = ((c ushr 24) * rowAlpha).toInt().coerceIn(0, 255)
+                    pixels[y * width + x] = (a shl 24) or (c and 0xFFFFFF)
                 }
             }
             setPixels(pixels, 0, width, 0, 0, width, height)
@@ -195,11 +225,12 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
         }
 
         @Deprecated("Deprecated in Java")
-        override fun getOpacity(): Int = android.graphics.PixelFormat.OPAQUE
+        override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
     }
 
     private companion object {
         const val COLUMNS = 64
+
 
         /** A CJK glyph's ink fills about this much of its text size. */
         const val GLYPH_TO_TEXT_SIZE = 0.88f
@@ -223,6 +254,8 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
 
         /** Strokes this heavy against the type's height are set bold. */
         const val BOLD_WEIGHT = 0.11f
+        const val SEMI_HEAVY_WEIGHT = 0.15f
+        const val HEAVY_WEIGHT = 0.18f
         const val MID_LUMINANCE = 128.0
     }
 }
