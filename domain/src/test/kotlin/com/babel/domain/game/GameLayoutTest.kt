@@ -369,6 +369,29 @@ class GameLayoutTest {
     }
 
     @Test
+    fun `a synopsis in small type is kept whole`() {
+        val a = line("2月19日。それはヒナとキサキの誕生日。", 2273, 1054, 2850, 1086).copy(typeHeight = 31)
+        val b = line("それぞれでパーティーの準備を進めていた", 2273, 1097, 2851, 1128).copy(typeHeight = 30)
+        val c = line("風紀委員会と玄龍門だったが、注文して", 2273, 1140, 2879, 1171).copy(typeHeight = 31)
+        val tag = line("100円", 1500, 700, 1600, 731).copy(typeHeight = 31)
+
+        val kept = GameLayout.select(listOf(a, b, c, tag), frameHeight = 1440, frameWidth = 3200)
+
+        assertEquals(setOf(a, b, c), kept.toSet())
+        assertEquals(1, GameLayout.joinWrapped(kept).size)
+    }
+
+    @Test
+    fun `two columns of paragraphs are joined each on its own`() {
+        val l1 = line("熱い革命の湯殿が今ここに!227号温泉", 952, 373, 1558, 406).copy(typeHeight = 33)
+        val l2 = line("の閉鎖後、レッドウィンター連学園で", 952, 419, 1562, 452).copy(typeHeight = 33)
+        val r1 = line("キヴォトスの円滑な交通環境を維持すべ", 2272, 375, 2850, 406).copy(typeHeight = 31)
+        val r2 = line("く、今日も職務に励むハイランダー鉄道学", 2273, 417, 2882, 448).copy(typeHeight = 31)
+
+        assertEquals(2, GameLayout.joinWrapped(listOf(l1, r1, l2, r2)).size)
+    }
+
+    @Test
     fun `lettering on art with nothing translated below stays out`() {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 

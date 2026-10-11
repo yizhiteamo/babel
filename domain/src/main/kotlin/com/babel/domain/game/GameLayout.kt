@@ -124,7 +124,10 @@ object GameLayout {
         // with ruby over the dialogue, the dialogue's box grew to the name's
         // height and the two were joined (measured on the live game).
         val labels = lines.filter { line ->
-            lines.any { it !== line && sameRow(it.bounds, line.bounds) } || namesNext(line, lines)
+            // Beside it, not across the screen: two cards side by side put every
+            // line of one synopsis on a row with a line of the other, and no
+            // paragraph was joined.
+            lines.any { it !== line && sameRow(it.bounds, line.bounds) && nearAlongRow(it, line) } || namesNext(line, lines)
         }.toSet()
         // Each utterance so far, and the last line it took in: a third line
         // wraps under the second, not under the two of them.
@@ -248,7 +251,10 @@ object GameLayout {
         // alone (「ね!?」), or one over a busier patch of the panel — goes with
         // it, as far as the next line not on the panel.
         fun continues(line: GameLine) =
-            (verdicts[line] == GameTextFilter.Verdict.TOO_SHORT || onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE)) &&
+            (
+                verdicts[line] == GameTextFilter.Verdict.TOO_SHORT || verdicts[line] == GameTextFilter.Verdict.TOO_SMALL ||
+                    onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE)
+                ) &&
                 kept.any { other -> wraps(other, line) || wraps(line, other) }
         // A block of sentences drawn over the art — an instruction over a
         // battle — is the game speaking to the player, not lettering in the
@@ -256,7 +262,14 @@ object GameLayout {
         // sentence, however busy the art behind: with a limit, one line of
         // the block scored either side of it frame by frame, and the block's
         // translation was withdrawn and drawn again every time.
-        val onArt = lines.filter { it !in kept && it !in controls && verdicts[it] == GameTextFilter.Verdict.ON_ARTWORK }
+        // Small type too, in a paragraph: a story card's synopsis is set at
+        // 30–32 px on a 1440 px screen, on either side of the size scenery is
+        // cut at, and came out translated one line in two. A price tag is
+        // one line; a paragraph of sentences is not scenery.
+        val onArt = lines.filter {
+            it !in kept && it !in controls &&
+                (verdicts[it] == GameTextFilter.Verdict.ON_ARTWORK || verdicts[it] == GameTextFilter.Verdict.TOO_SMALL)
+        }
         val blocks = mutableListOf<MutableSet<GameLine>>()
         for (line in onArt.sortedBy { it.bounds.top }) {
             val block = blocks.firstOrNull { b -> b.any { wraps(it, line) || wraps(line, it) } }
