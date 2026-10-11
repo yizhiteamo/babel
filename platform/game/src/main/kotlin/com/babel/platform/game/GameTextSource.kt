@@ -237,7 +237,18 @@ class GameTextSource @Inject constructor(
                 // Every line read, not only those kept: a name left untranslated
                 // still has ink an affiliation's patch must not grow into.
                 val (inked, look) = lookOf(frame, settled.line, read)
-                val element = toElement(settled.key, inked, look, settled.line in dialogue, windowBounds, packageName)
+                val element = toElement(
+                    settled.key,
+                    inked,
+                    look,
+                    // A speaker's name is part of the dialogue but not a line
+                    // of it: sent with the story as context, 「玄龍門」 came back
+                    // as the last speaker's affiliation and its own, two lines.
+                    settled.line in dialogue && !GameLayout.isLabel(settled.line.text),
+                    windowBounds,
+                    packageName,
+                    speaker = settled.line in dialogue && GameLayout.isLabel(settled.line.text),
+                )
                 published[settled.key] = element.id
                 logger.debug(
                     TAG,
@@ -1029,6 +1040,7 @@ class GameTextSource @Inject constructor(
         conversational: Boolean,
         window: TextBounds,
         packageName: String,
+        speaker: Boolean = false,
     ): TextElement {
         val b = line.bounds
         val grow = style.backdrop?.marginPx ?: 0
@@ -1057,6 +1069,9 @@ class GameTextSource @Inject constructor(
                     (kanaVotes >= JAPANESE_GAME_KANA && JapaneseScript.couldBeJapanese(line.text))
             },
             style = style,
+            // A name over dialogue is sent as a name: alone, 「ヒナ」 came back
+            // as 「雏」 ("chick") where beside its affiliation it was 「日奈」.
+            metadata = if (speaker) mapOf(com.babel.core.model.TranslationRequest.Hints.SPEAKER to "true") else emptyMap(),
         )
     }
 

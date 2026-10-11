@@ -246,6 +246,32 @@ internal class OverlayWindow(
         forwarder.tap(x, y) {
             view.postDelayed({ setTouchable(view, true) }, RETOUCHABLE_AFTER_MS)
         }
+        stepAsideForNextLine()
+    }
+
+    /**
+     * A tap on a game's dialogue moves it on, so its translation steps aside
+     * at once rather than when the next screenshot has been read: measured on
+     * Blue Archive, the last line's translation stayed 0.7–1.5 s over the next
+     * line as it typed out. A line that did not move on — the tap only
+     * finished its typing — gets its translation back after [STEP_ASIDE_MS],
+     * and any translation drawn since is left as it is.
+     */
+    private fun stepAsideForNextLine() {
+        val aside = views.values.filter { it.game && !it.passthrough && !it.showingOriginal }
+        for (held in aside) {
+            held.steppedAside = held.binds
+            held.view.view.alpha = 0f
+        }
+        if (aside.isEmpty()) return
+        aside.first().view.view.postDelayed({
+            for (held in aside) {
+                if (views.containsValue(held) && held.steppedAside == held.binds && !held.showingOriginal) {
+                    held.view.view.alpha = 1f
+                }
+                held.steppedAside = -1
+            }
+        }, STEP_ASIDE_MS)
     }
 
     private fun setTouchable(view: View, touchable: Boolean) {
@@ -347,6 +373,7 @@ internal class OverlayWindow(
             // `place` builds the parameters from scratch.
             held.showingOriginal = game && gameShowingOriginal
             held.view.view.alpha = 1f
+            held.binds++
             held.view.bind(translation)
             if (held.showingOriginal) held.view.showOriginal(true)
             place(held, bounds.left, bounds.top, bounds.width, bounds.height)
@@ -385,6 +412,10 @@ internal class OverlayWindow(
         val manager: WindowManager? = null,
     ) {
         var showingOriginal = false
+
+        /** Times [view] has been bound, and the count when it last stepped aside for a tap. */
+        var binds = 0
+        var steppedAside = -1
 
         fun matches(vertical: Boolean, ownWindow: Boolean, game: Boolean, erased: Boolean, passthrough: Boolean): Boolean =
             this.ownWindow == ownWindow && this.game == game && (view is VerticalTranslationView) == vertical &&
@@ -611,6 +642,9 @@ internal class OverlayWindow(
 
 /** How long a press must be held to show the original under a game's translation. */
 private const val LONG_PRESS_MS = 450L
+
+/** How long a game's dialogue stays aside after a tap if no new line came. */
+private const val STEP_ASIDE_MS = 1500L
 
 /** Time for an untouchable window to reach the input system (spike 3: ~80 ms). */
 private const val UNTOUCHABLE_SETTLE_MS = 90L

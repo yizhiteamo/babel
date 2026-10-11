@@ -26,8 +26,14 @@ data class TranslationRequest(
      * back as the word for a car.
      */
     val sourceType: TextSourceType? = null,
+    /** Hints from the acquisition layer, carried from [TextElement.metadata]; see [Hints]. */
     val metadata: Map<String, String> = emptyMap(),
-)
+) {
+    object Hints {
+        /** The text is a character's name shown over their line. */
+        const val SPEAKER = "speaker"
+    }
+}
 
 data class TranslationResult(
     val requestId: RequestId,

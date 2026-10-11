@@ -25,8 +25,12 @@ data class TranslationCacheKey(
          * the old one answer a different question — and context deliberately
          * stays out of the key, because "the same line keeps the rendering it
          * was first given" is the consistency this exists to buy.
+         *
+         * 3 when a game's speaker names began to be sent as names: entries
+         * from before answered them as words (「ヒナ」 as 「雏」), and the
+         * durable labels kept on disk would have kept those answers.
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 2
+        const val CURRENT_SCHEMA_VERSION: Int = 3
 
         private val WHITESPACE = Regex("\\s+")
 

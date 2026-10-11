@@ -92,7 +92,7 @@ class ChatTranslator(
                     status = TranslationStatus.Unchanged,
                 )
 
-                else -> request.completed(translated, TranslationStatus.Translated)
+                else -> request.completed(oneLineIfOne(request.sourceText, translated), TranslationStatus.Translated)
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -113,6 +113,17 @@ class ChatTranslator(
             logger.warn(TAG, "remote translation failed: ${unexpected.javaClass.simpleName}")
             request.failed(TranslationError.Unexpected(unexpected.javaClass.simpleName))
         }
+    }
+
+    /**
+     * A one-line source gets a one-line answer: a model given context now and
+     * then answers the line before as well — 「玄龍門」 came back as
+     * 「玄武商会」 and 「玄龙门」 on two lines — and the answer to this line is the last.
+     */
+    private fun oneLineIfOne(source: String, answer: String): String {
+        if ('\n' in source) return answer
+        val lines = answer.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        return if (lines.size > 1) lines.last() else answer
     }
 
     private suspend fun send(
@@ -218,7 +229,11 @@ class ChatTranslator(
     private fun instruction(request: TranslationRequest): String = buildString {
         // What the text is decides how a short one reads: a game's button
         // 「AUTO」 sent as a speech balloon came back as 「汽车」.
-        if (request.sourceType == TextSourceType.GAME) {
+        if (request.metadata[TranslationRequest.Hints.SPEAKER] == "true") {
+            append("Translate the character name or the affiliation the user sends, shown over")
+            append(" a line of a video game's dialogue, the way players of the game write it,")
+            append(" never as an ordinary word,")
+        } else if (request.sourceType == TextSourceType.GAME) {
             append("Translate the text from a video game's screen the user sends —")
             append(" a line of dialogue, a character's name, or an interface label")
             append(" such as a button or a menu title, to be read as the game's own —")

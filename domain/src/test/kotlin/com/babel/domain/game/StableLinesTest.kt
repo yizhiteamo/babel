@@ -245,6 +245,16 @@ class StableLinesTest {
         assertEquals(1, lines.next(listOf(line(long, top = 500)), now = 1000).settled.size)
     }
 
+    @Test
+    fun `a name read one character off is the known name`() {
+        val lines = StableLines()
+        lines.next(listOf(line("チナツ")), now = 0)
+        lines.next(listOf(line("チナツ")), now = 333)
+        lines.next(listOf(line("ヒナ", left = 900)), now = 666)
+
+        assertEquals("チナツ", lines.next(listOf(line("チナッ", left = 1500)), now = 1000).settled.single().line.text)
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {

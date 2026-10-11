@@ -286,6 +286,17 @@ class StableLines {
      */
     private val knownLabels = LinkedHashSet<String>()
 
+    /**
+     * A name read one character off a name already published, as that name:
+     * 「チナッ」 for 「チナツ」 was translated as another person's name. Labels
+     * of three characters or more, of the same length, one character apart.
+     */
+    private fun snapped(line: GameLine): GameLine {
+        if (!GameLayout.isLabel(line.text) || line.text.length < MIN_SNAP_LENGTH || line.text in knownLabels) return line
+        val known = knownLabels.lastOrNull { it.length == line.text.length && editDistance(it, line.text) == 1 } ?: return line
+        return line.copy(text = known)
+    }
+
     private fun remember(line: GameLine) {
         // A line of dialogue too, once it is long enough not to be the start
         // of another: scrolled back into view on a history screen, each line
@@ -297,7 +308,8 @@ class StableLines {
         while (knownLabels.size > MAX_KNOWN_LABELS) knownLabels.remove(knownLabels.first())
     }
 
-    private fun fresh(line: GameLine, now: Long, settled: MutableList<Settled>): Seen {
+    private fun fresh(read: GameLine, now: Long, settled: MutableList<Settled>): Seen {
+        val line = snapped(read)
         if (line.text !in knownLabels) return Seen(line, now, publishedKey = null)
         noteReturn(line, now)
         val key = keyOf(line)
@@ -389,6 +401,9 @@ class StableLines {
         /** How long a withdrawn line is watched for coming back; see [Replaced]. */
         const val FLIP_WINDOW_MS = 4000L
         const val MAX_FLIPPING = 16
+
+        /** Shortest label a one-character misread is corrected in; see [snapped]. */
+        const val MIN_SNAP_LENGTH = 3
 
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256
