@@ -165,10 +165,10 @@ class GameTextSource @Inject constructor(
             )
             read = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
                 how = "whole"
-                recognise(frame, 0, frame.height)
+                frontLayer(frame, recognise(frame, 0, frame.height))
             } else {
                 how = "band ${bottom - top}px"
-                ChangedBand.merge(lastLines, recognise(frame, top, bottom), top, bottom)
+                frontLayer(frame, ChangedBand.merge(lastLines, recognise(frame, top, bottom), top, bottom))
             }
             lastGrid = grid
             lastLines = read
@@ -278,7 +278,26 @@ class GameTextSource @Inject constructor(
      * Whether [box] still holds ink on this frame: samples far from their
      * row's middle value. A blank panel, plain or graded, has none.
      */
-    private fun inked(frame: Bitmap, box: TextBounds): Boolean {
+    private fun inked(frame: Bitmap, box: TextBounds): Boolean = inkPerMille(frame, box) >= MIN_INK_PER_MILLE
+
+    /**
+     * Of lines read over each other, the one in front: a history screen is
+     * drawn translucent over the game's dialogue box, the recogniser read
+     * now the history and now the dimmed dialogue behind it, and each
+     * withdrew the other twice a second. The one behind has a fraction of the
+     * other's ink (measured 37–57 per thousand against 264).
+     */
+    private fun frontLayer(frame: Bitmap, lines: List<GameLine>): List<GameLine> {
+        if (lines.size < 2) return lines
+        val ink = lines.associateWith { inkPerMille(frame, it.bounds) }
+        return lines.filter { line ->
+            lines.none { other ->
+                other !== line && covers(other.bounds, line.bounds) && ink.getValue(line) * BEHIND_RATIO < ink.getValue(other)
+            }
+        }
+    }
+
+    private fun inkPerMille(frame: Bitmap, box: TextBounds): Int {
         val left = box.left.coerceIn(0, frame.width - 1)
         val right = box.right.coerceIn(left + 1, frame.width)
         val w = right - left
@@ -294,13 +313,20 @@ class GameTextSource @Inject constructor(
             samples += lumas.size
             y += SAMPLE_STEP
         }
-        return samples > 0 && ink * 1000 >= samples * MIN_INK_PER_MILLE
+        return if (samples == 0) 0 else ink * 1000 / samples
     }
 
     /** Mostly different characters: another line, not the same one read a little differently. */
     private fun otherWords(a: String, b: String): Boolean {
         val shared = a.toSet().intersect(b.toSet()).size
         return shared * 2 < minOf(a.toSet().size, b.toSet().size)
+    }
+
+    /** A third of the smaller box under the other: layers are offset by half a line. */
+    private fun covers(a: TextBounds, b: TextBounds): Boolean {
+        val w = minOf(a.right, b.right) - maxOf(a.left, b.left)
+        val h = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
+        return w > 0 && h > 0 && w.toLong() * h * 3 >= minOf(a.width.toLong() * a.height, b.width.toLong() * b.height)
     }
 
     private fun overlaps(a: TextBounds, b: TextBounds): Boolean {
@@ -1020,6 +1046,9 @@ class GameTextSource @Inject constructor(
 
         /** The share of ink pixels, strongest first, that give the ink its colour. */
         const val INK_CORE_PERCENT = 30
+
+        /** A line with this many times less ink than one over it is behind it. */
+        const val BEHIND_RATIO = 3
 
         /** Ink, per thousand samples, that means a line is still there; a line of type has 50-200. */
         const val MIN_INK_PER_MILLE = 8

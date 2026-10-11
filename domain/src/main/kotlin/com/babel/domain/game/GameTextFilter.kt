@@ -29,7 +29,11 @@ object GameTextFilter {
             // most a short Latin tag are counters, not words.
             letters == 0 || (text.any(Char::isDigit) && text.all { it.code < 0x80 } && letters <= MAX_TAG_LETTERS) ->
                 Verdict.NUMBER
-            line.bounds.height > frameHeight * MAX_HEIGHT_FRACTION -> Verdict.TOO_LARGE
+            // By the type, not the box: a line of a history screen over the
+            // dimmed dialogue box behind it came back in a box 106 px tall
+            // around 71 px type — over the limit on some frames, under on
+            // others — and its translation came and went with it.
+            minOf(line.bounds.height, line.typeHeight) > frameHeight * MAX_HEIGHT_FRACTION -> Verdict.TOO_LARGE
             line.bounds.height < frameHeight * MIN_HEIGHT_FRACTION -> Verdict.TOO_SMALL
             line.backdropError > MAX_BACKDROP_ERROR -> Verdict.ON_ARTWORK
             letters < MIN_LETTERS -> Verdict.TOO_SHORT

@@ -125,13 +125,28 @@ class StableLines {
                 val key = before.publishedKey ?: keyOf(line).also {
                     settled += Settled(it, line, now - before.firstSeenAt)
                     remember(line)
+                    noteReturn(line, now)
                 }
                 next += Seen(shown, before.firstSeenAt, key)
             } else {
                 // Same place, new words: the old line is over, whatever it was.
-                before.publishedKey?.let {
-                    gone += it
-                    why[it] = Why.NEW_WORDS
+                val published = before.publishedKey
+                if (published != null && flips(before.line, line)) {
+                    // Two readings that have taken turns here before: one
+                    // place read two ways, not a new line. Kept as a miss.
+                    before.misses += 1
+                    if (before.misses >= GRACE_FRAMES) {
+                        gone += published
+                        why[published] = Why.MISSED
+                    } else {
+                        next += before
+                    }
+                    continue
+                }
+                if (published != null) {
+                    gone += published
+                    why[published] = Why.NEW_WORDS
+                    replaced += Replaced(before.line, line.text, now)
                 }
                 val stillGrowing = line.text.startsWith(before.line.text)
                 next += if (stillGrowing) Seen(line, before.firstSeenAt, publishedKey = null) else fresh(line, now, settled)
@@ -280,10 +295,39 @@ class StableLines {
 
     private fun fresh(line: GameLine, now: Long, settled: MutableList<Settled>): Seen {
         if (line.text !in knownLabels) return Seen(line, now, publishedKey = null)
+        noteReturn(line, now)
         val key = keyOf(line)
         settled += Settled(key, line, 0)
         return Seen(line, now, key)
     }
+
+    /**
+     * Published lines withdrawn for other words, and those words, for a few
+     * seconds: when the old words come back to the same place, the place is
+     * being read two ways — measured on a history screen over the game's
+     * dimmed dialogue box, which the recogniser read now one way and now the
+     * other, twice a second — and from then on the second reading does not
+     * withdraw the first.
+     */
+    private data class Replaced(val line: GameLine, val by: String, val at: Long)
+
+    private val replaced = mutableListOf<Replaced>()
+    private val flipping = mutableListOf<Pair<GameLine, String>>()
+
+    private fun noteReturn(line: GameLine, now: Long) {
+        replaced.removeAll { now - it.at > FLIP_WINDOW_MS }
+        val back = replaced.firstOrNull { it.line.text == line.text && samePlace(it.line.bounds, line.bounds) } ?: return
+        replaced -= back
+        flipping.removeAll { it.first.text == line.text }
+        flipping += line to back.by
+        while (flipping.size > MAX_FLIPPING) flipping.removeAt(0)
+    }
+
+    private fun flips(published: GameLine, read: GameLine): Boolean =
+        flipping.any { (line, other) ->
+            line.text == published.text && samePlace(line.bounds, read.bounds) &&
+                (other == read.text || sameReading(other, read.text))
+        }
 
     /** Everything published, for clearing the screen. */
     fun reset(): List<String> {
@@ -319,6 +363,10 @@ class StableLines {
          */
         const val MIN_SLIDE_PX = 6
         const val SLIDE_DIVISOR = 6
+
+        /** How long a withdrawn line is watched for coming back; see [Replaced]. */
+        const val FLIP_WINDOW_MS = 4000L
+        const val MAX_FLIPPING = 16
 
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256

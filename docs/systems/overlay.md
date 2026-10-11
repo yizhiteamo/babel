@@ -51,6 +51,8 @@ Touches:
   and original. The original state lasts until the next line appears, or
   another long press on the same spot; a small bar in the line's ink marks
   where a translation is standing aside.
+  A drag that starts on dialogue — scrolling a game's history — is handed on
+  whole when the finger lifts (`TapForwarder.drag`).
 - **Labels** (buttons, menu entries, names) are trusted
   `TYPE_ACCESSIBILITY_OVERLAY` windows that let every touch through — opaque,
   yet the button under them works untouched, holds and drags included.

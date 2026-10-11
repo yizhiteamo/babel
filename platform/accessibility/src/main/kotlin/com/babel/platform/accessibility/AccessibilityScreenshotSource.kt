@@ -60,6 +60,27 @@ class AccessibilityScreenshotSource @Inject constructor(
         if (!sent) done()
     }
 
+    override fun drag(points: List<Pair<Float, Float>>, durationMs: Long, done: () -> Unit) {
+        val current = service ?: return done()
+        if (points.size < 2) return done()
+        val path = android.graphics.Path().apply {
+            moveTo(points.first().first, points.first().second)
+            points.drop(1).forEach { (x, y) -> lineTo(x, y) }
+        }
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, durationMs.coerceIn(MIN_DRAG_MS, MAX_DRAG_MS)))
+            .build()
+        val sent = current.dispatchGesture(
+            gesture,
+            object : AccessibilityService.GestureResultCallback() {
+                override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) = done()
+                override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) = done()
+            },
+            null,
+        )
+        if (!sent) done()
+    }
+
     /** The connected service, for overlays it can add as trusted windows. */
     override val context: android.content.Context? get() = service
 
@@ -208,6 +229,10 @@ class AccessibilityScreenshotSource @Inject constructor(
 
         /** Short: spike 3 measured a 10 ms stroke landing ~20 ms sooner than 40. */
         const val TAP_DURATION_MS = 10L
+
+        /** A handed-on drag keeps the finger's own pace, within these bounds. */
+        const val MIN_DRAG_MS = 80L
+        const val MAX_DRAG_MS = 2000L
 
         /**
          * The platform allows roughly one screenshot every 333ms. Asking at a

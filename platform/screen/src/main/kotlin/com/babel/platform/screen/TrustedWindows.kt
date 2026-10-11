@@ -38,4 +38,10 @@ interface TapForwarder {
 
     /** Taps the screen at ([x], [y]); [done] runs once it was delivered or failed. */
     fun tap(x: Float, y: Float, done: () -> Unit)
+
+    /**
+     * Drags along [points] (screen x, y pairs, in order) over [durationMs]:
+     * a swipe that began on a translation, handed on when the finger lifts.
+     */
+    fun drag(points: List<Pair<Float, Float>>, durationMs: Long, done: () -> Unit) = done()
 }

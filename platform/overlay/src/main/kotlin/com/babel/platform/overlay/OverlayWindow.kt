@@ -158,6 +158,12 @@ internal class OverlayWindow(
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         var downAt = 0L
         var longPressed = false
+        // A drag that began on a translation — scrolling a game's history —
+        // used to go nowhere: only taps were handed on. Its points are kept
+        // and the whole drag is handed on when the finger lifts.
+        var dragging = false
+        val points = mutableListOf<Pair<Float, Float>>()
+        val slop = android.view.ViewConfiguration.get(view.context).scaledTouchSlop
         val switch = Runnable {
             longPressed = true
             // Touchable again at once: an untouchable overlay is held to 80%
@@ -172,13 +178,36 @@ internal class OverlayWindow(
                 android.view.MotionEvent.ACTION_DOWN -> {
                     downAt = android.os.SystemClock.uptimeMillis()
                     longPressed = false
+                    dragging = false
+                    points.clear()
+                    points += event.rawX to event.rawY
                     setTouchable(view, false)
                     handler.postDelayed(switch, LONG_PRESS_MS)
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (!longPressed) {
+                        val (x0, y0) = points.first()
+                        if (!dragging && kotlin.math.hypot(event.rawX - x0, event.rawY - y0) > slop) {
+                            dragging = true
+                            handler.removeCallbacks(switch)
+                        }
+                        if (dragging) points += event.rawX to event.rawY
+                    }
                 }
                 android.view.MotionEvent.ACTION_UP -> {
                     handler.removeCallbacks(switch)
                     if (longPressed) {
                         setTouchable(view, true)
+                    } else if (dragging) {
+                        points += event.rawX to event.rawY
+                        val duration = android.os.SystemClock.uptimeMillis() - downAt
+                        val path = points.toList()
+                        val forwarder = taps
+                        if (forwarder == null || !forwarder.canForward) {
+                            setTouchable(view, true)
+                        } else {
+                            forwarder.drag(path, duration) { view.postDelayed({ setTouchable(view, true) }, RETOUCHABLE_AFTER_MS) }
+                        }
                     } else {
                         val x = event.rawX
                         val y = event.rawY

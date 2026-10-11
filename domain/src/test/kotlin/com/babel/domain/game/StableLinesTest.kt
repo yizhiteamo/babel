@@ -220,6 +220,20 @@ class StableLinesTest {
         assertTrue(lines.next(listOf(line("はい。")), now = 1000).settled.isEmpty())
     }
 
+    @Test
+    fun `a place read two ways by turns stops flickering`() {
+        val lines = StableLines()
+        val a = line("貴方たちはわたしの道具だって言ったでしょ。")
+        val b = line("……ダメ？司令官が最前線に出るワケないじゃない")
+        lines.next(listOf(a), now = 0)
+        lines.next(listOf(a), now = 333)
+        lines.next(listOf(b), now = 666)
+        lines.next(listOf(a), now = 1000)
+        lines.next(listOf(a), now = 1333)
+
+        assertTrue(lines.next(listOf(b), now = 1666).gone.isEmpty())
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {
