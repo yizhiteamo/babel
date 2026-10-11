@@ -269,7 +269,7 @@ class DefaultTranslationCoordinator(
             // (`TextElement.conversational`).
             val context = if (element.conversational && element.sourceType.carriesContext()) {
                 pageContext.note(element.revision, element.text)
-                pageContext.forLine(element.text)
+                withNames(pageContext.forLine(element.text), element.text)
             } else {
                 null
             }
@@ -312,6 +312,20 @@ class DefaultTranslationCoordinator(
         if (removed.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(removed))
     }
 
+    /**
+     * Speakers' names and how they were translated, so a line that names a
+     * speaker names them the same way: the tab over a line said 「阿科」 while
+     * the line itself, translated apart, called her 「亚子」. Mailbox state.
+     */
+    private val names = LinkedHashMap<String, String>()
+
+    private fun withNames(context: String?, line: String): String? {
+        val used = names.entries.filter { (name, _) -> name.length >= MIN_NAME_LENGTH && name in line }
+        if (used.isEmpty()) return context
+        val glossary = used.joinToString("; ", prefix = "Names: ") { (name, rendered) -> "$name = $rendered" }
+        return if (context.isNullOrBlank()) glossary else "$context\n$glossary"
+    }
+
     private suspend fun onTranslated(message: Message.Translated) {
         val entry = tracked[message.elementId] ?: return
 
@@ -330,6 +344,11 @@ class DefaultTranslationCoordinator(
 
         entry.translatedText = message.translatedText
         entry.job = null
+        if (entry.element.metadata[com.babel.core.model.TranslationRequest.Hints.SPEAKER] == "true") {
+            names.remove(entry.element.text)
+            names[entry.element.text] = message.translatedText
+            while (names.size > MAX_NAMES) names.remove(names.keys.first())
+        }
         if (entry.element.sourceType.carriesContext()) {
             pageContext.agree(entry.element.text, message.translatedText)
         }
@@ -662,6 +681,10 @@ class DefaultTranslationCoordinator(
     }
 
     private companion object {
+        /** Speakers' names kept for [withNames], and the shortest worth matching in a line. */
+        const val MAX_NAMES = 64
+        const val MIN_NAME_LENGTH = 2
+
         const val TAG = "TranslationCoordinator"
         const val RENDER_BUFFER = 64
 

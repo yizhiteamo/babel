@@ -475,6 +475,37 @@ class DefaultTranslationCoordinatorTest {
         coordinator.stop()
     }
 
+    @Test
+    fun `a line that names a speaker is told how the name was translated`() = runTest {
+        val coordinator = start()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "name",
+                        text = "アコ",
+                        sourceType = TextSourceType.GAME,
+                        metadata = mapOf(com.babel.core.model.TranslationRequest.Hints.SPEAKER to "true"),
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(id = "line", text = "アコ、ありがとう。", sourceType = TextSourceType.GAME)
+                        .copy(conversational = true),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        val context = translator.requests.last { it.sourceText == "アコ、ありがとう。" }.context.orEmpty()
+        assertTrue("Names: アコ = <アコ>" in context, context)
+        coordinator.stop()
+    }
+
     /** Half a batch must not vanish quietly. */
     @Test
     fun `a mixed batch keeps only the image elements while paused`() = runTest {
