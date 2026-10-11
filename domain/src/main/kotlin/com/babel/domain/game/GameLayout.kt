@@ -145,6 +145,10 @@ object GameLayout {
                     // name over a bubble with no punctuation — 「ケイ」 over
                     // 「寮に着きました」 — came back as "arrived at Kei's dorm".
                     !(isLabel(last.text) && last.typeHeight.toDouble() / line.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO) &&
+                    // Nor one in clearly larger type: a chat list's name over
+                    // its last message — 「アリス (臨戦)」, 45 px over 「先生!」's
+                    // 40 — was set as one wrapped line.
+                    !(isLabel(last.text) && last.typeHeight >= line.typeHeight * HEADING_TYPE_RATIO) &&
                     // Nor a label that stops well short of the line under it:
                     // a line wraps where it runs out of room. A chat list's
                     // 「カスミ(水着)」 over its last message was joined into it.
@@ -196,6 +200,9 @@ object GameLayout {
 
     /** A name is set this much smaller than its line, or less: measured 0.84–0.93 against 1.0 for a wrap. */
     const val NAME_TYPE_RATIO = 0.95
+
+    /** A label this much larger than the line under it heads it, and is not its first line. */
+    const val HEADING_TYPE_RATIO = 1.1
 
     private fun sameRow(a: TextBounds, b: TextBounds): Boolean =
         min(a.bottom, b.bottom) - max(a.top, b.top) > min(a.height, b.height) / 2
@@ -355,7 +362,19 @@ object GameLayout {
      * name above it. Judged by its words alone, 「塩基配列」 was a label; its
      * window let a long press through and the game moved on a line.
      */
-    fun dialogue(lines: List<GameLine>, places: List<TextBounds> = emptyList()): Set<GameLine> {
+    fun dialogue(lines: List<GameLine>, places: List<TextBounds> = emptyList()): Set<GameLine> =
+        spokenAndNames(lines, places).first
+
+    /**
+     * The speakers' names among [dialogue]: labels over what is spoken. Not
+     * a chat's reply in the bubbles' column: 「はい」 is a label over the next
+     * bubble too, and taken for a name it was sent as one — its translation
+     * kept as a name's, and set at a name's size, smaller than the bubbles.
+     */
+    fun speakers(lines: List<GameLine>, places: List<TextBounds> = emptyList()): Set<GameLine> =
+        spokenAndNames(lines, places).second
+
+    private fun spokenAndNames(lines: List<GameLine>, places: List<TextBounds>): Pair<Set<GameLine>, Set<GameLine>> {
         // Or anything where dialogue has been: a game's dialogue box and its
         // name tab ([conversationPlaces]). 「うん」 says nothing a sentence
         // would, but it is a line someone speaks, in the box they speak in.
@@ -382,7 +401,10 @@ object GameLayout {
         val names = lines.filter { line ->
             line !in spoken && isLabel(line.text) && spoken.any { d -> speaksAbove(line.bounds, d.bounds) }
         }
-        return spoken + names
+        val speakers = (core + names).filter { line ->
+            line !in aligned && isLabel(line.text) && spoken.any { d -> d !== line && speaksAbove(line.bounds, d.bounds) }
+        }.toSet()
+        return (spoken + names) to speakers
     }
 
     private fun inColumnWith(line: GameLine, d: GameLine): Boolean {
@@ -519,6 +541,9 @@ object GameLayout {
     fun isSentence(text: String): Boolean =
         // A badge's 「開催中!」 has a sentence's mark and a label's length.
         (punctuated(text) && text.count { it.isLetter() } >= MIN_SENTENCE_LETTERS) ||
+            // Trailing off: 「はああ……」, 「くっ……」 are a breath, not a label —
+            // no interface word is set with an ellipsis after two letters.
+            (ELLIPSES.any { it in text } && text.count { it.isLetter() } >= 2) ||
             // Long, but without punctuation and with a space between words of
             // a script written without spaces: two labels side by side —
             // Blue Archive's tiles 「戦術対抗戦 制約解除決戦」 read as one line.
@@ -534,6 +559,7 @@ object GameLayout {
             ('「' in text && '」' in text) || ('『' in text && '』' in text)
 
     private const val BRACKETS = "「」『』"
+    private val ELLIPSES = listOf("…", "‥", "...")
 
     /** A name or an interface word: no sentence's mark and not a sentence's length. */
     fun isLabel(text: String): Boolean = !punctuated(text) && !isSentence(text)

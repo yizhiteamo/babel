@@ -69,4 +69,12 @@ class MomoTalkTest {
 
         assertEquals(listOf("ケイ", "はい"), GameLayout.joinWrapped(listOf(name, hai)).map { it.text })
     }
+
+    @Test
+    fun `a name in larger type is not joined into the message under it`() {
+        val name = line("アリス (臨戦)", 836, 945, 286, 45, 45)
+        val message = line("先生!", 834, 1009, 105, 43, 40)
+
+        assertEquals(listOf(name.text, message.text), GameLayout.joinWrapped(listOf(name, message)).map { it.text })
+    }
 }

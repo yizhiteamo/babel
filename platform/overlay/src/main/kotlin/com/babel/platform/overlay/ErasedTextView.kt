@@ -170,8 +170,14 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
     private fun configureSize(glyphPx: Int, roomPx: Int) {
         val size = (glyphPx / GLYPH_TO_TEXT_SIZE).toInt().coerceAtLeast(MIN_TEXT_PX + 1)
         val smallest = (size * MIN_SIZE_RATIO).toInt().coerceIn(MIN_TEXT_PX, size - 1)
-        maxLines = (roomPx / (smallest * LINE_SPACING * FONT_LINE_HEIGHT)).toInt().coerceAtLeast(1)
-        setLineSpacing(0f, if (maxLines == 1) 1f else LINE_SPACING)
+        // Lines as far apart as a game sets them, not as the fallback font
+        // does: its line is 1.45 of its size, a game's 1.3–1.4 of the type,
+        // and a two-line bubble's translation, given the font's spacing, did
+        // not fit its two lines and was shrunk into one, smaller than the
+        // bubbles round it.
+        val spacing = TYPE_PITCH * GLYPH_TO_TEXT_SIZE / FONT_LINE_HEIGHT
+        maxLines = (roomPx / (smallest * FONT_LINE_HEIGHT * spacing)).toInt().coerceAtLeast(1)
+        setLineSpacing(0f, if (maxLines == 1) 1f else spacing)
         // One line sits where the original's did, in the middle of its box:
         // set from the top, a smaller affiliation beside a larger name came
         // out low, across the rule under the name.
@@ -237,7 +243,8 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
 
         /** A line of CJK type against its text size; the fallback font sets it. */
         const val FONT_LINE_HEIGHT = 1.45f
-        const val LINE_SPACING = 1.1f
+        /** How far apart a game sets its lines, against the type's height (Blue Archive: 56 px for 41). */
+        const val TYPE_PITCH = 1.38f
 
         const val MIN_SIZE_RATIO = 0.7f
         const val MIN_TEXT_PX = 12
@@ -254,7 +261,10 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
 
         /** Strokes this heavy against the type's height are set bold. */
         const val BOLD_WEIGHT = 0.11f
-        const val SEMI_HEAVY_WEIGHT = 0.15f
+        // Above a dialogue's 0.13–0.15, not at its edge: a chat's names
+        // measured 0.12 and its messages 0.15, in one weight of one font, and
+        // set either side of this step they read as two.
+        const val SEMI_HEAVY_WEIGHT = 0.16f
         const val HEAVY_WEIGHT = 0.18f
         const val MID_LUMINANCE = 128.0
     }

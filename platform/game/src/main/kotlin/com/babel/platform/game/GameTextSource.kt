@@ -219,6 +219,7 @@ class GameTextSource @Inject constructor(
         val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places)))
 
         val dialogue = GameLayout.dialogue(kept, places)
+        val speakers = GameLayout.speakers(kept, places)
         // Only what reads as dialogue: a line someone speaks, a narration, a
         // choice, an instruction or a pop-up's sentence — and the speaker's
         // name over it. A game's interface is left as it is. Measured on Blue
@@ -254,7 +255,7 @@ class GameTextSource @Inject constructor(
             fun elementOf(key: String, line: GameLine, conversational: Boolean, speaker: Boolean): TextElement {
                 // Every line read, not only those kept: a name left untranslated
                 // still has ink an affiliation's patch must not grow into.
-                val (inked, look) = lookOf(frame, line, read)
+                val (inked, look) = lookOf(frame, line, read, speaker)
                 val element = toElement(key, inked, look, conversational, windowBounds, packageName, speaker = speaker)
                 lookOf(frame, line.bounds)?.let { publishedLooks[key] = line.bounds to it }
                 if (element.style.backdrop != null) {
@@ -275,12 +276,18 @@ class GameTextSource @Inject constructor(
                 // the panel under its old place changes too, and repainting it
                 // there drew patches over the bubbles that had moved in.
                 key !in settledKeys && key in published &&
-                    shown.any { it.text == e.line.text && abs(it.bounds.top - e.line.bounds.top) <= STILL_PX && abs(it.bounds.left - e.line.bounds.left) <= STILL_PX } &&
+                    // By place, not words: a published line keeps its first reading, and
+                    // the row read again under a new shade read a little differently.
+                    read.any { abs(it.bounds.top - e.line.bounds.top) <= STILL_PX && abs(it.bounds.left - e.line.bounds.left) <= STILL_PX } &&
                     repainted(e.panel, panelAround(frame, e.line.bounds))
             }.map { (key, e) -> elementOf(key, e.line, e.conversational, e.speaker) }
             if (repainted.isNotEmpty()) {
                 logger.debug(TAG, "repainted " + repainted.joinToString { "${it.id.value} weight=${it.style.strokeWeight?.let { w -> "%.2f".format(w) }}" })
             }
+            // Every size settling now is seen before any is given out: lines
+            // settle together, and the first set its size before the tallest
+            // of its kind had been measured.
+            update.settled.forEach { steadySize(it.line in speakers, it.line.typeHeight) }
             val upserted = repainted + update.settled.map { settled ->
                 val element = elementOf(
                     settled.key,
@@ -288,8 +295,8 @@ class GameTextSource @Inject constructor(
                     // A speaker's name is part of the dialogue but not a line
                     // of it: sent with the story as context, 「玄龍門」 came back
                     // as the last speaker's affiliation and its own, two lines.
-                    settled.line in dialogue && !GameLayout.isLabel(settled.line.text),
-                    settled.line in dialogue && GameLayout.isLabel(settled.line.text),
+                    settled.line in dialogue && settled.line !in speakers,
+                    settled.line in speakers,
                 )
                 published[settled.key] = element.id
                 logger.debug(
@@ -489,6 +496,7 @@ class GameTextSource @Inject constructor(
             labelWeight = 0f
             lineWeight = 0f
             labelWeightShown = 0f
+            typeSizes.clear()
             lineWeightShown = 0f
             speakerSpots = emptyList()
             session += 1
@@ -517,7 +525,7 @@ class GameTextSource @Inject constructor(
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
             val read = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
-            val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), read)
+            val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
         }
@@ -571,6 +579,31 @@ class GameTextSource @Inject constructor(
             group.forEach { rect.union(it.boundingBox!!) }
             group.joinToString(" ") { it.text } to rect
         }
+    }
+
+    /**
+     * [box] without the columns at either end that stand off the line's
+     * panel: a chat bubble's pointed tail the recogniser's box took in. A
+     * left bubble's 「いえ」 had its box start 15 px out on the tail, and its
+     * translation was set from there, out of the bubble. A column is off the
+     * panel where the rows just above and below it are both a different panel
+     * from the line's — the page around the bubble.
+     */
+    private fun onItsPanel(frame: Bitmap, box: TextBounds): TextBounds {
+        if (box.top < 2 || box.bottom + 1 >= frame.height || box.left < 0 || box.right > frame.width || box.width < 4) return box
+        val above = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, box.top - 2, box.width, 1) }
+        val below = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, box.bottom + 1, box.width, 1) }
+        val lumas = (above.map { luma(it) } + below.map { luma(it) }).sorted()
+        val panel = lumas[lumas.size / 2]
+        // Only round a panel: over art nothing above or below is one colour.
+        if (lumas.count { abs(it - panel) <= EDGE_PANEL_LUMA } * 3 < lumas.size * 2) return box
+        fun off(x: Int) = abs(luma(above[x]) - panel) > OTHER_PANEL_LUMA && abs(luma(below[x]) - panel) > OTHER_PANEL_LUMA
+        var left = 0
+        while (left < box.width / 4 && off(left)) left++
+        var right = box.width
+        while (right > box.width * 3 / 4 && off(right - 1)) right--
+        if (left == 0 && right == box.width) return box
+        return TextBounds(box.left + left, box.top, box.left + right, box.bottom, box.space)
     }
 
     /**
@@ -677,7 +710,18 @@ class GameTextSource @Inject constructor(
         val below = (box.bottom + 1).coerceAtMost(frame.height - 1)
         val outsideTop = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, above, box.width, 1) }
         val outsideBottom = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, below, box.width, 1) }
-        val panel = DoubleArray(box.width) { (luma(outsideTop[it]) + luma(outsideBottom[it])) / 2 }
+        // Where above and below differ, the one nearer the line's own middle
+        // colour: a bubble the text nearly fills had the white page just
+        // under its box, the mean of blue and white read as a light panel,
+        // no white type stood out of it, and 「くっ……」 measured as tall as
+        // its box — 63 px for 40.
+        val middle = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, box.top + h / 2, box.width, 1) }
+            .map { luma(it) }.sorted()[box.width / 2]
+        val panel = DoubleArray(box.width) {
+            val a = luma(outsideTop[it])
+            val b = luma(outsideBottom[it])
+            if (abs(a - b) <= OTHER_PANEL_LUMA) (a + b) / 2 else if (abs(a - middle) <= abs(b - middle)) a else b
+        }
         // Ink stands out of its panel: light on a dark one.
         val sign = if (panel.average() < MID_LUMA) 1.0 else -1.0
 
@@ -875,6 +919,32 @@ class GameTextSource @Inject constructor(
     private var lineWeight = 0f
 
     /**
+     * One size for one size of type, not one per line: the height of a line's
+     * ink depends on its letters — a chat's 「はい」 measured 37 px, its
+     * bubbles of kanji 41, in one font of one size — and each translation was
+     * set at its own line's measure. Sizes within [SAME_TYPE_RATIO] of a size
+     * already seen are that size, the tallest measured, which is the type's.
+     * Names and lines apart: a game sets its names smaller or larger.
+     */
+    private class TypeSize(val speaker: Boolean, var smallest: Int, var tallest: Int)
+    private val typeSizes = mutableListOf<TypeSize>()
+
+    private fun steadySize(speaker: Boolean, measured: Int): Int {
+        // Within the ratio of the smallest and the tallest alike, so a size
+        // cannot creep up line by line into the next size of type.
+        val size = typeSizes.firstOrNull { t ->
+            t.speaker == speaker && min(t.smallest, measured).toDouble() / max(t.tallest, measured) >= SAME_TYPE_RATIO
+        }
+        if (size == null) {
+            typeSizes += TypeSize(speaker, measured, measured)
+            return measured
+        }
+        size.smallest = min(size.smallest, measured)
+        size.tallest = max(size.tallest, measured)
+        return size.tallest
+    }
+
+    /**
      * What was last given out for each kind: the running mean of a chat's
      * bubbles hovered at 0.14–0.15, either side of a step in weight, and
      * consecutive bubbles were set in two. It changes only once the mean has
@@ -883,8 +953,7 @@ class GameTextSource @Inject constructor(
     private var labelWeightShown = 0f
     private var lineWeightShown = 0f
 
-    private fun steadyWeight(text: String, measured: Float): Float {
-        val label = GameLayout.isLabel(text)
+    private fun steadyWeight(label: Boolean, measured: Float): Float {
         val before = if (label) labelWeight else lineWeight
         val now = if (before == 0f) measured else before * (1 - WEIGHT_SMOOTHING) + measured * WEIGHT_SMOOTHING
         if (label) labelWeight = now else lineWeight = now
@@ -894,7 +963,7 @@ class GameTextSource @Inject constructor(
         return now
     }
 
-    private fun lookOf(frame: Bitmap, recognised: GameLine, others: List<GameLine>): Pair<GameLine, SourceStyle> {
+    private fun lookOf(frame: Bitmap, recognised: GameLine, others: List<GameLine>, speaker: Boolean): Pair<GameLine, SourceStyle> {
         // The ink, not the recogniser's box, is what has to be covered: a
         // name read while it was still sliding in had a box missing its top,
         // and a line read without its opening 「……」 left the dots showing.
@@ -919,8 +988,17 @@ class GameTextSource @Inject constructor(
         // character and a half off its words, and were left beside them.
         val wide = if (centred) inkExtent(frame, extent, recognised.typeHeight, leftLimit, rightLimit, gapLines = CENTRED_GAP_LINES) else extent
         val half = max(mid - wide.left, wide.right - mid)
+        // Past the end of a line set from the left, the plain panel it stands
+        // on is room for a translation a little wider than the original: in a
+        // chat's bubble, 「打扫?」 for 「掃除?」 was a few pixels too wide for the
+        // original's ink and was shrunk, smaller than every bubble around it.
+        val room = if (centred) 0 else plainAfter(frame, extent, minOf(rightLimit - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS, frame.width), (recognised.typeHeight * ROOM_OF_TYPE).toInt())
         val line = recognised.copy(
-            bounds = if (centred) TextBounds(mid - half, wide.top, mid + half, wide.bottom, wide.space) else extent,
+            bounds = if (centred) {
+                TextBounds(mid - half, wide.top, mid + half, wide.bottom, wide.space)
+            } else {
+                TextBounds(extent.left, extent.top, extent.right + room, extent.bottom, extent.space)
+            },
         )
         // Room for a line of type the original's height: a typeface's line is
         // taller than its glyphs' ink, and in the recogniser's tight box the
@@ -949,10 +1027,13 @@ class GameTextSource @Inject constructor(
         return line to SourceStyle(
             foregroundColor = inkColour(frame, line.bounds, lighterInk),
             orientation = TextOrientation.HORIZONTAL,
-            glyphSizePx = line.typeHeight,
+            glyphSizePx = steadySize(speaker, line.typeHeight),
             backdrop = backdrop,
             outlineColor = strokes.outline,
-            strokeWeight = strokes.weight?.let { steadyWeight(line.text, it / line.typeHeight.coerceAtLeast(1)) },
+            // Unmeasured, the weight of its kind: left out, a line came out
+            // regular among bold ones of the same type.
+            strokeWeight = strokes.weight?.let { steadyWeight(speaker, it / line.typeHeight.coerceAtLeast(1)) }
+                ?: (if (speaker) labelWeightShown else lineWeightShown).takeIf { it > 0f },
             centred = centred,
         )
     }
@@ -1086,7 +1167,57 @@ class GameTextSource @Inject constructor(
             if (inked(column(x, top, bottom))) right = x + 1 else if (x - right >= gap) break
             x++
         }
+        // And in from an end the box took in with nothing on it: a left
+        // bubble's 「いえ」 had its box start on the bubble's tail and margin,
+        // half a character before its words, and the translation was set
+        // from there, out past the bubble's edge. Only half a character or
+        // more of nothing; a box's usual slack is left alone. And only nothing
+        // plain: on a story's translucent box over the art, type the column
+        // test did not see stood in what would have been cut.
+        fun bare(x: Int): Boolean {
+            val c = column(x, top, bottom).map { luma(it) }
+            val mid = c.sorted()[c.size / 2]
+            // A pixel or two off is the bubble's edge where its tail joins,
+            // not type: the shortest stroke crosses more rows than that.
+            return c.count { abs(it - mid) > BARE_LUMA } <= BARE_STRAY_PX
+        }
+        if (left == box.left) {
+            var empty = 0
+            while (empty < box.width / 3 && bare(box.left + empty)) empty++
+            if (empty >= reach / 2) left = box.left + empty - SHRINK_SLACK_PX
+        }
+        if (right == box.right) {
+            var empty = 0
+            while (empty < box.width / 3 && bare(box.right - 1 - empty)) empty++
+            if (empty >= reach / 2) right = box.right - empty + SHRINK_SLACK_PX
+        }
         return TextBounds(left, top, right, bottom, box.space)
+    }
+
+    /** How many columns after [box], up to [most] and [limit], are the plain panel at its end. */
+    private fun plainAfter(frame: Bitmap, box: TextBounds, limit: Int, most: Int): Int {
+        val h = box.bottom - box.top
+        if (h <= 0 || box.top < 0 || box.bottom > frame.height) return 0
+        val column = IntArray(h)
+        fun plain(x: Int): Double? {
+            frame.getPixels(column, 0, 1, x, box.top, 1, h)
+            val lumas = column.map { luma(it) }
+            val mid = lumas.sorted()[h / 2]
+            return if (lumas.any { abs(it - mid) > BARE_LUMA }) null else mid
+        }
+        // From the first plain column: the box can end on the last glyph's
+        // softened edge, and 「先生!」 got no room at all past its 「!」.
+        var start = 0
+        while (start < LEAD_IN_PX && box.right + start < limit && plain(box.right + start) == null) start++
+        val reference = if (box.right + start < limit) plain(box.right + start) ?: return 0 else return 0
+        var n = start
+        while (n < most && box.right + n + SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS < limit) {
+            val mid = plain(box.right + n) ?: break
+            if (abs(mid - reference) > BARE_LUMA) break
+            n++
+        }
+        // Room for the patch's own edge to be sampled still on the panel.
+        return (n - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS).coerceAtLeast(0)
     }
 
     /**
@@ -1402,8 +1533,11 @@ class GameTextSource @Inject constructor(
         /** How much each line moves the running stroke weight. */
         const val WEIGHT_SMOOTHING = 0.1f
 
+        /** Type heights this close are one size of type, measured on different letters. */
+        const val SAME_TYPE_RATIO = 0.86
+
         /** How far the running stroke weight moves before the weight given out follows it. */
-        const val WEIGHT_HYSTERESIS = 0.02f
+        const val WEIGHT_HYSTERESIS = 0.03f
 
         /** Places remembered where a speaker's name has stood. */
         const val MAX_SPEAKER_SPOTS = 4
@@ -1432,6 +1566,17 @@ class GameTextSource @Inject constructor(
 
         /** A panel this far from the line's own is a different one: a bubble's page. */
         const val OTHER_PANEL_LUMA = 80.0
+
+        /** What is kept of an empty end a box is cut back from. */
+        const val SHRINK_SLACK_PX = 2
+        const val BARE_LUMA = 10.0
+        const val BARE_STRAY_PX = 2
+
+        /** How far past a box's end its last glyph's edge may still reach. */
+        const val LEAD_IN_PX = 6
+
+        /** How much plain panel past a line's end may be taken as room, against its type's height. */
+        const val ROOM_OF_TYPE = 1.0
 
         /** How much of the line's end, against its height, a last mark is looked for in: about one narrow glyph. */
         const val TAIL_WIDTH_OF_HEIGHT = 0.4

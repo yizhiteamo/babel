@@ -161,6 +161,7 @@ class DefaultTranslationCoordinator(
                 is Message.Failed -> onFailed(message)
                 is Message.SettingsChanged -> onSettingsChanged(message.settings)
                 Message.CancelInFlight -> cancelInFlight()
+                Message.StopWaitingForNames -> releaseWaiting(evenIfPending = true)
             }
         }
     }
@@ -217,7 +218,9 @@ class DefaultTranslationCoordinator(
         val readyToShow = mutableListOf<RenderedTranslation>()
         val toHide = mutableListOf<TextElementId>()
 
-        for (element in elements) {
+        // Speakers first: a line naming one waits for that name's translation
+        // ([waitsForName]), and the name has to be on its way for that.
+        for (element in elements.sortedByDescending { isSpeaker(it) }) {
             if (!sensitivePolicy.isTranslatable(element)) {
                 // Logged by id only — the whole point is that this text never
                 // reaches diagnostics. Without the line there is no way to tell
@@ -261,26 +264,66 @@ class DefaultTranslationCoordinator(
             existing?.job?.cancel()
             val entry = Tracked(element = element, key = key)
             tracked[element.id] = entry
-
-            // Only conversation: balloons and a game's dialogue. On the node path
-            // every element is a separate control, and handing a button's label
-            // to a dialog's translation as "context" would be noise; lettering
-            // on a comic's art was measured to be worse than noise
-            // (`TextElement.conversational`).
-            val context = if (element.conversational && element.sourceType.carriesContext()) {
-                pageContext.note(element.revision, element.text)
-                withNames(pageContext.forLine(element.text), element.text)
-            } else {
-                null
+            if (waitsForName(element)) {
+                // Launched when the name is translated (or fails, or goes):
+                // translated together, a chat's 「今日の当番はケイちゃん!!」
+                // came back as 「Kei酱」 under tabs reading 「圭」, the name's
+                // own translation not yet known to mark it with.
+                entry.waitingForName = true
+                // Not for ever: a name whose answer is lost holds nothing back.
+                scope?.launch {
+                    delay(NAME_WAIT_MS)
+                    mailbox.send(Message.StopWaitingForNames)
+                }
+                continue
             }
-            val others = if (context != null) pageContext.renderingsBesides(element.text) else emptyList()
-            // Read here, in the mailbox: the translation runs elsewhere.
-            val known = if (element.conversational) NameMarks.namesIn(element.text, names) else emptyMap()
-            entry.job = launchTranslation(element, pair, key, context, others, known)
+            launchFor(entry, pair)
         }
 
         if (toHide.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(toHide))
         if (readyToShow.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Show(readyToShow))
+    }
+
+    private fun isSpeaker(element: TextElement): Boolean =
+        element.metadata[com.babel.core.model.TranslationRequest.Hints.SPEAKER] == "true"
+
+    /** Whether [element] names a speaker whose own translation is still on its way. */
+    private fun waitsForName(element: TextElement): Boolean {
+        if (!element.conversational) return false
+        val pending = tracked.values.filter { isSpeaker(it.element) && it.translatedText == null && it.job != null }
+            .associate { it.element.text to it.element.text }
+        return pending.isNotEmpty() && NameMarks.namesIn(element.text, pending).isNotEmpty()
+    }
+
+    /** Lines held for a name, launched once no name they use is still being translated. */
+    private fun releaseWaiting(evenIfPending: Boolean = false) {
+        val pair = languages ?: return
+        for (entry in tracked.values.toList()) {
+            if (!entry.waitingForName || (!evenIfPending && waitsForName(entry.element))) continue
+            entry.waitingForName = false
+            launchFor(entry, pair)
+        }
+    }
+
+    private fun launchFor(entry: Tracked, pair: LanguagePair) {
+        val element = entry.element
+        val key = entry.key
+
+        // Only conversation: balloons and a game's dialogue. On the node path
+        // every element is a separate control, and handing a button's label
+        // to a dialog's translation as "context" would be noise; lettering
+        // on a comic's art was measured to be worse than noise
+        // (`TextElement.conversational`).
+        val context = if (element.conversational && element.sourceType.carriesContext()) {
+            pageContext.note(element.revision, element.text)
+            withNames(pageContext.forLine(element.text), element.text)
+        } else {
+            null
+        }
+        val others = if (context != null) pageContext.renderingsBesides(element.text) else emptyList()
+        // Read here, in the mailbox: the translation runs elsewhere.
+        val known = if (element.conversational) NameMarks.namesIn(element.text, names) else emptyMap()
+        entry.job = launchTranslation(element, pair, key, context, others, known)
     }
 
     private suspend fun onRemoved(ids: List<TextElementId>) {
@@ -291,6 +334,7 @@ class DefaultTranslationCoordinator(
             removed += id
         }
         if (removed.isNotEmpty()) _renderUpdates.emit(RenderUpdate.Hide(removed))
+        releaseWaiting()
     }
 
     /**
@@ -350,6 +394,7 @@ class DefaultTranslationCoordinator(
             names.remove(entry.element.text)
             names[entry.element.text] = message.translatedText
             while (names.size > MAX_NAMES) names.remove(names.keys.first())
+            releaseWaiting()
         }
         if (entry.element.sourceType.carriesContext()) {
             pageContext.agree(entry.element.text, message.translatedText)
@@ -391,6 +436,7 @@ class DefaultTranslationCoordinator(
         val entry = tracked[message.elementId] ?: return
         if (entry.key != message.key) return
         entry.job = null
+        if (isSpeaker(entry.element)) releaseWaiting()
         // One element failing must not take down the pipeline, so runtime state
         // is left alone — that text simply stays untranslated.
         logger.warn(TAG, "translation failed for ${message.elementId.value}: ${message.error}")
@@ -647,6 +693,9 @@ class DefaultTranslationCoordinator(
         @Volatile
         var job: Job? = null
 
+        /** Held until a speaker's name it uses has been translated. */
+        var waitingForName = false
+
         /**
          * @param text the translation of [element]'s whole source text, which
          *   for a shared group is the joined line rather than this balloon's
@@ -694,11 +743,17 @@ class DefaultTranslationCoordinator(
         data class SettingsChanged(val settings: BabelSettings) : Message
 
         data object CancelInFlight : Message
+
+        /** Lines held for a name have waited long enough; see [waitsForName]. */
+        data object StopWaitingForNames : Message
     }
 
     private companion object {
         /** Speakers' names kept for [withNames], and the shortest worth matching in a line. */
         const val MAX_NAMES = 64
+
+        /** How long a line waits for a speaker's name before it is translated without it. */
+        const val NAME_WAIT_MS = 4_000L
         const val MIN_NAME_LENGTH = 2
 
         const val TAG = "TranslationCoordinator"

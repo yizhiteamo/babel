@@ -507,6 +507,32 @@ class DefaultTranslationCoordinatorTest {
         coordinator.stop()
     }
 
+    @Test
+    fun `a line settling with its speaker waits for the speaker's name`() = runTest {
+        translator.delayMillis = 100
+        val coordinator = start()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    // The line first, as a frame can list it.
+                    TestElements.element(id = "line", text = "今日の当番はケイちゃん!!", sourceType = TextSourceType.GAME)
+                        .copy(conversational = true),
+                    TestElements.element(
+                        id = "name",
+                        text = "ケイ",
+                        sourceType = TextSourceType.GAME,
+                        metadata = mapOf(com.babel.core.model.TranslationRequest.Hints.SPEAKER to "true"),
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertTrue(translator.requests.any { it.sourceText == "今日の当番は{N1}ちゃん!!" }, translator.requests.map { it.sourceText }.toString())
+        assertTrue("<今日の当番は<ケイ>ちゃん!!>" in renderer.visibleText, renderer.visibleText.toString())
+        coordinator.stop()
+    }
+
     /** Half a batch must not vanish quietly. */
     @Test
     fun `a mixed batch keeps only the image elements while paused`() = runTest {
