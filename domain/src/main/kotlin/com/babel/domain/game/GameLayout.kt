@@ -140,7 +140,15 @@ object GameLayout {
             val nameLike = isLabel(line.text)
             val i = if (line in labels) -1 else out.indexOfLast { (_, last) ->
                 last !in labels && wraps(last, line) &&
-                    !(nameLike && line.typeHeight.toDouble() / last.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO)
+                    !(nameLike && line.typeHeight.toDouble() / last.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO) &&
+                    // Nor a label in smaller type over a line: a chat sender's
+                    // name over a bubble with no punctuation — 「ケイ」 over
+                    // 「寮に着きました」 — came back as "arrived at Kei's dorm".
+                    !(isLabel(last.text) && last.typeHeight.toDouble() / line.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO) &&
+                    // Nor a label that stops well short of the line under it:
+                    // a line wraps where it runs out of room. A chat list's
+                    // 「カスミ(水着)」 over its last message was joined into it.
+                    !(isLabel(last.text) && last.bounds.right < line.bounds.right - line.typeHeight)
             }
             if (i < 0) {
                 out += line to line
@@ -285,6 +293,14 @@ object GameLayout {
             val more = lines.filter { it !in kept && it !in controls && continues(it) }
             kept += more
         } while (more.isNotEmpty())
+        // A one-letter exclamation in a chat — MomoTalk's 「あ!」 — is too short
+        // to keep alone, but it stands in the column of the bubbles around it.
+        // Only with a sentence's mark: a lone letter beside a list is not one.
+        kept += lines.filter { line ->
+            line !in kept && line !in controls && verdicts[line] == GameTextFilter.Verdict.TOO_SHORT &&
+                line.text.any { it.isLetter() } && punctuated(line.text) &&
+                kept.any { other -> isSentence(other.text) && inColumnWith(line, other) }
+        }
         // A name set out to the left of the dialogue — Fate/Grand Order's tab,
         // 107 px out — only when it sits on the panel: the scenery's 「CENTER」
         // stood as far out (147 px) on busy art and was taken for a speaker.
@@ -342,18 +358,42 @@ object GameLayout {
         // Or anything where dialogue has been: a game's dialogue box and its
         // name tab ([conversationPlaces]). 「うん」 says nothing a sentence
         // would, but it is a line someone speaks, in the box they speak in.
-        val found = lines.filter { line -> isSentence(line.text) || places.any { inside(line.bounds, it) } }.toMutableSet()
+        val core = lines.filter { line -> isSentence(line.text) || places.any { inside(line.bounds, it) } }.toMutableSet()
         do {
             val more = lines.filter { line ->
-                line !in found && found.any { d ->
-                    (sameRow(line.bounds, d.bounds) && nearAlongRow(line, d)) ||
-                        wraps(line, d) || wraps(d, line) || speaksAbove(line.bounds, d.bounds)
-                }
+                line !in core && core.any { d -> (sameRow(line.bounds, d.bounds) && nearAlongRow(line, d)) || wraps(line, d) || wraps(d, line) }
             }
-            found += more
+            core += more
         } while (more.isNotEmpty())
-        return found
+        // A chat's short replies — 「はい」, 「寮に着きました」 — have neither
+        // a sentence's marks nor its length; they line up with the messages
+        // around them, at the left edge of the left bubbles or the right edge
+        // of the right ones, a column that runs from message to message.
+        val aligned = mutableSetOf<GameLine>()
+        do {
+            val more = lines.filter { line -> line !in core && line !in aligned && (core + aligned).any { d -> inColumnWith(line, d) } }
+            aligned += more
+        } while (more.isNotEmpty())
+        // And a speaker's name over any of it. Only names: spread through
+        // everything above, the chat's title bar and the player's name in the
+        // corner of the screen were taken for dialogue.
+        val spoken = core + aligned
+        val names = lines.filter { line ->
+            line !in spoken && isLabel(line.text) && spoken.any { d -> speaksAbove(line.bounds, d.bounds) }
+        }
+        return spoken + names
     }
+
+    private fun inColumnWith(line: GameLine, d: GameLine): Boolean {
+        val h = max(line.typeHeight, d.typeHeight)
+        val sameEdge = abs(line.bounds.left - d.bounds.left) <= h / 2 || abs(line.bounds.right - d.bounds.right) <= h / 2
+        val near = abs(line.bounds.top - d.bounds.top) <= h * COLUMN_REACH_LINES
+        val sameSize = min(line.typeHeight, d.typeHeight).toDouble() / h >= SAME_SIZE_RATIO
+        return sameEdge && near && sameSize
+    }
+
+    /** How far, in line heights, a reply is looked for above or below a message. */
+    const val COLUMN_REACH_LINES = 8
 
     /**
      * Pieces of one line of dialogue set apart by wide spaces, joined back
@@ -593,8 +633,10 @@ object GameLayout {
         val letters = text.filter { it.isLetterOrDigit() }
         // A space inside is allowed — 「To uch」 was read on the frames where a
         // highlight crossed the word — as long as it is a word's worth of letters.
-        return letters.length in 2..MAX_CONTROL_LETTERS && letters.all(::isLatinLetter) &&
-            text.trim().count { it == ' ' } <= 1
+        // Mostly Latin is enough: an icon read as a character in front of the
+        // word — 「食MomoTalk ?」 — made a title bar a sentence.
+        val latin = letters.count(::isLatinLetter)
+        return latin in 2..MAX_CONTROL_LETTERS && latin * 4 >= letters.length * 3 && text.trim().count { it == ' ' } <= 1
     }
 
     /** Letters needed on a frame to tell which script a game is in. */

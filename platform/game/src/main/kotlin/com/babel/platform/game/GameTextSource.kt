@@ -983,7 +983,16 @@ class GameTextSource @Inject constructor(
         // patch. Inside the row only what is near that panel colour counts.
         val above = rowMiddle(frame, box, (top - 1).coerceAtLeast(0))
         val below = rowMiddle(frame, box, (top + rows).coerceAtMost(frame.height - 1))
-        val band = List(rows) { i -> blend(above, below, i / (rows - 1f).coerceAtLeast(1f)) }
+        // Above and below not one panel — a chat sender's name sits on the
+        // page with the bubble just under it — and the blend between them
+        // was neither: its lower rows matched the dark type, and the patch
+        // came out grey. The one of the two the line itself is mostly on is
+        // its panel.
+        val band = if (abs(luma(above) - luma(below)) > EDGE_PANEL_LUMA) {
+            List(rows) { commoner(frame, box, above, below) }
+        } else {
+            List(rows) { i -> blend(above, below, i / (rows - 1f).coerceAtLeast(1f)) }
+        }
         val inside = insideRows(frame, box, top, rows, near = band, overArt = fromStartOnly)
         if (fromStartOnly) return RowGradient(inside, inside, margin, rowMargin)
         val (l, r) = BackdropEdges.repaired(edge(left), edge(box.right + margin))
@@ -1001,6 +1010,22 @@ class GameTextSource @Inject constructor(
         val row = IntArray(box.width)
         frame.getPixels(row, 0, box.width, box.left, y, box.width, 1)
         return (0 until box.width step SAMPLE_STEP).map { row[it] }.sortedBy { luma(it) }.let { it[it.size / 2] }
+    }
+
+    /** Whichever of [a] and [b] more of [box]'s pixels are near. */
+    private fun commoner(frame: Bitmap, box: TextBounds, a: Int, b: Int): Int {
+        val row = IntArray(box.width)
+        var nearA = 0
+        var nearB = 0
+        for (y in box.top until box.bottom step SAMPLE_STEP) {
+            frame.getPixels(row, 0, box.width, box.left, y, box.width, 1)
+            for (x in 0 until box.width step SAMPLE_STEP) {
+                val l = luma(row[x])
+                if (abs(l - luma(a)) <= EDGE_PANEL_LUMA) nearA++
+                if (abs(l - luma(b)) <= EDGE_PANEL_LUMA) nearB++
+            }
+        }
+        return if (nearA >= nearB) a else b
     }
 
     private fun blend(a: Int, b: Int, t: Float): Int = Color.rgb(
@@ -1030,6 +1055,10 @@ class GameTextSource @Inject constructor(
             // about the tab under a name: there, the row alone decides.
             when {
                 !overArt && panelLike.size * 4 >= sampled.size -> panelLike[panelLike.size / 2]
+                // Over art, but most of the row is the colour above and below
+                // it: a chat sender's name on the white page beside an avatar
+                // scored as art, and its patch came out grey.
+                overArt && panelLike.size * 2 >= sampled.size -> panelLike[panelLike.size / 2]
                 // Over art, the middle of what is not type: the middle of a row
                 // full of yellow type was yellow, and was drawn as lines
                 // through the patch.
