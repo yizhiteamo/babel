@@ -38,16 +38,4 @@ interface TapForwarder {
 
     /** Taps the screen at ([x], [y]); [done] runs once it was delivered or failed. */
     fun tap(x: Float, y: Float, done: () -> Unit)
-
-    /**
-     * Presses the screen at ([x], [y]) and keeps pressing until [Hold.release]:
-     * a game's "hold to fast-forward" handed on from a hold on a translation.
-     * Null when it cannot be done.
-     */
-    fun hold(x: Float, y: Float): Hold? = null
-
-    interface Hold {
-        /** Lifts the press; [done] runs once the game has seen it lifted. */
-        fun release(done: () -> Unit)
-    }
 }

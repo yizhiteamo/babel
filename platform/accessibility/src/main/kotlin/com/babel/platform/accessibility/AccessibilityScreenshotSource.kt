@@ -60,61 +60,6 @@ class AccessibilityScreenshotSource @Inject constructor(
         if (!sent) done()
     }
 
-    /**
-     * A press kept down in short continued strokes, each started when the
-     * last completes, until released: one gesture can last at most a minute,
-     * and a stroke that does not continue lifts the finger.
-     */
-    override fun hold(x: Float, y: Float): com.babel.platform.screen.TapForwarder.Hold? {
-        val current = service ?: return null
-        val path = android.graphics.Path().apply { moveTo(x, y) }
-        return object : com.babel.platform.screen.TapForwarder.Hold {
-            @Volatile private var released = false
-            @Volatile private var onReleased: (() -> Unit)? = null
-
-            init {
-                send(android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, HOLD_SEGMENT_MS, true))
-            }
-
-            private fun finish() {
-                val done = onReleased
-                onReleased = null
-                done?.invoke()
-            }
-
-            private fun send(next: android.accessibilityservice.GestureDescription.StrokeDescription) {
-                val gesture = android.accessibilityservice.GestureDescription.Builder().addStroke(next).build()
-                val sent = current.dispatchGesture(
-                    gesture,
-                    object : AccessibilityService.GestureResultCallback() {
-                        override fun onCompleted(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                            if (!next.willContinue()) {
-                                finish()
-                                return
-                            }
-                            send(next.continueStroke(path, 0, HOLD_SEGMENT_MS, !released))
-                        }
-
-                        override fun onCancelled(gestureDescription: android.accessibilityservice.GestureDescription?) {
-                            released = true
-                            finish()
-                        }
-                    },
-                    null,
-                )
-                if (!sent) {
-                    released = true
-                    finish()
-                }
-            }
-
-            override fun release(done: () -> Unit) {
-                onReleased = done
-                released = true
-            }
-        }
-    }
-
     /** The connected service, for overlays it can add as trusted windows. */
     override val context: android.content.Context? get() = service
 
@@ -263,9 +208,6 @@ class AccessibilityScreenshotSource @Inject constructor(
 
         /** Short: spike 3 measured a 10 ms stroke landing ~20 ms sooner than 40. */
         const val TAP_DURATION_MS = 10L
-
-        /** One continued segment of a held press. */
-        const val HOLD_SEGMENT_MS = 100L
 
         /**
          * The platform allows roughly one screenshot every 333ms. Asking at a
