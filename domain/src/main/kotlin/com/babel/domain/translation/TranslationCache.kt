@@ -29,8 +29,10 @@ data class TranslationCacheKey(
          * 3 when a game's speaker names began to be sent as names: entries
          * from before answered them as words (「ヒナ」 as 「雏」), and the
          * durable labels kept on disk would have kept those answers.
+         *
+         * 4 when the game's identity joined the prompt, for official names.
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 3
+        const val CURRENT_SCHEMA_VERSION: Int = 4
 
         private val WHITESPACE = Regex("\\s+")
 

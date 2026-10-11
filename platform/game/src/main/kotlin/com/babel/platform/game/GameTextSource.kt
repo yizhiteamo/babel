@@ -308,7 +308,12 @@ class GameTextSource @Inject constructor(
                 inner.top >= outer.top - slack && inner.bottom <= outer.bottom + slack
         }
         val grown = still.filter { old -> fresh.any { covers(old.bounds, it.bounds) && !within(it.bounds, old.bounds) } }.toSet()
-        val stillKept = still - grown
+        // Or read now as pieces where it was one line: a speaker's row read
+        // before its dialogue had typed was not split into name and
+        // affiliation, and, its pixels unchanged, stayed one label —
+        // 「阿子风纪委员会」 — for the whole line.
+        val split = still.filter { old -> fresh.count { within(it.bounds, old.bounds) && it.text != old.text } >= 2 }.toSet()
+        val stillKept = still - grown - split
         val kept = fresh.filter { line -> stillKept.none { covers(it.bounds, line.bounds) } } + stillKept
         for (line in kept) if (line !in looks) lookOf(frame, line.bounds)?.let { looks[line] = it }
         lastLooks = looks
@@ -425,6 +430,8 @@ class GameTextSource @Inject constructor(
             otherVotes = 0.0
             lastSelected = emptyList()
             conversation.clear()
+            labelWeight = 0f
+            lineWeight = 0f
             speakerSpots = emptyList()
             session += 1
         }
@@ -744,6 +751,23 @@ class GameTextSource @Inject constructor(
      * the backdrop row by row, so the original can be erased
      * (`docs/features/v3-game-translation.md`, "erase and redraw").
      */
+    /**
+     * One weight for a kind of line, not one per line: measured per line, the
+     * strokes of one game's dialogue came out 0.13 on one line and 0.16 on the
+     * next, and consecutive lines of one box were set in two weights. Names
+     * and dialogue each keep a running mean.
+     */
+    private var labelWeight = 0f
+    private var lineWeight = 0f
+
+    private fun steadyWeight(text: String, measured: Float): Float {
+        val label = GameLayout.isLabel(text)
+        val before = if (label) labelWeight else lineWeight
+        val now = if (before == 0f) measured else before * (1 - WEIGHT_SMOOTHING) + measured * WEIGHT_SMOOTHING
+        if (label) labelWeight = now else lineWeight = now
+        return now
+    }
+
     private fun lookOf(frame: Bitmap, recognised: GameLine, others: List<GameLine>): Pair<GameLine, SourceStyle> {
         // The ink, not the recogniser's box, is what has to be covered: a
         // name read while it was still sliding in had a box missing its top,
@@ -760,7 +784,10 @@ class GameTextSource @Inject constructor(
         // further than the other once a closing 」 stood apart, and was left
         // standing beside a translation set from the left.
         val mid = frame.width / 2
+        // Not a line of the dialogue box, which runs from the box's margin
+        // and can be centred by chance: a two-line utterance was set centred.
         val centred = row.isEmpty() && extent.width < frame.width * MAX_CENTRED_WIDTH &&
+            extent.left > frame.width * MIN_CENTRED_LEFT &&
             abs((extent.left + extent.right) / 2 - mid) <= frame.width * CENTRED_TOLERANCE
         // Followed across wider gaps too: a choice's quotation marks stand a
         // character and a half off its words, and were left beside them.
@@ -778,7 +805,11 @@ class GameTextSource @Inject constructor(
         // where the name begins, and Fate/Grand Order's tab fades into the
         // picture before the end of a long name, where the far end's colour
         // drew a black block behind 「罗曼医生」.
-        val onArt = line.backdropError > GameTextFilter.MAX_BACKDROP_ERROR
+        // With a piece beside it on its row — a name before its affiliation —
+        // the gap between the two is still the tab, and both ends can be
+        // sampled: painted from the start alone, the tab's fade along a long
+        // name was lost and its place showed as a darker block.
+        val onArt = line.backdropError > GameTextFilter.MAX_BACKDROP_ERROR && rightLimit >= frame.width
         val backdrop = if (line.backdropError <= MAX_ERASE_ERROR) {
             rowGradient(frame, line.bounds, SIDE_MARGIN_PX, rowMargin, fromStartOnly = onArt)
         } else {
@@ -795,7 +826,7 @@ class GameTextSource @Inject constructor(
             glyphSizePx = line.typeHeight,
             backdrop = backdrop,
             outlineColor = strokes.outline,
-            strokeWeight = strokes.weight?.let { it / line.typeHeight.coerceAtLeast(1) },
+            strokeWeight = strokes.weight?.let { steadyWeight(line.text, it / line.typeHeight.coerceAtLeast(1)) },
             centred = centred,
         )
     }
@@ -1093,7 +1124,13 @@ class GameTextSource @Inject constructor(
             style = style,
             // A name over dialogue is sent as a name: alone, 「ヒナ」 came back
             // as 「雏」 ("chick") where beside its affiliation it was 「日奈」.
-            metadata = if (speaker) mapOf(com.babel.core.model.TranslationRequest.Hints.SPEAKER to "true") else emptyMap(),
+            // And the game it is from, so names and terms come back as that
+            // game's players know them: 「チナツ」, alone, was 「千夏」 one day
+            // and 「奇娜」 the next.
+            metadata = buildMap {
+                put(com.babel.core.model.TranslationRequest.Hints.GAME, packageName)
+                if (speaker) put(com.babel.core.model.TranslationRequest.Hints.SPEAKER, "true")
+            },
         )
     }
 
@@ -1153,8 +1190,12 @@ class GameTextSource @Inject constructor(
 
         /** A line whose middle is this close (of the width) to the screen's is centred, if not too wide. */
         const val CENTRED_TOLERANCE = 0.02
-        const val MAX_CENTRED_WIDTH = 0.8
+        const val MAX_CENTRED_WIDTH = 0.6
+        const val MIN_CENTRED_LEFT = 0.2
         const val CENTRED_GAP_LINES = 2.0
+
+        /** How much each line moves the running stroke weight. */
+        const val WEIGHT_SMOOTHING = 0.1f
 
         /** Places remembered where a speaker's name has stood. */
         const val MAX_SPEAKER_SPOTS = 4

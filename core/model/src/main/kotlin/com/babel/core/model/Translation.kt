@@ -32,6 +32,9 @@ data class TranslationRequest(
     object Hints {
         /** The text is a character's name shown over their line. */
         const val SPEAKER = "speaker"
+
+        /** The game the text is from, by its package name. */
+        const val GAME = "game"
     }
 }
 

@@ -229,6 +229,11 @@ class ChatTranslator(
     private fun instruction(request: TranslationRequest): String = buildString {
         // What the text is decides how a short one reads: a game's button
         // 「AUTO」 sent as a speech balloon came back as 「汽车」.
+        request.metadata[TranslationRequest.Hints.GAME]?.let { game ->
+            append("The text is from the video game with the Android package $game. Where that game")
+            append(" has an official or widely used ${nameOf(request.languages.target)} rendering of a")
+            append(" character's name, a place or a term, use it. ")
+        }
         if (request.metadata[TranslationRequest.Hints.SPEAKER] == "true") {
             append("Translate the character name or the affiliation the user sends, shown over")
             append(" a line of a video game's dialogue, the way players of the game write it,")
@@ -243,7 +248,10 @@ class ChatTranslator(
         request.languages.source?.let { append(" from ${nameOf(it)}") }
         append(" into ${nameOf(request.languages.target)}.")
         append(" Reply with the translation only: no explanation, no romanisation,")
-        append(" no quotation marks that the original did not have.")
+        append(" no quotation marks that the original did not have,")
+        // And none taken away: a line of inner thought in 「（…）」 lost its
+        // parentheses and read as spoken aloud.
+        append(" and keep the brackets and parentheses the original has.")
         append(" If the text cannot be translated — an address, a file path, code,")
         append(" or nonsense — reply with it exactly as given and nothing else;")
         append(" never address the user and never explain what you cannot do.")

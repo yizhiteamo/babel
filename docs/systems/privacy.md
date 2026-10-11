@@ -8,6 +8,9 @@ Minimize unnecessary handling and persistence of user-visible screen content.
 
 - process only content required for translation
 - exclude password-like/protected input
+- with a remote provider configured, game mode also sends the game's package
+  name with each request, so official names and terms can be used; no other
+  identifier of the device or the user
 - avoid persisting raw screen text by default — the one exception is a game's
   short labels (names, buttons) and their translations, kept on the device so a
   name stays the same name (`docs/systems/cache.md`); never dialogue, never
