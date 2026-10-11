@@ -58,8 +58,9 @@ class MomoTalkTest {
     fun `a right bubble's reply lines up with the bubbles on its side`() {
         val good = line("それはよかった", 2410, 559, 314, 53, 38)
         val what = line("どうかした?", 2454, 956, 239, 39, 39)
+        val important = line("あ、うん大事なことだからね", 2073, 1250, 629, 41, 41)
 
-        assertEquals(true, good in GameLayout.dialogue(listOf(good, what)))
+        assertEquals(true, good in GameLayout.dialogue(listOf(good, what, important)))
     }
 
     @Test
@@ -76,5 +77,53 @@ class MomoTalkTest {
         val message = line("先生!", 834, 1009, 105, 43, 40)
 
         assertEquals(listOf(name.text, message.text), GameLayout.joinWrapped(listOf(name, message)).map { it.text })
+    }
+
+    @Test
+    fun `short replies scrolled into a remembered column are dialogue`() {
+        val seen = listOf(
+            line("寮に着きました", 1922, 443, 292, 41, 41),
+            line("はい", 1924, 739, 76, 37, 37),
+            line("デイリーやるの忘れてました!", 1923, 1129, 571, 41, 40),
+        )
+        val columns = GameLayout.chatColumns(seen)
+        val ta = line("た", 1922, 300, 40, 40, 39)
+        val ima = line("いま", 1923, 520, 80, 40, 39)
+        val name = line("ケイ", 1902, 460, 75, 36, 36)
+
+        val kept = GameLayout.select(listOf(ta, ima, name), frameHeight = 1440, frameWidth = 3200, columns = columns)
+        val dialogue = GameLayout.dialogue(kept, columns = columns)
+
+        assertEquals(true, ta in dialogue && ima in dialogue)
+        assertEquals(setOf(name), GameLayout.speakers(kept, columns = columns))
+    }
+
+    @Test
+    fun `a screen of short replies under one sender's name is dialogue`() {
+        val k1 = line("ケイ", 1902, 140, 75, 36, 36)
+        val sense = line("せんせ", 1922, 200, 120, 40, 39)
+        val k2 = line("ケイ", 1902, 300, 75, 36, 36)
+        val ta = line("た", 1922, 360, 40, 40, 39)
+        val suke = line("すけて", 1922, 450, 120, 40, 39)
+
+        val lines = listOf(k1, sense, k2, ta, suke)
+        val kept = GameLayout.select(lines, frameHeight = 1440, frameWidth = 3200)
+        val dialogue = GameLayout.dialogue(kept)
+
+        assertEquals(true, sense in dialogue && ta in dialogue && suke in dialogue)
+        assertEquals(setOf(k1, k2), GameLayout.speakers(kept))
+    }
+
+    @Test
+    fun `a button whose right edge happens to meet a message is not dialogue`() {
+        val newest = line("最新", 1315, 285, 72, 37, 37)
+        val preview = line("割い日が続くが、息災かえ?", 834, 660, 538, 41, 40)
+        val title = line("未読メッセージ(337)(", 669, 278, 499, 56, 54)
+        val name = line("カスミ(水着)", 836, 418, 288, 45, 45)
+        val message = line("居場所は送っておくから、気が...", 834, 484, 622, 41, 40)
+
+        val dialogue = GameLayout.dialogue(listOf(newest, preview, title, name, message))
+
+        assertEquals(false, newest in dialogue || title in dialogue)
     }
 }

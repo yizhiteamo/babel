@@ -92,6 +92,8 @@ fun BabelApp(
     var showLicences by remember { mutableStateOf(false) }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+        // Nothing until the real state is in; see [HomeUiState.loaded].
+        if (!state.loaded) return@Scaffold
         Column(
             modifier = Modifier
                 .fillMaxSize()

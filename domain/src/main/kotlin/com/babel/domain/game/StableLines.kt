@@ -374,6 +374,16 @@ class StableLines {
         }
 
     /** Everything published, for clearing the screen. */
+    /**
+     * Forgets the published lines [keys], withdrawn by the caller before
+     * they were read again: their place no longer shows them. Read there
+     * again, a line starts afresh — published at once if its words are known.
+     */
+    fun forget(keys: Collection<String>) {
+        if (keys.isEmpty()) return
+        seen = seen.filter { it.publishedKey !in keys }
+    }
+
     fun reset(): List<String> {
         val keys = seen.mapNotNull { it.publishedKey }
         seen = emptyList()
@@ -422,8 +432,13 @@ class StableLines {
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256
 
-        /** Dialogue this long is published at once when read again exactly. */
-        const val MIN_KNOWN_SENTENCE = 12
+        /**
+         * Dialogue this long is published at once when read again exactly. A
+         * chat scrolled back and forth reads its bubbles again in new places,
+         * and each waited a frame — about a second — for words already known.
+         * Shorter, a line still typing may be the whole of an earlier one.
+         */
+        const val MIN_KNOWN_SENTENCE = 5
 
         /** Shortest reading one misread character may differ in and stay the same line. */
         const val MIN_EDITABLE_LENGTH = 4

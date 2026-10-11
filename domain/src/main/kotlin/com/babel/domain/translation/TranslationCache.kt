@@ -31,8 +31,12 @@ data class TranslationCacheKey(
          * durable labels kept on disk would have kept those answers.
          *
          * 4 when the game's identity joined the prompt, for official names.
+         *
+         * 5 when answers still in Japanese began to be asked again: a chat's
+         * short replies had been kept on disk corrected, not translated
+         * (「ちょっと困って」), and as labels would have stayed so.
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 4
+        const val CURRENT_SCHEMA_VERSION: Int = 5
 
         private val WHITESPACE = Regex("\\s+")
 

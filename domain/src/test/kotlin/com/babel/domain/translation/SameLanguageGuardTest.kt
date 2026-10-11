@@ -70,4 +70,26 @@ class SameLanguageGuardTest {
         assertEquals(TranslationStatus.Unchanged, result.status)
         assertEquals(0, calls)
     }
+
+    @Test
+    fun `an answer still in japanese is asked again without context`() = runBlocking {
+        val answers = ArrayDeque(listOf("ちょっと困って", "有点困扰"))
+        val contexts = mutableListOf<String?>()
+        val echoing = object : Translator {
+            override val id = ProviderId("fake")
+            override fun supports(source: LanguageTag?, target: LanguageTag) = true
+            override suspend fun translate(request: TranslationRequest): TranslationResult {
+                contexts += request.context
+                return TranslationResult(
+                    request.requestId, request.elementId, request.revision, request.sourceText, answers.removeFirst(),
+                    provider = id, status = TranslationStatus.Translated,
+                )
+            }
+        }
+
+        val result = SameLanguageGuard(echoing).translate(request("ちょとこまって").copy(context = "いま"))
+
+        assertEquals("有点困扰", result.translatedText)
+        assertEquals(listOf("いま", null), contexts)
+    }
 }

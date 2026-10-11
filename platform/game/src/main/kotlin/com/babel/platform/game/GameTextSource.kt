@@ -85,6 +85,9 @@ class GameTextSource @Inject constructor(
     private var otherVotes = 0.0
     private var lastSelected: List<GameLine> = emptyList()
 
+    /** A chat's columns seen lately, and when; see [GameLayout.ChatColumn]. */
+    private val chatColumns = mutableListOf<Pair<GameLayout.ChatColumn, Long>>()
+
     /** Where a conversation has been lately, and when; see [GameLayout.conversationPlaces]. */
     private val conversation = mutableListOf<Pair<TextBounds, Long>>()
     private var speakerSpots: List<TextBounds> = emptyList()
@@ -160,6 +163,8 @@ class GameTextSource @Inject constructor(
             grid.indices.sumOf { abs(grid[it] - before[it]) }.toDouble() / grid.size > SCENE_CHANGE_LUMA
         } ?: false
 
+        if (band != null) withdrawReplaced(frame)
+
         val read: List<GameLine>
         val how: String
         if (band == null) {
@@ -176,7 +181,34 @@ class GameTextSource @Inject constructor(
                 margin = cellHeight.toInt() / 2,
                 frameHeight = frame.height,
             )
-            val fresh = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
+            // And only the parts that changed, when they are a part of the
+            // frame: a chat scrolled in its own column beside a list that did
+            // not move, the home screen's art animating at the frame's ends,
+            // and all 56 lines of the screen were read again every frame —
+            // up to 1.9 s each, the old layout standing all along.
+            val cellWidth = frame.width.toFloat() / GRID_COLUMNS
+            val boxes = ChangedBand.regions(lastGrid, grid, GRID_COLUMNS, gap = REGION_GAP_CELLS).map { region ->
+                ChangedBand.widenedBox(
+                    lastLines,
+                    ((region.columns.first - BAND_MARGIN_CELLS) * cellWidth).toInt(),
+                    ((region.rows.first - BAND_MARGIN_CELLS) * cellHeight).toInt(),
+                    ((region.columns.last + 1 + BAND_MARGIN_CELLS) * cellWidth).toInt(),
+                    ((region.rows.last + 1 + BAND_MARGIN_CELLS) * cellHeight).toInt(),
+                    marginX = cellWidth.toInt(),
+                    marginY = cellHeight.toInt() / 2,
+                    frameWidth = frame.width,
+                    frameHeight = frame.height,
+                )
+            }
+            val boxArea = boxes.sumOf { (it[2] - it[0]).toLong() * (it[3] - it[1]) }
+            val fresh = if (boxes.isNotEmpty() && boxArea < frame.width.toLong() * frame.height * PART_AREA_FRACTION) {
+                how = "${boxes.size} boxes, ${boxArea * 100 / (frame.width.toLong() * frame.height)}%"
+                var merged = lastLines
+                for ((l, t, r, b) in boxes.map { listOf(it[0], it[1], it[2], it[3]) }) {
+                    merged = ChangedBand.mergeBox(merged, recognise(frame, t, b, l, r), l, t, r, b)
+                }
+                frontLayer(frame, merged)
+            } else if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
                 how = "whole"
                 frontLayer(frame, recognise(frame, 0, frame.height))
             } else {
@@ -202,6 +234,7 @@ class GameTextSource @Inject constructor(
         if (latinVotes + otherVotes >= GameLayout.MIN_SCRIPT_LETTERS) otherScript = latinVotes * 2 < latinVotes + otherVotes
         val selected = GameLayout.select(
             read, frame.height, frame.width, otherScript, before = lastSelected, speakerSpots = speakerSpots,
+            columns = chatColumns.map { it.first },
         )
         lastSelected = selected
         for (spot in GameLayout.speakerSpots(selected, minOf(frame.height, frame.width))) {
@@ -216,10 +249,20 @@ class GameTextSource @Inject constructor(
         conversation.removeAll { (_, at) -> now - at > CONVERSATION_KEPT_MS }
         while (conversation.size > MAX_CONVERSATION_PLACES) conversation.removeAt(0)
         val places = conversation.map { it.first }
-        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places)))
+        // A chat's columns: gone with the scene — closed, the chat's place
+        // is the home screen's buttons — and otherwise kept a while, so a
+        // screen of short replies scrolled into view is still the chat.
+        if (sceneChanged) chatColumns.clear()
+        chatColumns.removeAll { (_, at) -> now - at > CONVERSATION_KEPT_MS }
+        val columns = chatColumns.map { it.first }
+        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns)))
 
-        val dialogue = GameLayout.dialogue(kept, places)
-        val speakers = GameLayout.speakers(kept, places)
+        val dialogue = GameLayout.dialogue(kept, places, columns)
+        val speakers = GameLayout.speakers(kept, places, columns)
+        for (column in GameLayout.chatColumns(dialogue - speakers)) {
+            val i = chatColumns.indexOfFirst { it.first.sameAs(column) }
+            if (i < 0) chatColumns += column to now else chatColumns[i] = chatColumns[i].first.merged(column) to now
+        }
         // Only what reads as dialogue: a line someone speaks, a narration, a
         // choice, an instruction or a pop-up's sentence — and the speaker's
         // name over it. A game's interface is left as it is. Measured on Blue
@@ -407,7 +450,46 @@ class GameTextSource @Inject constructor(
     private fun replacedSince(frame: Bitmap, box: TextBounds): Boolean {
         val then = publishedLooks.values.firstOrNull { it.first == box }?.second ?: return false
         val now = lookOf(frame, box) ?: return false
-        return then.indices.sumOf { abs(then[it] - now[it]) }.toDouble() / then.size > REPLACED_LOOK_LUMA
+        return replaced(then, now)
+    }
+
+    /**
+     * Mean difference of the two looks with each one's own mean taken out:
+     * what moved, not what was shaded. A chat list's selected row darkens
+     * evenly under its words, which stay; a scrolled bubble's words go.
+     */
+    private fun replaced(then: IntArray, now: IntArray): Boolean {
+        if (then.size != now.size) return true
+        val a = then.average()
+        val b = now.average()
+        return then.indices.sumOf { abs((then[it] - a) - (now[it] - b)) } / then.size > REPLACED_LOOK_LUMA
+    }
+
+    /**
+     * Withdraws, before reading the frame, every published line whose place
+     * now shows something else. Read first, a scrolled chat's translations
+     * stood over the bubbles that had moved in for as long as the recogniser
+     * took — half a second to a second and a half a frame.
+     */
+    private suspend fun withdrawReplaced(frame: Bitmap) {
+        val keys = lock.withLock {
+            // Only lines painted out on a plain panel: over moving art a still
+            // line's place changes under it, and would be withdrawn and drawn
+            // again frame after frame.
+            val keys = publishedLooks.filter { (key, look) ->
+                val painted = erased[key] ?: return@filter false
+                if (painted.line.backdropError > GameTextFilter.MAX_BACKDROP_ERROR) return@filter false
+                val now = lookOf(frame, look.first)
+                now != null && replaced(look.second, now)
+            }.keys.toList()
+            if (keys.isEmpty()) return
+            lines.forget(keys)
+            keys.forEach { publishedLooks.remove(it); erased.remove(it) }
+            keys.mapNotNull { published.remove(it) }
+        }
+        val ids = keys
+        if (ids.isNotEmpty()) events.emit(TextSourceEvent.Removed(ids))
+        logger.debug(TAG, "withdrawn before reading: ${ids.size}")
     }
 
     private fun largestDifference(a: IntArray, b: IntArray): Double =
@@ -493,6 +575,7 @@ class GameTextSource @Inject constructor(
             otherVotes = 0.0
             lastSelected = emptyList()
             conversation.clear()
+            chatColumns.clear()
             labelWeight = 0f
             lineWeight = 0f
             labelWeightShown = 0f
@@ -513,8 +596,9 @@ class GameTextSource @Inject constructor(
      * coordinates. The backdrop is judged on the frame's own pixels around
      * each line, so a band's edge cannot make a panel look like artwork.
      */
-    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int): List<GameLine> = try {
-        val part = if (top == 0 && bottom == frame.height) frame else Bitmap.createBitmap(frame, 0, top, frame.width, bottom - top)
+    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int, left: Int = 0, right: Int = frame.width): List<GameLine> = try {
+        val whole = top == 0 && bottom == frame.height && left == 0 && right == frame.width
+        val part = if (whole) frame else Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
         val result = try {
             recognizer.process(InputImage.fromBitmap(part, 0)).await()
         } finally {
@@ -524,7 +608,7 @@ class GameTextSource @Inject constructor(
         val height = frame.height
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
-            val read = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
+            val read = TextBounds(box.left + left, box.top + top, box.right + left, box.bottom + top, CoordinateSpace.SCREEN)
             val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
@@ -1623,6 +1707,11 @@ class GameTextSource @Inject constructor(
 
         /** Mean brightness change per grid cell, 0..255, that is a new scene. */
         const val SCENE_CHANGE_LUMA = 30.0
+
+
+        /** Smaller in all than this share of the frame, only the changed parts are read; and how far apart two parts are. */
+        const val PART_AREA_FRACTION = 0.45
+        const val REGION_GAP_CELLS = 3
 
         /** A band this tall is a new screen, not a new line: read it whole. */
         const val WHOLE_FRAME_FRACTION = 0.5f

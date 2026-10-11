@@ -59,6 +59,13 @@ data class HomeUiState(
     /** Whether Babel's quick-settings tile is in the panel (`TilePresence`). */
     val tileAdded: Boolean = false,
     val gameState: CaptureState = CaptureState.IDLE,
+    /**
+     * Whether this is the real state yet. Until the settings and permissions
+     * are read, everything above is a default: the screen showed both
+     * permissions missing and every mode off for a second after the app
+     * started, and a tap in that second toggled the wrong thing.
+     */
+    val loaded: Boolean = false,
 ) {
     /**
      * Whether pausing or resuming makes sense right now.
@@ -175,6 +182,7 @@ class HomeViewModel @Inject constructor(
             // Read here rather than in the composable: it is a system query,
             // and a screen should not be making those while it draws.
             meteredConnection = recognizerModel.isMetered(),
+            loaded = true,
         )
     }.combine(coordinator.providerFailure) { state, failure ->
         // Joined separately because `combine` stops at five flows, and a

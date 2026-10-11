@@ -40,7 +40,20 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
         val alreadyChinese = sameLanguage || chineseTarget && languages.source == null &&
             text.any { it in HAN } && !JapaneseScript.isPresentIn(text) && !KoreanScript.isPresentIn(text) &&
             text.count { it in HAN } * 2 >= text.count { it.isLetter() }
-        if (!alreadyChinese) return delegate.translate(request)
+        if (!alreadyChinese) {
+            val result = delegate.translate(request)
+            // Or an answer still in the source's script: a chat's misread
+            // 「ちょとこまって」 came back as 「ちょっと困って」 — corrected, not
+            // translated — and was drawn as the translation. Asked once more
+            // without the context, which is what it was matching.
+            if (chineseTarget && result.status == TranslationStatus.Translated && JapaneseScript.isPresentIn(text) &&
+                mostlyKana(result.translatedText)
+            ) {
+                val again = delegate.translate(request.copy(context = null))
+                if (again.status != TranslationStatus.Translated || !mostlyKana(again.translatedText)) return again
+            }
+            return result
+        }
         return TranslationResult(
             requestId = request.requestId,
             elementId = request.elementId,
@@ -51,6 +64,13 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
             provider = id,
             status = TranslationStatus.Unchanged,
         )
+    }
+
+    /** Kana for a third or more of the letters: Japanese, not Chinese with a 「の」 in it. */
+    private fun mostlyKana(text: String): Boolean {
+        val letters = text.count { it.isLetter() }
+        val kana = text.count { it in '぀'..'ヿ' }
+        return kana >= 2 && kana * 3 >= letters
     }
 
     private fun primary(tag: LanguageTag): String = tag.value.lowercase().substringBefore('-')

@@ -76,4 +76,44 @@ class ChangedBandTest {
 
         assertEquals(400 to 500, ChangedBand.widened(listOf(first), top = 400, bottom = 500, margin = 20, frameHeight = 1440))
     }
+
+    @Test
+    fun `the changed columns are found`() {
+        val before = IntArray(12) { 100 }
+        val after = before.copyOf().also { it[5] = 200; it[10] = 30 }
+
+        assertEquals(1..2, ChangedBand.columnsOf(before, after, columns))
+    }
+
+    @Test
+    fun `a box keeps the lines beside it and takes the new reading inside`() {
+        fun line(text: String, l: Int, t: Int) = GameLine(text, TextBounds(l, t, l + 100, t + 40, CoordinateSpace.SCREEN), 0.0)
+        val list = line("リオ", 100, 500)
+        val bubble = line("old", 1000, 500)
+        val moved = line("new", 1000, 600)
+
+        val merged = ChangedBand.mergeBox(listOf(list, bubble), listOf(moved), left = 900, top = 0, right = 1500, bottom = 1440)
+
+        assertEquals(listOf("リオ", "new"), merged.map { it.text })
+    }
+
+    @Test
+    fun `a box is widened past a line it would cut`() {
+        val line = GameLine("long", TextBounds(800, 500, 1200, 540, CoordinateSpace.SCREEN), 0.0)
+
+        assertEquals(790 to 1500, ChangedBand.widenedAcross(listOf(line), 1000, 1500, 0, 1440, margin = 10, frameWidth = 3200))
+    }
+
+    @Test
+    fun `changes far apart are separate regions`() {
+        val cols = 10
+        val before = IntArray(30) { 100 }
+        // Column 0 on row 0, columns 6–7 on rows 1–2.
+        val after = before.copyOf().also { it[0] = 200; it[16] = 200; it[27] = 200 }
+
+        assertEquals(
+            listOf(ChangedBand.Region(0..0, 0..0), ChangedBand.Region(6..7, 1..2)),
+            ChangedBand.regions(before, after, cols, gap = 3),
+        )
+    }
 }
