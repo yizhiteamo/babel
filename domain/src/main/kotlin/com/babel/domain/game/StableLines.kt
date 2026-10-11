@@ -102,6 +102,20 @@ class StableLines {
                 }
                 continue
             }
+            if (before.publishedKey != null && sliding(before.line.bounds, line.bounds) &&
+                (before.line.text == line.text || sameReading(before.line.text, line.text))
+            ) {
+                // A published line still moving, less than [moved] withdraws:
+                // a chat scrolled to a stop, settled while it slowed, and its
+                // patch stood 8 px above the bubble with the bottom of the
+                // words showing under it. Settled again where it is now, under
+                // its own key: the translation moves, it is not done again.
+                val key = before.publishedKey!!
+                val there = before.line.copy(bounds = line.bounds, typeHeight = line.typeHeight)
+                settled += Settled(key, there, 0)
+                next += Seen(there, before.firstSeenAt, key)
+                continue
+            }
             val growing = line.text.length > before.line.text.length &&
                 line.text.startsWith(before.line.text)
             if (before.publishedKey == null && sliding(before.line.bounds, line.bounds) &&

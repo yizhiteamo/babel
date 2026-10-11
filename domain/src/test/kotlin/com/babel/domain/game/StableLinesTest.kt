@@ -313,4 +313,17 @@ class StableLinesTest {
 
         assertEquals(2, lines.reset().size)
     }
+
+    @Test
+    fun `a published line that slides a little moves under its own key`() {
+        val lines = StableLines()
+        lines.next(listOf(line("寮に着きました", top = 1100)), now = 0)
+        val key = lines.next(listOf(line("寮に着きました", top = 1100)), now = 333).settled.single().key
+
+        val update = lines.next(listOf(line("寮に着きました", top = 1110)), now = 666)
+
+        assertEquals(key, update.settled.single().key)
+        assertEquals(1110, update.settled.single().line.bounds.top)
+        assertTrue(update.gone.isEmpty())
+    }
 }

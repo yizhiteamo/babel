@@ -148,7 +148,8 @@ object GameLayout {
                     // Nor a label that stops well short of the line under it:
                     // a line wraps where it runs out of room. A chat list's
                     // 「カスミ(水着)」 over its last message was joined into it.
-                    !(isLabel(last.text) && last.bounds.right < line.bounds.right - line.typeHeight)
+                    // MomoTalk's 「ケイ」 ended 26 px short of the 「はい」 under it.
+                    !(isLabel(last.text) && last.bounds.right < line.bounds.right - line.typeHeight / 2)
             }
             if (i < 0) {
                 out += line to line
@@ -299,7 +300,7 @@ object GameLayout {
         kept += lines.filter { line ->
             line !in kept && line !in controls && verdicts[line] == GameTextFilter.Verdict.TOO_SHORT &&
                 line.text.any { it.isLetter() } && punctuated(line.text) &&
-                kept.any { other -> isSentence(other.text) && inColumnWith(line, other) }
+                kept.any { other -> inColumnWith(line, other) }
         }
         // A name set out to the left of the dialogue — Fate/Grand Order's tab,
         // 107 px out — only when it sits on the panel: the scenery's 「CENTER」
@@ -386,14 +387,19 @@ object GameLayout {
 
     private fun inColumnWith(line: GameLine, d: GameLine): Boolean {
         val h = max(line.typeHeight, d.typeHeight)
-        val sameEdge = abs(line.bounds.left - d.bounds.left) <= h / 2 || abs(line.bounds.right - d.bounds.right) <= h / 2
+        // A right edge within a character: a right bubble's text ends at a
+        // narrow 「?」 in one and runs a few pixels into the bubble's tail in
+        // the next — MomoTalk's 「それはよかった」 and 「どうかした?」 ended
+        // 31 px apart. Left edges start at the bubble's margin, and stay
+        // within half a character.
+        val sameEdge = abs(line.bounds.left - d.bounds.left) <= h / 2 || abs(line.bounds.right - d.bounds.right) <= h
         val near = abs(line.bounds.top - d.bounds.top) <= h * COLUMN_REACH_LINES
         val sameSize = min(line.typeHeight, d.typeHeight).toDouble() / h >= SAME_SIZE_RATIO
         return sameEdge && near && sameSize
     }
 
     /** How far, in line heights, a reply is looked for above or below a message. */
-    const val COLUMN_REACH_LINES = 8
+    const val COLUMN_REACH_LINES = 12
 
     /**
      * Pieces of one line of dialogue set apart by wide spaces, joined back

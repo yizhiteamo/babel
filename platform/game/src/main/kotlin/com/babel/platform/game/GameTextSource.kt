@@ -32,6 +32,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -96,6 +97,16 @@ class GameTextSource @Inject constructor(
      */
     private var session = 0L
     private var published = mutableMapOf<String, TextElementId>()
+
+    /**
+     * A published line whose original was painted out, and the panel it was
+     * painted from, for [repainted].
+     */
+    private class Erased(val line: GameLine, val conversational: Boolean, val speaker: Boolean, val panel: Pair<Double, Double>)
+    private val erased = mutableMapOf<String, Erased>()
+
+    /** Where each published line was and what its place looked like then, for [replacedSince]. */
+    private val publishedLooks = mutableMapOf<String, Pair<TextBounds, IntArray>>()
 
     private val recognizer by lazy {
         TextRecognition.getClient(JapaneseTextRecognizerOptions.Builder().build())
@@ -224,8 +235,15 @@ class GameTextSource @Inject constructor(
                 // words: a new speaker's name read in the tab before it is
                 // kept left the last speaker's translation over it for four
                 // frames (「雷夫」 over 「Dr.ロマン」).
-                inked(frame, gone.bounds) && read.none { otherWords(it.text, gone.text) && overlaps(it.bounds, gone.bounds) }
+                inked(frame, gone.bounds) && read.none { otherWords(it.text, gone.text) && overlaps(it.bounds, gone.bounds) } &&
+                    // Nor where its pixels are no longer what they were when
+                    // it was published: a chat scrolled, other bubbles moved
+                    // into its place, nothing read there matched it, and its
+                    // translation stood over them for four frames — 3 s.
+                    !replacedSince(frame, gone.bounds)
             }
+            update.gone.forEach { erased.remove(it) }
+            update.gone.forEach { publishedLooks.remove(it) }
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
             if (update.gone.isNotEmpty()) {
@@ -233,21 +251,45 @@ class GameTextSource @Inject constructor(
                 logger.debug(TAG, "withdrawn " + update.gone.joinToString { "${it.substringAfterLast('@')} ${update.why[it]}" })
             }
 
-            val upserted = update.settled.map { settled ->
+            fun elementOf(key: String, line: GameLine, conversational: Boolean, speaker: Boolean): TextElement {
                 // Every line read, not only those kept: a name left untranslated
                 // still has ink an affiliation's patch must not grow into.
-                val (inked, look) = lookOf(frame, settled.line, read)
-                val element = toElement(
+                val (inked, look) = lookOf(frame, line, read)
+                val element = toElement(key, inked, look, conversational, windowBounds, packageName, speaker = speaker)
+                lookOf(frame, line.bounds)?.let { publishedLooks[key] = line.bounds to it }
+                if (element.style.backdrop != null) {
+                    erased[key] = Erased(line, conversational, speaker, panelAround(frame, line.bounds))
+                } else {
+                    erased.remove(key)
+                }
+                return element
+            }
+            // The panel changed under a line that did not: a chat list's
+            // selected row is shaded, and when another row was picked the
+            // patches kept the old shade — a grey block on the white row
+            // left behind, a white one on the row now shaded. Painted again
+            // from the panel as it is now; the translation is unchanged.
+            val settledKeys = update.settled.mapTo(HashSet()) { it.key }
+            val repainted = erased.entries.filter { (key, e) ->
+                // Only while the line itself is still read there: scrolled,
+                // the panel under its old place changes too, and repainting it
+                // there drew patches over the bubbles that had moved in.
+                key !in settledKeys && key in published &&
+                    shown.any { it.text == e.line.text && abs(it.bounds.top - e.line.bounds.top) <= STILL_PX && abs(it.bounds.left - e.line.bounds.left) <= STILL_PX } &&
+                    repainted(e.panel, panelAround(frame, e.line.bounds))
+            }.map { (key, e) -> elementOf(key, e.line, e.conversational, e.speaker) }
+            if (repainted.isNotEmpty()) {
+                logger.debug(TAG, "repainted " + repainted.joinToString { "${it.id.value} weight=${it.style.strokeWeight?.let { w -> "%.2f".format(w) }}" })
+            }
+            val upserted = repainted + update.settled.map { settled ->
+                val element = elementOf(
                     settled.key,
-                    inked,
-                    look,
+                    settled.line,
                     // A speaker's name is part of the dialogue but not a line
                     // of it: sent with the story as context, 「玄龍門」 came back
                     // as the last speaker's affiliation and its own, two lines.
                     settled.line in dialogue && !GameLayout.isLabel(settled.line.text),
-                    windowBounds,
-                    packageName,
-                    speaker = settled.line in dialogue && GameLayout.isLabel(settled.line.text),
+                    settled.line in dialogue && GameLayout.isLabel(settled.line.text),
                 )
                 published[settled.key] = element.id
                 logger.debug(
@@ -349,6 +391,18 @@ class GameTextSource @Inject constructor(
     }
 
     /** The largest change of any cell: one new glyph in a long line moves the mean by little. */
+    /**
+     * Whether the place a published line stood in now shows something else:
+     * on average far from what it showed then. A recogniser's miss on a still
+     * line leaves its pixels alone; moving art behind a translucent box moves
+     * a few cells, not the mean of all of them.
+     */
+    private fun replacedSince(frame: Bitmap, box: TextBounds): Boolean {
+        val then = publishedLooks.values.firstOrNull { it.first == box }?.second ?: return false
+        val now = lookOf(frame, box) ?: return false
+        return then.indices.sumOf { abs(then[it] - now[it]) }.toDouble() / then.size > REPLACED_LOOK_LUMA
+    }
+
     private fun largestDifference(a: IntArray, b: IntArray): Double =
         if (a.size != b.size) Double.MAX_VALUE else a.indices.maxOf { abs(a[it] - b[it]) }.toDouble()
 
@@ -420,6 +474,8 @@ class GameTextSource @Inject constructor(
         lock.withLock {
             lines.reset()
             published.clear()
+            erased.clear()
+            publishedLooks.clear()
             lines = StableLines()
             lastGrid = null
             lastLines = emptyList()
@@ -432,6 +488,8 @@ class GameTextSource @Inject constructor(
             conversation.clear()
             labelWeight = 0f
             lineWeight = 0f
+            labelWeightShown = 0f
+            lineWeightShown = 0f
             speakerSpots = emptyList()
             session += 1
         }
@@ -533,8 +591,23 @@ class GameTextSource @Inject constructor(
             frame.getPixels(rowPixels, 0, width, 0, y, width, 1)
             val pixels = rowPixels
             val row = 0
-            val l = luma(pixels[row + left])
-            val r = luma(pixels[row + right])
+            var l = luma(pixels[row + left])
+            var r = luma(pixels[row + right])
+            // One end off the panel the rest of the row is on: the box ran a
+            // few pixels past a bubble the text nearly fills — MomoTalk's
+            // 「それはよかった」 ended on the white page, and its blue bubble
+            // scored 63, as art. That end takes the other's colour; over art
+            // the row between them is what still tells.
+            val middle = (box.left until right step SAMPLE_STEP).map { luma(pixels[row + it]) }.sorted().let { it[it.size / 2] }
+            if (abs(r - middle) > EDGE_PANEL_LUMA && abs(l - middle) <= EDGE_PANEL_LUMA) r = l
+            else if (abs(l - middle) > EDGE_PANEL_LUMA && abs(r - middle) <= EDGE_PANEL_LUMA) l = r
+            // Both ends off it, and alike: the box ran past the bubble at
+            // both ends, onto the page around it. A graded panel's ends
+            // differ, and stay as they are.
+            else if (abs(l - middle) > EDGE_PANEL_LUMA && abs(r - middle) > EDGE_PANEL_LUMA && abs(l - r) <= EDGE_PANEL_LUMA) {
+                l = middle
+                r = middle
+            }
             val span = (right - left).coerceAtLeast(1)
             var x = box.left
             while (x < right) {
@@ -760,11 +833,23 @@ class GameTextSource @Inject constructor(
     private var labelWeight = 0f
     private var lineWeight = 0f
 
+    /**
+     * What was last given out for each kind: the running mean of a chat's
+     * bubbles hovered at 0.14–0.15, either side of a step in weight, and
+     * consecutive bubbles were set in two. It changes only once the mean has
+     * moved clearly away.
+     */
+    private var labelWeightShown = 0f
+    private var lineWeightShown = 0f
+
     private fun steadyWeight(text: String, measured: Float): Float {
         val label = GameLayout.isLabel(text)
         val before = if (label) labelWeight else lineWeight
         val now = if (before == 0f) measured else before * (1 - WEIGHT_SMOOTHING) + measured * WEIGHT_SMOOTHING
         if (label) labelWeight = now else lineWeight = now
+        val shown = if (label) labelWeightShown else lineWeightShown
+        if (shown != 0f && abs(now - shown) < WEIGHT_HYSTERESIS) return shown
+        if (label) labelWeightShown = now else lineWeightShown = now
         return now
     }
 
@@ -871,7 +956,12 @@ class GameTextSource @Inject constructor(
         }
         if (runs.isEmpty()) return Strokes(null, null)
         runs.sort()
-        val weight = runs[runs.size / 2].toFloat()
+        // The mean of the middle half, not the middle run: runs are whole
+        // pixels, and at 40 px type the middle one was 5 on one line and 6 on
+        // the next — 0.125 or 0.15 of the type, either side of bold, and a
+        // chat's bubbles came out in two weights.
+        val middleHalf = runs.subList(runs.size / 4, (runs.size * 3 / 4).coerceAtLeast(runs.size / 4 + 1))
+        val weight = middleHalf.average().toFloat()
         val outline = if (probes > 0 && edge.size * 2 >= probes) {
             Color.rgb(
                 edge.sumOf { Color.red(it) } / edge.size,
@@ -905,7 +995,15 @@ class GameTextSource @Inject constructor(
         fun inked(pixels: IntArray, lighter: Boolean): Boolean {
             val lumas = pixels.map { luma(it) }
             val bg = lumas.sorted()[lumas.size / 2]
-            return lumas.count { (if (lighter) it - bg else bg - it) >= INK_CONTRAST } >= EXTENT_MIN_INK
+            val ink = lumas.map { (if (lighter) it - bg else bg - it) >= INK_CONTRAST }
+            // Not what runs in from either end: that is another panel the
+            // line's own one stops at, not type. White type in a blue bubble
+            // it nearly fills — MomoTalk's 「それはよかった」 — has the white
+            // page at the bubble's rounded corners and past its edges, and
+            // the patch grew over the whole bubble and painted it white.
+            val from = ink.indexOfFirst { !it }.let { if (it < 0) return false else it }
+            val to = ink.indexOfLast { !it }
+            return (from..to).count { ink[it] } >= EXTENT_MIN_INK
         }
         fun row(y: Int) = IntArray(box.width).also { frame.getPixels(it, 0, box.width, box.left, y, box.width, 1) }
         // Light ink on a dark panel: the middle row's middle value is panel.
@@ -956,7 +1054,12 @@ class GameTextSource @Inject constructor(
      * columns, so one stray pixel of outline does not colour a whole row.
      * Null where the box runs off the frame.
      */
-    private fun rowGradient(frame: Bitmap, box: TextBounds, margin: Int, rowMargin: Int, fromStartOnly: Boolean = false): RowGradient? {
+    private fun rowGradient(frame: Bitmap, box: TextBounds, margin: Int, wantedRowMargin: Int, fromStartOnly: Boolean = false): RowGradient? {
+        // Not past the panel the line is on: a bubble the text nearly fills
+        // — MomoTalk's 「それはよかった」 — ends within the margin, the rows
+        // sampled above and below were the white page, and the bubble was
+        // painted out white. Over art the rows outside are art anyway.
+        val rowMargin = if (fromStartOnly) wantedRowMargin else onPanelRows(frame, box, wantedRowMargin)
         val top = box.top - rowMargin
         val bottom = box.bottom + rowMargin
         val left = box.left - margin - EDGE_SAMPLE_COLUMNS
@@ -1005,6 +1108,37 @@ class GameTextSource @Inject constructor(
         }
         return RowGradient(fit(l), fit(r), margin, rowMargin)
     }
+
+    /** How many of [wanted] rows above and below [box] are still the panel its middle row is on. */
+    private fun onPanelRows(frame: Bitmap, box: TextBounds, wanted: Int): Int {
+        if (box.top - wanted - 1 < 0 || box.bottom + wanted + 1 > frame.height) return wanted
+        val own = luma(rowMiddle(frame, box, box.top + box.height / 2))
+        // Another panel, not a shade of this one: Blue Archive's dialogue
+        // box darkens toward its foot, and cut at the first shade its patches
+        // lost a third of their height.
+        fun panel(y: Int) = abs(luma(rowMiddle(frame, box, y)) - own) <= OTHER_PANEL_LUMA
+        var up = 0
+        while (up < wanted && panel(box.top - up - 2)) up++
+        var down = 0
+        while (down < wanted && panel(box.bottom + down + 1)) down++
+        return min(up, down)
+    }
+
+    /** The panel's brightness just above and just below [box]. */
+    private fun panelAround(frame: Bitmap, box: TextBounds): Pair<Double, Double> {
+        val clipped = TextBounds(
+            box.left.coerceIn(0, frame.width - 1),
+            box.top,
+            box.right.coerceIn(box.left.coerceIn(0, frame.width - 1) + 1, frame.width),
+            box.bottom,
+            box.space,
+        )
+        return luma(rowMiddle(frame, clipped, (box.top - 1).coerceIn(0, frame.height - 1))) to
+            luma(rowMiddle(frame, clipped, box.bottom.coerceIn(0, frame.height - 1)))
+    }
+
+    private fun repainted(was: Pair<Double, Double>, now: Pair<Double, Double>): Boolean =
+        abs(was.first - now.first) > PANEL_CHANGED_LUMA || abs(was.second - now.second) > PANEL_CHANGED_LUMA
 
     private fun rowMiddle(frame: Bitmap, box: TextBounds, y: Int): Int {
         val row = IntArray(box.width)
@@ -1209,6 +1343,7 @@ class GameTextSource @Inject constructor(
         /** A line's look: this grid, and how far (0..255) any cell may change and be the same. */
         const val LOOK_COLUMNS = 24
         const val LOOK_ROWS = 4
+        const val REPLACED_LOOK_LUMA = 16.0
         const val STILL_LOOK_LUMA = 12.0
 
         /** A line with this many times less ink than one over it is behind it. */
@@ -1225,6 +1360,9 @@ class GameTextSource @Inject constructor(
 
         /** How much each line moves the running stroke weight. */
         const val WEIGHT_SMOOTHING = 0.1f
+
+        /** How far the running stroke weight moves before the weight given out follows it. */
+        const val WEIGHT_HYSTERESIS = 0.02f
 
         /** Places remembered where a speaker's name has stood. */
         const val MAX_SPEAKER_SPOTS = 4
@@ -1250,6 +1388,15 @@ class GameTextSource @Inject constructor(
 
         /** How far (0..255) an end's colour may stand from the row's panel and still be panel. */
         const val EDGE_PANEL_LUMA = 30.0
+
+        /** A panel this far from the line's own is a different one: a bubble's page. */
+        const val OTHER_PANEL_LUMA = 80.0
+
+        /** How far the panel under a painted-out line may change before it is painted again. */
+        const val PANEL_CHANGED_LUMA = 10.0
+
+        /** How far a line's box may wobble and be the same line in the same place. */
+        const val STILL_PX = 4
 
         /** Columns averaged at each end of a row for its colour. */
         const val EDGE_SAMPLE_COLUMNS = 3

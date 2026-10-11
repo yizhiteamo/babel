@@ -53,4 +53,20 @@ class MomoTalkTest {
 
         assertEquals(listOf(name.text, message.text), GameLayout.joinWrapped(listOf(name, message)).map { it.text })
     }
+
+    @Test
+    fun `a right bubble's reply lines up with the bubbles on its side`() {
+        val good = line("それはよかった", 2410, 559, 314, 53, 38)
+        val what = line("どうかした?", 2454, 956, 239, 39, 39)
+
+        assertEquals(true, good in GameLayout.dialogue(listOf(good, what)))
+    }
+
+    @Test
+    fun `a sender's name is not joined into a short reply under it`() {
+        val name = line("ケイ", 1902, 943, 75, 36, 36)
+        val hai = line("はい", 1924, 1011, 79, 37, 37)
+
+        assertEquals(listOf("ケイ", "はい"), GameLayout.joinWrapped(listOf(name, hai)).map { it.text })
+    }
 }
