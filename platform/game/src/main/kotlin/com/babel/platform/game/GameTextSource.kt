@@ -1143,8 +1143,8 @@ class GameTextSource @Inject constructor(
         const val MIN_PIECE_PX = 24
         const val MIN_RECOGNISABLE_PX = 32
 
-        /** A speaker's name takes at most this much of its line: チナツ took 45%, レイジョ 61%. */
-        const val MAX_NAME_FRACTION = 0.75
+        /** A speaker's name takes at most this much of its line: チナツ took 45%, レイジョ 61%, 「玄龍門の構成員」 beside 「玄龍門」 over 75%. */
+        const val MAX_NAME_FRACTION = 0.85
         const val SPLIT_CACHE = 64
 
         /**
