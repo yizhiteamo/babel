@@ -404,7 +404,22 @@ object GameLayout {
         columns: List<ChatColumn> = emptyList(),
         senders: Set<String> = emptySet(),
         panels: Panels = ANY_PANEL,
-    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders, panels).first
+    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders, panels).first.filterNot { menuBar(it, lines) }.toSet()
+
+    /**
+     * A label in a row of four labels or more of one size: a menu bar. Never
+     * dialogue, however it lines up — the home screen's bar under a chat
+     * window was translated on the frames where the window was redrawn.
+     */
+    private fun menuBar(line: GameLine, lines: List<GameLine>): Boolean =
+        isLabel(line.text) && lines.count { other ->
+            other !== line && isLabel(other.text) && sameRow(other.bounds, line.bounds) &&
+                // Loosely one size: its items' ink measured 32 to 41 px.
+                min(other.typeHeight, line.typeHeight).toDouble() / max(other.typeHeight, line.typeHeight) >= MENU_SIZE_RATIO
+        } >= MENU_BAR_OTHERS
+
+    private const val MENU_BAR_OTHERS = 3
+    private const val MENU_SIZE_RATIO = 0.75
 
     /**
      * A column of a chat's messages: their common left edge (or right, for
@@ -430,7 +445,7 @@ object GameLayout {
     }
 
     /** The columns [spoken] lines stand in, three lines or more to a column. */
-    fun chatColumns(spoken: Collection<GameLine>): List<ChatColumn> {
+    fun chatColumns(spoken: Collection<GameLine>, messages: Set<GameLine> = emptySet()): List<ChatColumn> {
         val out = mutableListOf<ChatColumn>()
         for (right in listOf(false, true)) {
             val left = spoken.sortedBy { if (right) it.bounds.right else it.bounds.left }
@@ -448,7 +463,7 @@ object GameLayout {
                 // And a sentence among them: the home screen's icon labels
                 // down its left side lined up as well as any chat, and once
                 // remembered as one were translated with the chat open.
-                if (sized.size < MIN_COLUMN_LINES || sized.count { isSentence(it.text) } < MIN_COLUMN_SENTENCES) continue
+                if (sized.size < MIN_COLUMN_LINES || sized.count { isSentence(it.text) || it in messages } < MIN_COLUMN_SENTENCES) continue
                 val edge = sized.map { if (right) it.bounds.right else it.bounds.left }.sorted()[sized.size / 2]
                 out += ChatColumn(edge, right, type, sized.minOf { it.bounds.top }, sized.maxOf { it.bounds.bottom })
             }
@@ -503,6 +518,24 @@ object GameLayout {
 
     private const val MENU_GAP_LINES = 4
 
+    /**
+     * The player's side of a chat: a line in a message's type well to the
+     * right of the chat's left column, within its stretch. 「楽しかったよね」,
+     * one right bubble on its screen, had no column of its own to be in.
+     */
+    private fun playersReply(line: GameLine, columns: List<ChatColumn>): Boolean {
+        if (isControlWord(line.text) || line.text.any { it.isDigit() }) return false
+        return columns.any { c ->
+            !c.rightAligned && line.bounds.left > c.edge + c.typeHeight * REPLY_OFFSET_LINES &&
+                line.bounds.left < c.edge + c.typeHeight * REPLY_REACH_LINES &&
+                min(line.typeHeight, c.typeHeight).toDouble() / max(line.typeHeight, c.typeHeight) >= COLUMN_SIZE_RATIO &&
+                line.bounds.top >= c.top - c.typeHeight && line.bounds.bottom < c.bottom + c.typeHeight * COLUMN_SPAN_SLACK_LINES
+        }
+    }
+
+    private const val REPLY_OFFSET_LINES = 4
+    private const val REPLY_REACH_LINES = 22
+
     /** Whether, if either line is in a chat's column, both are in it. */
     private fun sameColumnIfAny(a: GameLine, b: GameLine, columns: List<ChatColumn>): Boolean {
         val column = columns.firstOrNull { it.holds(a) || it.holds(b) } ?: return true
@@ -551,7 +584,8 @@ object GameLayout {
         val voiced = underRepeatedNames(lines)
         val core = lines.filter { line ->
             isSentence(line.text) || places.any { inside(line.bounds, it) } || line in voiced ||
-                (!isControlWord(line.text) && columns.any { it.holds(line) })
+                (!isControlWord(line.text) && columns.any { it.holds(line) }) ||
+                playersReply(line, columns)
         }.toMutableSet()
         do {
             val more = lines.filter { line ->

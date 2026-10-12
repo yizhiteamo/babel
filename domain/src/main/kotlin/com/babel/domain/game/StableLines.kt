@@ -66,6 +66,14 @@ class StableLines {
          * translation stayed over it, and the next line typed out under it.
          */
         stillInked: (GameLine) -> Boolean = { true },
+        /**
+         * Whether a line stood still on screen across two pictures a moment
+         * apart, as the caller saw. Such a line is not typing out or sliding
+         * in, and is published on the first reading instead of the second:
+         * a list scrolled to a stop waited a whole reading, a second or more,
+         * for words that were not going to change.
+         */
+        stillOnScreen: (GameLine) -> Boolean = { false },
     ): Update {
         val settled = mutableListOf<Settled>()
         val gone = mutableListOf<String>()
@@ -76,7 +84,7 @@ class StableLines {
         for (line in lines) {
             val before = unmatched.firstOrNull { samePlace(it.line.bounds, line.bounds) }
             if (before == null) {
-                next += fresh(line, now, settled)
+                next += fresh(line, now, settled, stillOnScreen)
                 continue
             }
             unmatched -= before
@@ -86,7 +94,7 @@ class StableLines {
                 // speaker's was and covered this one's name.
                 gone += before.publishedKey!!
                 why[before.publishedKey!!] = Why.MOVED
-                next += fresh(line, now, settled)
+                next += fresh(line, now, settled, stillOnScreen)
                 continue
             }
             if (before.publishedKey != null && lostItsEnd(before.line.text, line.text)) {
@@ -163,7 +171,7 @@ class StableLines {
                     replaced += Replaced(before.line, line.text, now)
                 }
                 val stillGrowing = line.text.startsWith(before.line.text)
-                next += if (stillGrowing) Seen(line, before.firstSeenAt, publishedKey = null) else fresh(line, now, settled)
+                next += if (stillGrowing) Seen(line, before.firstSeenAt, publishedKey = null) else fresh(line, now, settled, stillOnScreen)
             }
         }
 
@@ -327,9 +335,10 @@ class StableLines {
         while (knownLabels.size > MAX_KNOWN_LABELS) knownLabels.remove(knownLabels.first())
     }
 
-    private fun fresh(read: GameLine, now: Long, settled: MutableList<Settled>): Seen {
+    private fun fresh(read: GameLine, now: Long, settled: MutableList<Settled>, stillOnScreen: (GameLine) -> Boolean = { false }): Seen {
         val line = snapped(read)
-        if (line.text !in knownLabels) return Seen(line, now, publishedKey = null)
+        if (line.text !in knownLabels && !stillOnScreen(read)) return Seen(line, now, publishedKey = null)
+        if (line.text !in knownLabels) remember(line)
         noteReturn(line, now)
         val key = keyOf(line)
         settled += Settled(key, line, 0)

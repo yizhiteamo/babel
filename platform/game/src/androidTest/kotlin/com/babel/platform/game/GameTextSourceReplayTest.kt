@@ -40,6 +40,10 @@ class GameTextSourceReplayTest {
                 override suspend fun latestFrame(): Bitmap? = null
                 override val supportsWindowFrames = true
                 override suspend fun windowFrame(windowId: Int): Bitmap? {
+                    // Pictures are taken while the last is read; paced slower
+                    // than a reading takes, so every one of them is read, as
+                    // the measurement assumes.
+                    if (served > 0) kotlinx.coroutines.delay(FRAME_INTERVAL_MS)
                     served++
                     return still.copy(Bitmap.Config.ARGB_8888, false)
                 }
@@ -67,5 +71,6 @@ class GameTextSourceReplayTest {
 
     private companion object {
         const val FRAMES = 4
+        const val FRAME_INTERVAL_MS = 2_000L
     }
 }

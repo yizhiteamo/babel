@@ -264,6 +264,15 @@ class StableLinesTest {
         assertEquals("リオ(臨戦)", lines.next(listOf(line("リオ(臨単戦)", left = 1500)), now = 666).settled.single().line.text)
     }
 
+    @Test
+    fun `a line that stood still on screen is published on its first reading`() {
+        val lines = StableLines()
+
+        val first = lines.next(listOf(line("ゆっくり休んでちょうだい")), now = 0, stillOnScreen = { true })
+
+        assertEquals(1, first.settled.size)
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {

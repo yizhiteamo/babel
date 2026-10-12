@@ -10,7 +10,9 @@ package com.babel.domain.translation
 data class CoordinatorConfig(
     val maxRetries: Int = 2,
     val retryBaseDelayMillis: Long = 300,
-    val maxConcurrentTranslations: Int = 4,
+    // Eight: a game's list scrolled to a stop shows ten new lines at once,
+    // and at four the last of them waited two seconds for a slot.
+    val maxConcurrentTranslations: Int = 8,
 ) {
     init {
         require(maxRetries >= 0) { "maxRetries must not be negative" }

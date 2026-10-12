@@ -34,8 +34,8 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -131,30 +131,101 @@ class GameTextSource @Inject constructor(
         packageName: String,
         stillWanted: () -> Boolean,
     ) = coroutineScope {
-        // The next picture is taken while this one is read. The frame source
-        // waits out the platform's interval itself, so this asks as soon as it
-        // may and no sooner.
-        var next = async { frames.windowFrame(windowId) }
-        while (stillWanted()) {
-            val frame = next.await()
-            if (!stillWanted()) {
-                frame?.recycle()
-                break
+        // Pictures are taken all along, as fast as the platform allows, and
+        // each is looked at at once for translations whose place it no longer
+        // shows ([withdrawReplaced]); the recogniser reads the latest one when
+        // it is free. Taken while the last was read and read after, a picture
+        // was up to 1.6 s old — a list flung under its translations kept them
+        // for 2.4 s, and the reading after it was of a list still moving.
+        val latest = java.util.concurrent.atomic.AtomicReference<Shot?>(null)
+        val fresh = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+        val taking = launch {
+            var before: Small? = null
+            var takenAt = 0L
+            while (stillWanted()) {
+                // Not as fast as the platform allows: each picture is 18 MB,
+                // and taken three times a second the recogniser's readings
+                // slowed from one second to two and more.
+                val wait = WATCH_INTERVAL_MS - (System.currentTimeMillis() - takenAt)
+                if (wait > 0) kotlinx.coroutines.delay(wait)
+                takenAt = System.currentTimeMillis()
+                val frame = frames.windowFrame(windowId) ?: continue
+                runCatching { withdrawReplaced(frame) }
+                val small = smallOf(frame)
+                newest = small
+                latest.getAndSet(Shot(frame, small, before))?.frame?.recycle()
+                before = small
+                fresh.trySend(Unit)
             }
-            next = async { frames.windowFrame(windowId) }
-            if (frame == null) continue
+            fresh.close()
+        }
+        for (signal in fresh) {
+            if (!stillWanted()) break
+            val shot = latest.getAndSet(null) ?: continue
             try {
-                readOne(frame, windowBounds, packageName)
+                readOne(
+                    shot.frame, windowBounds, packageName,
+                    stillOnScreen = { line -> stillBetween(shot.before, shot.small, line.bounds) },
+                    // Taken since: a conversation picked while this one was
+                    // read showed the last one's bubbles translated over the
+                    // new for a second, published from a picture already gone.
+                    unchangedSince = { box -> newest.let { it == null || it === shot.small || stillBetween(shot.small, it, box) } },
+                )
             } finally {
-                frame.recycle()
+                shot.frame.recycle()
             }
         }
-        next.cancel()
-        runCatching { next.await()?.recycle() }
+        taking.cancel()
+        runCatching { taking.join() }
+        latest.getAndSet(null)?.frame?.recycle()
         Unit
     }
 
-    private suspend fun readOne(frame: Bitmap, windowBounds: TextBounds, packageName: String) {
+    /** The small copy of the newest picture taken, read or not. */
+    @Volatile
+    private var newest: Small? = null
+
+    /** A picture, a small copy of its brightness, and the small copy of the picture taken before it. */
+    private class Shot(val frame: Bitmap, val small: Small, val before: Small?)
+
+    private class Small(val width: Int, val height: Int, val luma: IntArray, val scale: Int)
+
+    private fun smallOf(frame: Bitmap): Small {
+        val w = (frame.width / SMALL_SCALE).coerceAtLeast(1)
+        val h = (frame.height / SMALL_SCALE).coerceAtLeast(1)
+        val row = IntArray(frame.width)
+        val out = IntArray(w * h)
+        for (y in 0 until h) {
+            frame.getPixels(row, 0, frame.width, 0, y * SMALL_SCALE, frame.width, 1)
+            for (x in 0 until w) out[y * w + x] = luma(row[x * SMALL_SCALE]).toInt()
+        }
+        return Small(w, h, out, SMALL_SCALE)
+    }
+
+    /** Whether [box] looks the same in two pictures a moment apart. */
+    private fun stillBetween(before: Small?, now: Small, box: TextBounds): Boolean {
+        if (before == null || before.width != now.width || before.height != now.height) return false
+        val l = (box.left / now.scale).coerceIn(0, now.width - 1)
+        val r = (box.right / now.scale).coerceIn(l + 1, now.width)
+        val t = (box.top / now.scale).coerceIn(0, now.height - 1)
+        val b = (box.bottom / now.scale).coerceIn(t + 1, now.height)
+        var sum = 0L
+        var n = 0
+        for (y in t until b) for (x in l until r) {
+            val i = y * now.width + x
+            sum += abs(before.luma[i] - now.luma[i])
+            n++
+        }
+        return n > 0 && sum.toDouble() / n <= STILL_SMALL_LUMA
+    }
+
+    private suspend fun readOne(
+        frame: Bitmap,
+        windowBounds: TextBounds,
+        packageName: String,
+        stillOnScreen: (GameLine) -> Boolean = { false },
+        unchangedSince: (TextBounds) -> Boolean = { true },
+    ) {
         val started = System.currentTimeMillis()
         val grid = gridOf(frame)
         val band = ChangedBand.of(lastGrid, grid, GRID_COLUMNS)
@@ -166,7 +237,6 @@ class GameTextSource @Inject constructor(
             grid.indices.sumOf { abs(grid[it] - before[it]) }.toDouble() / grid.size > SCENE_CHANGE_LUMA
         } ?: false
 
-        if (band != null) withdrawReplaced(frame)
 
         val read: List<GameLine>
         val how: String
@@ -245,7 +315,7 @@ class GameTextSource @Inject constructor(
 
         val dialogue = GameLayout.dialogue(kept, places, columns, senders, panels)
         val speakers = GameLayout.speakers(kept, places, columns, senders, panels)
-        for (column in GameLayout.chatColumns(dialogue - speakers)) {
+        for (column in GameLayout.chatColumns(dialogue - speakers, GameLayout.underRepeatedNames(kept))) {
             val i = chatColumns.indexOfFirst { it.first.sameAs(column) }
             if (i < 0) chatColumns += column to now else chatColumns[i] = chatColumns[i].first.merged(column) to now
         }
@@ -258,9 +328,9 @@ class GameTextSource @Inject constructor(
         // came out half-covered (「合同火力演習」 as 「大决战」 and 「演习」 over
         // what was left of it), came and went as the art moved, and stood
         // between the player and the buttons — for words learnt in an hour.
-        val shown = kept.filter { it in dialogue }
+        val shown = kept.filter { it in dialogue && unchangedSince(it.bounds) }
         lock.withLock {
-            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged) { gone ->
+            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged, stillOnScreen = stillOnScreen, stillInked = { gone ->
                 // Still there only if its place still holds ink, and not other
                 // words: a new speaker's name read in the tab before it is
                 // kept left the last speaker's translation over it for four
@@ -271,7 +341,7 @@ class GameTextSource @Inject constructor(
                     // into its place, nothing read there matched it, and its
                     // translation stood over them for four frames — 3 s.
                     !replacedSince(frame, gone.bounds)
-            }
+            })
             update.gone.forEach { erased.remove(it) }
             update.gone.forEach { publishedLooks.remove(it) }
             val gone = update.gone.mapNotNull { published.remove(it) }
@@ -1815,6 +1885,13 @@ class GameTextSource @Inject constructor(
 
 
         const val MAX_SENDERS = 32
+
+        /** The small copy of each picture, at this fraction, and how far its line may move and be still. */
+        const val SMALL_SCALE = 4
+
+        /** How often a picture is taken to watch for translations to withdraw, at most. */
+        const val WATCH_INTERVAL_MS = 1000L
+        const val STILL_SMALL_LUMA = 2.0
 
         /** How far before a chat column's edge a message's patch starts. */
         const val COLUMN_START_SLACK_PX = 2

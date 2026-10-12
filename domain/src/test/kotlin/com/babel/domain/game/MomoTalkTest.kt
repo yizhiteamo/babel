@@ -156,4 +156,28 @@ class MomoTalkTest {
         assertEquals(false, GameLayout.isSentence("お知らせ、"))
         assertEquals(true, GameLayout.isSentence("居場所は送っておくから、"))
     }
+
+    @Test
+    fun `a menu bar is never dialogue`() {
+        val bar = listOf("編成" to 1102, "ソーシャル" to 1269, "製造" to 1608, "ショップ" to 1809, "募集" to 2118)
+            .map { (t, x) -> line(t, x, 1345, 40 * t.length, 40, 34) }
+        val bubble = line("とにかく、今日は手伝ってくれてありが", 1891, 1272, 802, 46, 40)
+
+        val dialogue = GameLayout.dialogue(bar + bubble)
+
+        assertEquals(setOf(bubble), dialogue)
+    }
+
+    @Test
+    fun `a lone reply on the player's side of a chat is dialogue`() {
+        val seen = listOf(
+            line("はあ、本当にもう", 1924, 268, 328, 45, 41),
+            line("寮に着きました", 1922, 443, 292, 41, 41),
+            line("デイリーやるの忘れてました!", 1923, 1129, 571, 41, 40),
+        )
+        val columns = GameLayout.chatColumns(seen)
+        val reply = line("楽しかったよね", 2409, 699, 293, 41, 40)
+
+        assertEquals(true, reply in GameLayout.dialogue(listOf(reply), columns = columns))
+    }
 }
