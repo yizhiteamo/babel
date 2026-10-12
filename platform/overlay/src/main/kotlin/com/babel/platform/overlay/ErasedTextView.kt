@@ -70,7 +70,7 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
 
         centred = style.centred
         text = translation.text
-        configureSize(glyph, translation.bounds.height)
+        configureSize(glyph, translation.bounds.height, translation.bounds.width - 2 * margin, translation.bounds.height - 2 * backdrop.rowMarginPx)
     }
 
     /**
@@ -167,7 +167,7 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
      * and shrunk only as far as [MIN_SIZE_RATIO] of it — further and it stops
      * reading as the game's own text; past that it is cut with "…".
      */
-    private fun configureSize(glyphPx: Int, roomPx: Int) {
+    private fun configureSize(glyphPx: Int, roomPx: Int, widthPx: Int, originalPx: Int) {
         val size = (glyphPx / GLYPH_TO_TEXT_SIZE).toInt().coerceAtLeast(MIN_TEXT_PX + 1)
         val smallest = (size * MIN_SIZE_RATIO).toInt().coerceIn(MIN_TEXT_PX, size - 1)
         // Lines as far apart as a game sets them, not as the fallback font
@@ -177,13 +177,34 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
         // bubbles round it.
         val spacing = TYPE_PITCH * GLYPH_TO_TEXT_SIZE / FONT_LINE_HEIGHT
         maxLines = (roomPx / (smallest * FONT_LINE_HEIGHT * spacing)).toInt().coerceAtLeast(1)
+        // An original of one line stays one line while it fits at all: given
+        // room for two, a short bubble's 「嗯——」 was broken after its first
+        // character.
+        val originalLines = (originalPx / (glyphPx * TYPE_PITCH)).let { kotlin.math.round(it).toInt() }.coerceAtLeast(1)
+        if (originalLines == 1 && maxLines > 1) {
+            paint.textSize = smallest.toFloat()
+            if (widthPx <= 0 || paint.measureText(text.toString()) <= widthPx) maxLines = 1
+        }
         setLineSpacing(0f, if (maxLines == 1) 1f else spacing)
         // One line sits where the original's did, in the middle of its box:
         // set from the top, a smaller affiliation beside a larger name came
         // out low, across the rule under the name.
         val horizontal = if (centred) Gravity.CENTER_HORIZONTAL else Gravity.START
         gravity = if (maxLines == 1) Gravity.CENTER_VERTICAL or horizontal else Gravity.TOP or horizontal
-        setAutoSizeTextTypeUniformWithConfiguration(smallest, size, 1, TypedValue.COMPLEX_UNIT_PX)
+        if (maxLines > 1) {
+            setAutoSizeTextTypeUniformWithConfiguration(smallest, size, 1, TypedValue.COMPLEX_UNIT_PX)
+            return
+        }
+        // One line: sized by its width alone. Fitted by the system to the
+        // patch's height as well, a short bubble's 「老师」 — the patch held
+        // tight to the bubble, a font's line taller than its glyphs — came
+        // out at two thirds of the size of every bubble round it, though its
+        // glyphs had room.
+        setAutoSizeTextTypeWithDefaults(AUTO_SIZE_TEXT_TYPE_NONE)
+        paint.textSize = size.toFloat()
+        val wide = paint.measureText(text.toString())
+        val fitted = if (widthPx > 0 && wide > widthPx) (size * widthPx / wide).toInt().coerceAtLeast(smallest) else size
+        setTextSize(TypedValue.COMPLEX_UNIT_PX, fitted.toFloat())
     }
 
     private fun contrastingInk(backdrop: RowGradient): Int =

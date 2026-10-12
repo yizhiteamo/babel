@@ -153,7 +153,12 @@ object GameLayout {
                     // a line wraps where it runs out of room. A chat list's
                     // 「カスミ(水着)」 over its last message was joined into it.
                     // MomoTalk's 「ケイ」 ended 26 px short of the 「はい」 under it.
-                    !(isLabel(last.text) && last.bounds.right < line.bounds.right - line.typeHeight / 2)
+                    !(isLabel(last.text) && last.bounds.right < line.bounds.right - line.typeHeight / 2) &&
+                    // Nor two labels: a line wraps when it is long, and two
+                    // short ones stacked are two things — a chat's 「んー」 and
+                    // 「先生」, a bubble each, came back as one translation
+                    // drawn across both.
+                    !(isLabel(last.text) && isLabel(line.text))
             }
             if (i < 0) {
                 out += line to line
@@ -345,9 +350,14 @@ object GameLayout {
             b.text == line.text && abs(b.bounds.left - line.bounds.left) <= line.bounds.height / 2 &&
                 abs(b.bounds.top - line.bounds.top) <= line.bounds.height / 2
         }
+        // Never an interface word or anything with digits, kept or staying:
+        // read while the chat window was opening, 「90 MAX 食MomoTalk ?」 and
+        // the player's name stood over each other like a speaker over a line,
+        // and then stayed, frame after frame, for reading the same.
         return lines.filter { line ->
             line in kept || (
-                onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
+                line !in controls && line.text.none { it.isDigit() } &&
+                    onArtWithin(line, SPEAKER_BACKDROP_ALLOWANCE) &&
                     ((kept + silences).any { below -> speaks(line, below) } || stays(line))
                 )
         }
@@ -367,8 +377,12 @@ object GameLayout {
      * name above it. Judged by its words alone, 「塩基配列」 was a label; its
      * window let a long press through and the game moved on a line.
      */
-    fun dialogue(lines: List<GameLine>, places: List<TextBounds> = emptyList(), columns: List<ChatColumn> = emptyList()): Set<GameLine> =
-        spokenAndNames(lines, places, columns).first
+    fun dialogue(
+        lines: List<GameLine>,
+        places: List<TextBounds> = emptyList(),
+        columns: List<ChatColumn> = emptyList(),
+        senders: Set<String> = emptySet(),
+    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders).first
 
     /**
      * A column of a chat's messages: their common left edge (or right, for
@@ -409,7 +423,10 @@ object GameLayout {
                 if (g.size < MIN_COLUMN_LINES) continue
                 val type = g.map { it.typeHeight }.sorted()[g.size / 2]
                 val sized = g.filter { min(it.typeHeight, type).toDouble() / max(it.typeHeight, type) >= SAME_SIZE_RATIO }
-                if (sized.size < MIN_COLUMN_LINES) continue
+                // And a sentence among them: the home screen's icon labels
+                // down its left side lined up as well as any chat, and once
+                // remembered as one were translated with the chat open.
+                if (sized.size < MIN_COLUMN_LINES || sized.none { isSentence(it.text) }) continue
                 val edge = sized.map { if (right) it.bounds.right else it.bounds.left }.sorted()[sized.size / 2]
                 out += ChatColumn(edge, right, type, sized.minOf { it.bounds.top }, sized.maxOf { it.bounds.bottom })
             }
@@ -454,10 +471,27 @@ object GameLayout {
      * bubble too, and taken for a name it was sent as one — its translation
      * kept as a name's, and set at a name's size, smaller than the bubbles.
      */
-    fun speakers(lines: List<GameLine>, places: List<TextBounds> = emptyList(), columns: List<ChatColumn> = emptyList()): Set<GameLine> =
-        spokenAndNames(lines, places, columns).second
+    fun speakers(
+        lines: List<GameLine>,
+        places: List<TextBounds> = emptyList(),
+        columns: List<ChatColumn> = emptyList(),
+        /** Names seen standing over more than one run of messages lately; see [repeatedNames]. */
+        senders: Set<String> = emptySet(),
+    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders).second
 
-    private fun spokenAndNames(lines: List<GameLine>, places: List<TextBounds>, columns: List<ChatColumn>): Pair<Set<GameLine>, Set<GameLine>> {
+    /** Labels standing over two runs of lines or more on this screen: a chat's senders. */
+    fun repeatedNames(lines: List<GameLine>): Set<String> =
+        lines.filter { isLabel(it.text) && !isControlWord(it.text) && it.text.none { c -> c.isDigit() } }
+            .groupBy { it.text }
+            .filter { (_, same) -> same.size >= 2 && same.count { name -> lines.any { it !== name && it.text != name.text && speaksAbove(name.bounds, it.bounds) } } >= 2 }
+            .keys
+
+    private fun spokenAndNames(
+        lines: List<GameLine>,
+        places: List<TextBounds>,
+        columns: List<ChatColumn>,
+        senders: Set<String>,
+    ): Pair<Set<GameLine>, Set<GameLine>> {
         // Or anything where dialogue has been: a game's dialogue box and its
         // name tab ([conversationPlaces]). 「うん」 says nothing a sentence
         // would, but it is a line someone speaks, in the box they speak in.
@@ -498,8 +532,22 @@ object GameLayout {
             // 「未読メッセージ(337)」 stood over its first entry as a name does.
             line !in spoken && isLabel(line.text) && line.text.none { it.isDigit() } && spoken.any { d -> speaksAbove(line.bounds, d.bounds) }
         }
+        // In a chat's column, a label is a message unless the same words stand
+        // over another run of messages too: 「待ってください」, 「先生」 over the
+        // next bubble were taken for names and set at a name's size.
+        val repeated = repeatedNames(lines) + senders
+        // Over another run in the same column, that is: a chat list's entry
+        // for 「ケイ」 is one name among the list's, set like them, though she
+        // stands over three runs of the chat beside it.
+        fun sender(line: GameLine): Boolean {
+            val column = columns.firstOrNull { it.holds(line) } ?: return true
+            val same = lines.filter { it.text == line.text }
+            fun inColumn(other: GameLine) = abs((if (column.rightAligned) other.bounds.right else other.bounds.left) - column.edge) <= other.typeHeight
+            return if (same.size >= 2) same.count(::inColumn) >= 2 else line.text in repeated
+        }
         val speakers = (core + names).filter { line ->
-            line !in aligned && line !in voiced && isLabel(line.text) && spoken.any { d -> d !== line && speaksAbove(line.bounds, d.bounds) }
+            line !in aligned && line !in voiced && isLabel(line.text) && sender(line) &&
+                spoken.any { d -> d !== line && speaksAbove(line.bounds, d.bounds) }
         }.toSet()
         return (spoken + names) to speakers
     }
@@ -637,7 +685,11 @@ object GameLayout {
     /** A sentence's punctuation, or more letters than a label has. */
     fun isSentence(text: String): Boolean =
         // A badge's 「開催中!」 has a sentence's mark and a label's length.
-        (punctuated(text) && text.count { it.isLetter() } >= MIN_SENTENCE_LETTERS) ||
+        // Nor a label with a comma read after it: 「お知らせ、」, the home
+        // screen's notice button with a speck the recogniser took for 「、」.
+        (punctuated(text) && text.count { it.isLetter() } >= MIN_SENTENCE_LETTERS && !strayComma(text)) ||
+            // A question: 「バグ？」 is asked, and no interface word asks.
+            ((text.contains('?') || text.contains('？')) && text.count { it.isLetter() } >= 2) ||
             // Trailing off: 「はああ……」, 「くっ……」 are a breath, not a label —
             // no interface word is set with an ellipsis after two letters.
             (ELLIPSES.any { it in text } && text.count { it.isLetter() } >= 2) ||
@@ -654,6 +706,16 @@ object GameLayout {
     private fun punctuated(text: String): Boolean =
         text.any { it in SENTENCE_MARKS && it !in BRACKETS } ||
             ('「' in text && '」' in text) || ('『' in text && '』' in text)
+
+    /** A short word whose only mark is a comma after it. */
+    private fun strayComma(text: String): Boolean {
+        val t = text.trimEnd()
+        if (t.isEmpty() || t.last() !in "、,，") return false
+        val body = t.dropLast(1)
+        return !punctuated(body) && body.count { it.isLetter() } <= MAX_STRAY_COMMA_LETTERS
+    }
+
+    private const val MAX_STRAY_COMMA_LETTERS = 6
 
     private const val BRACKETS = "「」『』"
     private val ELLIPSES = listOf("…", "‥", "...")

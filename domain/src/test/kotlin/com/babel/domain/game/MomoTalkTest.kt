@@ -95,7 +95,7 @@ class MomoTalkTest {
         val dialogue = GameLayout.dialogue(kept, columns = columns)
 
         assertEquals(true, ta in dialogue && ima in dialogue)
-        assertEquals(setOf(name), GameLayout.speakers(kept, columns = columns))
+        assertEquals(setOf(name), GameLayout.speakers(kept, columns = columns, senders = setOf("ケイ")))
     }
 
     @Test
@@ -125,5 +125,33 @@ class MomoTalkTest {
         val dialogue = GameLayout.dialogue(listOf(newest, preview, title, name, message))
 
         assertEquals(false, newest in dialogue || title in dialogue)
+    }
+
+    @Test
+    fun `a label in a chat's column is a message unless it is a sender`() {
+        val seen = listOf(
+            line("寮に着きました", 1922, 443, 292, 41, 41),
+            line("はい", 1924, 739, 76, 37, 37),
+            line("デイリーやるの忘れてました!", 1923, 1129, 571, 41, 40),
+        )
+        val columns = GameLayout.chatColumns(seen)
+        val k1 = line("ケイ", 1902, 564, 75, 36, 36)
+        val un = line("ん?", 1921, 626, 72, 43, 38)
+        val wait = line("待ってください", 1921, 722, 291, 46, 40)
+        val k2 = line("ケイ", 1902, 831, 74, 38, 35)
+        val hmm = line("んー", 1923, 901, 80, 38, 38)
+        val sensei = line("先生", 1921, 997, 82, 41, 41)
+        val free = line("いま暇してますよね?", 1923, 1096, 406, 40, 40)
+        val lines = listOf(k1, un, wait, k2, hmm, sensei, free)
+
+        val speakers = GameLayout.speakers(GameLayout.select(lines, 1440, 3200, columns = columns), columns = columns)
+
+        assertEquals(setOf(k1, k2), speakers)
+    }
+
+    @Test
+    fun `a button with a speck read as a comma is not a sentence`() {
+        assertEquals(false, GameLayout.isSentence("お知らせ、"))
+        assertEquals(true, GameLayout.isSentence("居場所は送っておくから、"))
     }
 }

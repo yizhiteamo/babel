@@ -85,6 +85,9 @@ class GameTextSource @Inject constructor(
     private var otherVotes = 0.0
     private var lastSelected: List<GameLine> = emptyList()
 
+    /** A chat's senders seen lately; see [GameLayout.repeatedNames]. */
+    private val senders = LinkedHashSet<String>()
+
     /** A chat's columns seen lately, and when; see [GameLayout.ChatColumn]. */
     private val chatColumns = mutableListOf<Pair<GameLayout.ChatColumn, Long>>()
 
@@ -181,34 +184,11 @@ class GameTextSource @Inject constructor(
                 margin = cellHeight.toInt() / 2,
                 frameHeight = frame.height,
             )
-            // And only the parts that changed, when they are a part of the
-            // frame: a chat scrolled in its own column beside a list that did
-            // not move, the home screen's art animating at the frame's ends,
-            // and all 56 lines of the screen were read again every frame —
-            // up to 1.9 s each, the old layout standing all along.
-            val cellWidth = frame.width.toFloat() / GRID_COLUMNS
-            val boxes = ChangedBand.regions(lastGrid, grid, GRID_COLUMNS, gap = REGION_GAP_CELLS).map { region ->
-                ChangedBand.widenedBox(
-                    lastLines,
-                    ((region.columns.first - BAND_MARGIN_CELLS) * cellWidth).toInt(),
-                    ((region.rows.first - BAND_MARGIN_CELLS) * cellHeight).toInt(),
-                    ((region.columns.last + 1 + BAND_MARGIN_CELLS) * cellWidth).toInt(),
-                    ((region.rows.last + 1 + BAND_MARGIN_CELLS) * cellHeight).toInt(),
-                    marginX = cellWidth.toInt(),
-                    marginY = cellHeight.toInt() / 2,
-                    frameWidth = frame.width,
-                    frameHeight = frame.height,
-                )
-            }
-            val boxArea = boxes.sumOf { (it[2] - it[0]).toLong() * (it[3] - it[1]) }
-            val fresh = if (boxes.isNotEmpty() && boxArea < frame.width.toLong() * frame.height * PART_AREA_FRACTION) {
-                how = "${boxes.size} boxes, ${boxArea * 100 / (frame.width.toLong() * frame.height)}%"
-                var merged = lastLines
-                for ((l, t, r, b) in boxes.map { listOf(it[0], it[1], it[2], it[3]) }) {
-                    merged = ChangedBand.mergeBox(merged, recognise(frame, t, b, l, r), l, t, r, b)
-                }
-                frontLayer(frame, merged)
-            } else if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
+            // Not cut to the changed columns as well: tried, and a box
+            // through a chat list's avatar was read with the avatar's edge as
+            // part of the name beside it, which then matched nothing and was
+            // left untranslated. A band runs the frame's width.
+            val fresh = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
                 how = "whole"
                 frontLayer(frame, recognise(frame, 0, frame.height))
             } else {
@@ -255,10 +235,12 @@ class GameTextSource @Inject constructor(
         if (sceneChanged) chatColumns.clear()
         chatColumns.removeAll { (_, at) -> now - at > CONVERSATION_KEPT_MS }
         val columns = chatColumns.map { it.first }
-        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns)))
+        senders += GameLayout.repeatedNames(selected)
+        while (senders.size > MAX_SENDERS) senders.remove(senders.first())
+        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns, senders)))
 
-        val dialogue = GameLayout.dialogue(kept, places, columns)
-        val speakers = GameLayout.speakers(kept, places, columns)
+        val dialogue = GameLayout.dialogue(kept, places, columns, senders)
+        val speakers = GameLayout.speakers(kept, places, columns, senders)
         for (column in GameLayout.chatColumns(dialogue - speakers)) {
             val i = chatColumns.indexOfFirst { it.first.sameAs(column) }
             if (i < 0) chatColumns += column to now else chatColumns[i] = chatColumns[i].first.merged(column) to now
@@ -295,11 +277,22 @@ class GameTextSource @Inject constructor(
                 logger.debug(TAG, "withdrawn " + update.gone.joinToString { "${it.substringAfterLast('@')} ${update.why[it]}" })
             }
 
-            fun elementOf(key: String, line: GameLine, conversational: Boolean, speaker: Boolean): TextElement {
+            val roles = HashMap<TextElementId, Boolean>()
+            fun elementOf(key: String, read0: GameLine, conversational: Boolean, speaker: Boolean): TextElement {
+                // A message in a chat's column starts at the column, not where
+                // the recogniser's box did: 「んー」's box began on its bubble's
+                // tail, and its translation was set out past the bubble.
+                val column = if (speaker) null else chatColumns.firstOrNull { (c, _) -> !c.rightAligned && c.holds(read0) }?.first
+                val line = if (column != null && read0.bounds.left < column.edge - read0.typeHeight / 4) {
+                    read0.copy(bounds = TextBounds(column.edge - COLUMN_START_SLACK_PX, read0.bounds.top, read0.bounds.right, read0.bounds.bottom, read0.bounds.space))
+                } else {
+                    read0
+                }
                 // Every line read, not only those kept: a name left untranslated
                 // still has ink an affiliation's patch must not grow into.
                 val (inked, look) = lookOf(frame, line, read, speaker)
                 val element = toElement(key, inked, look, conversational, windowBounds, packageName, speaker = speaker)
+                roles[element.id] = speaker
                 lookOf(frame, line.bounds)?.let { publishedLooks[key] = line.bounds to it }
                 if (element.style.backdrop != null) {
                     erased[key] = Erased(line, conversational, speaker, panelAround(frame, line.bounds))
@@ -330,7 +323,7 @@ class GameTextSource @Inject constructor(
             // Every size settling now is seen before any is given out: lines
             // settle together, and the first set its size before the tallest
             // of its kind had been measured.
-            update.settled.forEach { steadySize(it.line in speakers, it.line.typeHeight) }
+            update.settled.forEach { steadySize(it.line in speakers, it.line.typeHeight, emOf(it.line)) }
             val upserted = repainted + update.settled.map { settled ->
                 val element = elementOf(
                     settled.key,
@@ -352,7 +345,13 @@ class GameTextSource @Inject constructor(
                 )
                 element
             }
-            if (upserted.isNotEmpty()) events.emit(TextSourceEvent.Upserted(upserted))
+            // Every line of the batch at its kind's weight as it stands after
+            // all of them were measured, not as it stood when each was.
+            val weighed = upserted.map { e ->
+                val w = roles[e.id]?.let(::weightOf)
+                if (w == null || e.style.strokeWeight == w) e else e.copy(style = e.style.copy(strokeWeight = w))
+            }
+            if (weighed.isNotEmpty()) events.emit(TextSourceEvent.Upserted(weighed))
         }
         logger.debug(TAG, "read $how: ${read.size} lines, kept ${kept.size}, in ${readMs}ms")
         // What was left out and why, as numbers: where a line was, how tall,
@@ -576,11 +575,10 @@ class GameTextSource @Inject constructor(
             lastSelected = emptyList()
             conversation.clear()
             chatColumns.clear()
-            labelWeight = 0f
-            lineWeight = 0f
-            labelWeightShown = 0f
+            senders.clear()
+            labelWeights.clear()
+            lineWeights.clear()
             typeSizes.clear()
-            lineWeightShown = 0f
             speakerSpots = emptyList()
             session += 1
         }
@@ -596,9 +594,8 @@ class GameTextSource @Inject constructor(
      * coordinates. The backdrop is judged on the frame's own pixels around
      * each line, so a band's edge cannot make a panel look like artwork.
      */
-    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int, left: Int = 0, right: Int = frame.width): List<GameLine> = try {
-        val whole = top == 0 && bottom == frame.height && left == 0 && right == frame.width
-        val part = if (whole) frame else Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
+    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int): List<GameLine> = try {
+        val part = if (top == 0 && bottom == frame.height) frame else Bitmap.createBitmap(frame, 0, top, frame.width, bottom - top)
         val result = try {
             recognizer.process(InputImage.fromBitmap(part, 0)).await()
         } finally {
@@ -608,7 +605,7 @@ class GameTextSource @Inject constructor(
         val height = frame.height
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
-            val read = TextBounds(box.left + left, box.top + top, box.right + left, box.bottom + top, CoordinateSpace.SCREEN)
+            val read = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
             val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
@@ -704,13 +701,15 @@ class GameTextSource @Inject constructor(
         if (last !in TAIL_MARKS || trimmed.length < 2) return text to box
         val tail = (box.height * TAIL_WIDTH_OF_HEIGHT).toInt().coerceAtMost(box.width / 3)
         if (tail < 2 || box.left < 0 || box.right > frame.width || box.top < 2 || box.bottom + 1 >= frame.height) return text to box
-        // The panel just above and below the line, not inside it: a short
-        // line of heavy type is more type than panel.
-        val outside = IntArray(box.width - tail)
+        // The panel as the middle of everything in the line before its end:
+        // type is the lesser part of a line's area. Not just above and below
+        // it — a bubble the text nearly fills has the page there, its white
+        // type read as no ink, and a real 「？」 in 「バグ？」 was taken for a tail.
+        val body = IntArray(box.width - tail)
         val lumas = mutableListOf<Double>()
-        for (y in listOf(box.top - 2, box.bottom + 1)) {
-            frame.getPixels(outside, 0, outside.size, box.left, y, outside.size, 1)
-            for (x in outside.indices step 2) lumas += luma(outside[x])
+        for (y in box.top until box.bottom step 2) {
+            frame.getPixels(body, 0, body.size, box.left, y, body.size, 1)
+            for (x in body.indices step 2) lumas += luma(body[x])
         }
         val panel = lumas.sorted()[lumas.size / 2]
         val sign = if (panel < MID_LUMA) 1.0 else -1.0
@@ -997,10 +996,15 @@ class GameTextSource @Inject constructor(
      * One weight for a kind of line, not one per line: measured per line, the
      * strokes of one game's dialogue came out 0.13 on one line and 0.16 on the
      * next, and consecutive lines of one box were set in two weights. Names
-     * and dialogue each keep a running mean.
+     * and dialogue each take the middle of their first measurements, and it
+     * then stays: a running mean drifted across a step in weight in the
+     * middle of a chat, and the lines settled after it came out bolder.
      */
-    private var labelWeight = 0f
-    private var lineWeight = 0f
+    private val labelWeights = mutableListOf<Float>()
+    private val lineWeights = mutableListOf<Float>()
+
+    private fun weightOf(label: Boolean): Float? =
+        (if (label) labelWeights else lineWeights).takeIf { it.isNotEmpty() }?.sorted()?.let { it[it.size / 2] }
 
     /**
      * One size for one size of type, not one per line: the height of a line's
@@ -1010,41 +1014,59 @@ class GameTextSource @Inject constructor(
      * already seen are that size, the tallest measured, which is the type's.
      * Names and lines apart: a game sets its names smaller or larger.
      */
-    private class TypeSize(val speaker: Boolean, var smallest: Int, var tallest: Int)
+    private class TypeSize(val speaker: Boolean, var smallest: Int, var tallest: Int) {
+        /** The type's size measured along the line, one per line that allowed it. */
+        val ems = ArrayDeque<Double>()
+    }
     private val typeSizes = mutableListOf<TypeSize>()
 
-    private fun steadySize(speaker: Boolean, measured: Int): Int {
-        // Within the ratio of the smallest and the tallest alike, so a size
-        // cannot creep up line by line into the next size of type.
-        val size = typeSizes.firstOrNull { t ->
+    /**
+     * The size to set a line of this kind at, as the glyph height the
+     * renderer sizes from. Taken from the type's width where the line's
+     * characters allow it: ink height had a chat's bubbles set 13% larger
+     * than the original — 41 px per character across, 46.6 px set — and the
+     * short ones (「先生」 → 「老师」) then no longer fitted and were shrunk.
+     */
+    private fun steadySize(speaker: Boolean, measured: Int, em: Double?): Int {
+        // Grouped by the ink's height, within the ratio of the smallest and
+        // the tallest alike, so a size cannot creep up into the next one.
+        var size = typeSizes.firstOrNull { t ->
             t.speaker == speaker && min(t.smallest, measured).toDouble() / max(t.tallest, measured) >= SAME_TYPE_RATIO
         }
         if (size == null) {
-            typeSizes += TypeSize(speaker, measured, measured)
-            return measured
+            size = TypeSize(speaker, measured, measured)
+            typeSizes += size
         }
         size.smallest = min(size.smallest, measured)
         size.tallest = max(size.tallest, measured)
-        return size.tallest
+        if (em != null) {
+            size.ems.addLast(em)
+            while (size.ems.size > MAX_EM_SAMPLES) size.ems.removeFirst()
+        }
+        if (size.ems.isEmpty()) return size.tallest
+        val typical = size.ems.sorted()[size.ems.size / 2]
+        return (typical * GLYPH_OF_EM).toInt()
     }
 
     /**
-     * What was last given out for each kind: the running mean of a chat's
-     * bubbles hovered at 0.14–0.15, either side of a step in weight, and
-     * consecutive bubbles were set in two. It changes only once the mean has
-     * moved clearly away.
+     * The type's size from the line's width: full-width characters are one
+     * size across, others about half. Null for a line too short to say, or
+     * one whose reading does not fit its box (a misread, a dropped mark).
      */
-    private var labelWeightShown = 0f
-    private var lineWeightShown = 0f
+    private fun emOf(line: GameLine): Double? {
+        val units = line.text.sumOf { c -> if (c == '　') 1.0 else if (c.isWhitespace()) 0.0 else if (c.code >= FULL_WIDTH_FROM || c in FULL_WIDTH_MARKS) 1.0 else HALF_WIDTH }
+        // One line only: a wrapped utterance joined into one has the
+        // characters of all its lines across the width of the longest.
+        if (units < MIN_EM_UNITS || line.bounds.height > line.typeHeight * MAX_ONE_LINE_OF_TYPE) return null
+        val em = line.bounds.width / units
+        val fromHeight = line.typeHeight / GLYPH_OF_EM
+        return em.takeIf { it in fromHeight * MIN_EM_OF_HEIGHT..fromHeight * MAX_EM_OF_HEIGHT }
+    }
 
     private fun steadyWeight(label: Boolean, measured: Float): Float {
-        val before = if (label) labelWeight else lineWeight
-        val now = if (before == 0f) measured else before * (1 - WEIGHT_SMOOTHING) + measured * WEIGHT_SMOOTHING
-        if (label) labelWeight = now else lineWeight = now
-        val shown = if (label) labelWeightShown else lineWeightShown
-        if (shown != 0f && abs(now - shown) < WEIGHT_HYSTERESIS) return shown
-        if (label) labelWeightShown = now else lineWeightShown = now
-        return now
+        val samples = if (label) labelWeights else lineWeights
+        if (samples.size < WEIGHT_SAMPLES) samples += measured
+        return weightOf(label) ?: measured
     }
 
     private fun lookOf(frame: Bitmap, recognised: GameLine, others: List<GameLine>, speaker: Boolean): Pair<GameLine, SourceStyle> {
@@ -1111,13 +1133,13 @@ class GameTextSource @Inject constructor(
         return line to SourceStyle(
             foregroundColor = inkColour(frame, line.bounds, lighterInk),
             orientation = TextOrientation.HORIZONTAL,
-            glyphSizePx = steadySize(speaker, line.typeHeight),
+            glyphSizePx = steadySize(speaker, line.typeHeight, null),
             backdrop = backdrop,
             outlineColor = strokes.outline,
             // Unmeasured, the weight of its kind: left out, a line came out
             // regular among bold ones of the same type.
             strokeWeight = strokes.weight?.let { steadyWeight(speaker, it / line.typeHeight.coerceAtLeast(1)) }
-                ?: (if (speaker) labelWeightShown else lineWeightShown).takeIf { it > 0f },
+                ?: weightOf(speaker),
             centred = centred,
         )
     }
@@ -1394,7 +1416,10 @@ class GameTextSource @Inject constructor(
     }
 
     private fun repainted(was: Pair<Double, Double>, now: Pair<Double, Double>): Boolean =
-        abs(was.first - now.first) > PANEL_CHANGED_LUMA || abs(was.second - now.second) > PANEL_CHANGED_LUMA
+        // Above and below both: a shade laid over a row changes the two. The
+        // list's last row stands at the window's foot over the home screen's
+        // animation, and was painted again every frame for its lower edge.
+        abs(was.first - now.first) > PANEL_CHANGED_LUMA && abs(was.second - now.second) > PANEL_CHANGED_LUMA
 
     private fun rowMiddle(frame: Bitmap, box: TextBounds, y: Int): Int {
         val row = IntArray(box.width)
@@ -1614,14 +1639,23 @@ class GameTextSource @Inject constructor(
         const val MIN_CENTRED_LEFT = 0.2
         const val CENTRED_GAP_LINES = 2.0
 
-        /** How much each line moves the running stroke weight. */
-        const val WEIGHT_SMOOTHING = 0.1f
+
+        /** The renderer's glyph height against the type's size (`ErasedTextView`'s GLYPH_TO_TEXT_SIZE). */
+        const val GLYPH_OF_EM = 0.88
+        const val FULL_WIDTH_FROM = 0x2E80
+        const val FULL_WIDTH_MARKS = "…‥―—"
+        const val HALF_WIDTH = 0.55
+        const val MIN_EM_UNITS = 2.0
+        const val MIN_EM_OF_HEIGHT = 0.75
+        const val MAX_EM_OF_HEIGHT = 1.15
+        const val MAX_EM_SAMPLES = 32
+        const val MAX_ONE_LINE_OF_TYPE = 1.6
 
         /** Type heights this close are one size of type, measured on different letters. */
         const val SAME_TYPE_RATIO = 0.86
 
-        /** How far the running stroke weight moves before the weight given out follows it. */
-        const val WEIGHT_HYSTERESIS = 0.03f
+        /** How many lines of a kind its weight is taken from. */
+        const val WEIGHT_SAMPLES = 12
 
         /** Places remembered where a speaker's name has stood. */
         const val MAX_SPEAKER_SPOTS = 4
@@ -1666,8 +1700,12 @@ class GameTextSource @Inject constructor(
         const val TAIL_WIDTH_OF_HEIGHT = 0.4
         const val TAIL_MARKS = "?？>〉"
 
-        /** Less type than this in the last mark's width, and the mark was not there. */
-        const val TAIL_MAX_INK = 0.05
+        /**
+         * Less type than this in the last mark's width, and the mark was not
+         * there. Measured: a tail read as a mark 0.2%; a real 「？」 the box
+         * ended inside of 0.7–10%, and at 5% 「バグ？」 lost its question.
+         */
+        const val TAIL_MAX_INK = 0.01
 
         /** How far the panel under a painted-out line may change before it is painted again. */
         const val PANEL_CHANGED_LUMA = 10.0
@@ -1709,9 +1747,11 @@ class GameTextSource @Inject constructor(
         const val SCENE_CHANGE_LUMA = 30.0
 
 
-        /** Smaller in all than this share of the frame, only the changed parts are read; and how far apart two parts are. */
-        const val PART_AREA_FRACTION = 0.45
-        const val REGION_GAP_CELLS = 3
+        const val MAX_SENDERS = 32
+
+        /** How far before a chat column's edge a message's patch starts. */
+        const val COLUMN_START_SLACK_PX = 2
+
 
         /** A band this tall is a new screen, not a new line: read it whole. */
         const val WHOLE_FRAME_FRACTION = 0.5f
