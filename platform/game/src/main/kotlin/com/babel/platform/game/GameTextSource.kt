@@ -237,10 +237,14 @@ class GameTextSource @Inject constructor(
         val columns = chatColumns.map { it.first }
         senders += GameLayout.repeatedNames(selected)
         while (senders.size > MAX_SENDERS) senders.remove(senders.first())
-        val kept = GameLayout.joinWrapped(GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns, senders)))
+        val panels = GameLayout.Panels { above, below -> onePanel(frame, above, below) }
+        val kept = GameLayout.joinWrapped(
+            GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns, senders, panels)),
+            panels,
+        )
 
-        val dialogue = GameLayout.dialogue(kept, places, columns, senders)
-        val speakers = GameLayout.speakers(kept, places, columns, senders)
+        val dialogue = GameLayout.dialogue(kept, places, columns, senders, panels)
+        val speakers = GameLayout.speakers(kept, places, columns, senders, panels)
         for (column in GameLayout.chatColumns(dialogue - speakers)) {
             val i = chatColumns.indexOfFirst { it.first.sameAs(column) }
             if (i < 0) chatColumns += column to now else chatColumns[i] = chatColumns[i].first.merged(column) to now
@@ -314,7 +318,9 @@ class GameTextSource @Inject constructor(
                 key !in settledKeys && key in published &&
                     // By place, not words: a published line keeps its first reading, and
                     // the row read again under a new shade read a little differently.
-                    read.any { abs(it.bounds.top - e.line.bounds.top) <= STILL_PX && abs(it.bounds.left - e.line.bounds.left) <= STILL_PX } &&
+                    // Nor by its exact box: under the new shade the recogniser's
+                    // box for 「ゆっくり休んでちょうだい」 began 18 px further left.
+                    read.any { covers(it.bounds, e.line.bounds) && abs(it.bounds.top - e.line.bounds.top) <= e.line.bounds.height / 2 } &&
                     repainted(e.panel, panelAround(frame, e.line.bounds))
             }.map { (key, e) -> elementOf(key, e.line, e.conversational, e.speaker) }
             if (repainted.isNotEmpty()) {
@@ -1087,21 +1093,52 @@ class GameTextSource @Inject constructor(
         val mid = frame.width / 2
         // Not a line of the dialogue box, which runs from the box's margin
         // and can be centred by chance: a two-line utterance was set centred.
-        val centred = row.isEmpty() && extent.width < frame.width * MAX_CENTRED_WIDTH &&
+        val onScreenCentre = row.isEmpty() && extent.width < frame.width * MAX_CENTRED_WIDTH &&
             extent.left > frame.width * MIN_CENTRED_LEFT &&
             abs((extent.left + extent.right) / 2 - mid) <= frame.width * CENTRED_TOLERANCE
+        // Or in the middle of a plain panel of its own: a reply button in a
+        // chat, half the screen from the centre. Set from the left, its longer
+        // translation had room on one side only and came out smaller than the
+        // option above it.
+        val rightLimitEdge = minOf(rightLimit - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS, frame.width)
+        val leftLimitEdge = maxOf(leftLimit + SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS, 0)
+        val panelMiddle = if (onScreenCentre || row.isNotEmpty()) null else {
+            val far = (recognised.typeHeight * PANEL_CENTRE_LOOK).toInt()
+            val l = plainAfter(frame, extent, leftLimitEdge, far, leftward = true)
+            val r = plainAfter(frame, extent, rightLimitEdge, far)
+            if (l >= recognised.typeHeight * PANEL_CENTRE_ROOM && r >= recognised.typeHeight * PANEL_CENTRE_ROOM &&
+                abs(l - r) <= recognised.typeHeight
+            ) {
+                (extent.left + extent.right) / 2
+            } else {
+                null
+            }
+        }
+        val centred = onScreenCentre || panelMiddle != null
         // Followed across wider gaps too: a choice's quotation marks stand a
         // character and a half off its words, and were left beside them.
         val wide = if (centred) inkExtent(frame, extent, recognised.typeHeight, leftLimit, rightLimit, gapLines = CENTRED_GAP_LINES) else extent
-        val half = max(mid - wide.left, wide.right - mid)
+        val centre = panelMiddle ?: mid
+        val half = max(centre - wide.left, wide.right - centre)
         // Past the end of a line set from the left, the plain panel it stands
         // on is room for a translation a little wider than the original: in a
         // chat's bubble, 「打扫?」 for 「掃除?」 was a few pixels too wide for the
         // original's ink and was shrunk, smaller than every bubble around it.
-        val room = if (centred) 0 else plainAfter(frame, extent, minOf(rightLimit - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS, frame.width), (recognised.typeHeight * ROOM_OF_TYPE).toInt())
+        val most = (recognised.typeHeight * ROOM_OF_TYPE).toInt()
+        val room = if (centred) 0 else plainAfter(frame, extent, minOf(rightLimit - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS, frame.width), most)
+        // Centred, the same on both sides: a reply button's 「今天也在冒险中吗?」
+        // was two characters wider than 「今日も冒険中?」 on a button with room to
+        // spare, and set smaller than the option above it.
+        val roomEach = if (!centred) 0 else {
+            val probe = TextBounds(centre - half, wide.top, centre + half, wide.bottom, wide.space)
+            minOf(
+                plainAfter(frame, probe, rightLimitEdge, most),
+                plainAfter(frame, probe, leftLimitEdge, most, leftward = true),
+            )
+        }
         val line = recognised.copy(
             bounds = if (centred) {
-                TextBounds(mid - half, wide.top, mid + half, wide.bottom, wide.space)
+                TextBounds(centre - half - roomEach, wide.top, centre + half + roomEach, wide.bottom, wide.space)
             } else {
                 TextBounds(extent.left, extent.top, extent.right + room, extent.bottom, extent.space)
             },
@@ -1301,7 +1338,7 @@ class GameTextSource @Inject constructor(
     }
 
     /** How many columns after [box], up to [most] and [limit], are the plain panel at its end. */
-    private fun plainAfter(frame: Bitmap, box: TextBounds, limit: Int, most: Int): Int {
+    private fun plainAfter(frame: Bitmap, box: TextBounds, limit: Int, most: Int, leftward: Boolean = false): Int {
         val h = box.bottom - box.top
         if (h <= 0 || box.top < 0 || box.bottom > frame.height) return 0
         val column = IntArray(h)
@@ -1311,14 +1348,17 @@ class GameTextSource @Inject constructor(
             val mid = lumas.sorted()[h / 2]
             return if (lumas.any { abs(it - mid) > BARE_LUMA }) null else mid
         }
+        // Columns going out from the box: right of it, or left of it.
+        fun at(n: Int) = if (leftward) box.left - 1 - n else box.right + n
+        fun inside(n: Int) = if (leftward) at(n) - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS > limit else at(n) + SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS < limit
         // From the first plain column: the box can end on the last glyph's
         // softened edge, and 「先生!」 got no room at all past its 「!」.
         var start = 0
-        while (start < LEAD_IN_PX && box.right + start < limit && plain(box.right + start) == null) start++
-        val reference = if (box.right + start < limit) plain(box.right + start) ?: return 0 else return 0
+        while (start < LEAD_IN_PX && inside(start) && plain(at(start)) == null) start++
+        val reference = if (inside(start)) plain(at(start)) ?: return 0 else return 0
         var n = start
-        while (n < most && box.right + n + SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS < limit) {
-            val mid = plain(box.right + n) ?: break
+        while (n < most && inside(n)) {
+            val mid = plain(at(n)) ?: break
             if (abs(mid - reference) > BARE_LUMA) break
             n++
         }
@@ -1385,6 +1425,31 @@ class GameTextSource @Inject constructor(
             if (abs(luma(c) - luma(inside[i])) > EDGE_PANEL_LUMA) inside[i] else c
         }
         return RowGradient(fit(l), fit(r), margin, rowMargin)
+    }
+
+    /**
+     * Whether [below] sits on the panel [above] does: the gap between them,
+     * over [below]'s width, the colour of [above]'s own row — not the row
+     * just under it, which in a bubble the text nearly fills is the page
+     * already, as the gap to the home screen's 「ショップ」 was. Only a clearly
+     * different panel says no — a translucent box over moving art is not one
+     * colour either.
+     */
+    private fun onePanel(frame: Bitmap, above: GameLine, below: GameLine): Boolean {
+        val gapTop = above.bounds.bottom
+        val gapBottom = below.bounds.top
+        if (gapBottom - gapTop < 2) return true
+        val y = ((gapTop + gapBottom) / 2).coerceIn(0, frame.height - 1)
+        val under = ((above.bounds.top + above.bounds.bottom) / 2).coerceIn(0, frame.height - 1)
+        val left = below.bounds.left.coerceIn(0, frame.width - 1)
+        val right = below.bounds.right.coerceIn(left + 1, frame.width)
+        val aLeft = above.bounds.left.coerceIn(0, frame.width - 1)
+        val aRight = above.bounds.right.coerceIn(aLeft + 1, frame.width)
+        fun middle(x0: Int, x1: Int, row: Int): Double {
+            val px = IntArray(x1 - x0).also { frame.getPixels(it, 0, it.size, x0, row, it.size, 1) }
+            return px.map { luma(it) }.sorted()[px.size / 2]
+        }
+        return abs(middle(left, right, y) - middle(aLeft, aRight, under)) <= OTHER_PANEL_LUMA
     }
 
     /** How many of [wanted] rows above and below [box] are still the panel its middle row is on. */
@@ -1696,6 +1761,10 @@ class GameTextSource @Inject constructor(
         /** How much plain panel past a line's end may be taken as room, against its type's height. */
         const val ROOM_OF_TYPE = 1.0
 
+        /** How far, in type heights, plain panel is looked for either side, and how much each side needs to be the panel's middle. */
+        const val PANEL_CENTRE_LOOK = 4.0
+        const val PANEL_CENTRE_ROOM = 2.0
+
         /** How much of the line's end, against its height, a last mark is looked for in: about one narrow glyph. */
         const val TAIL_WIDTH_OF_HEIGHT = 0.4
         const val TAIL_MARKS = "?？>〉"
@@ -1710,8 +1779,6 @@ class GameTextSource @Inject constructor(
         /** How far the panel under a painted-out line may change before it is painted again. */
         const val PANEL_CHANGED_LUMA = 10.0
 
-        /** How far a line's box may wobble and be the same line in the same place. */
-        const val STILL_PX = 4
 
         /** Columns averaged at each end of a row for its colour. */
         const val EDGE_SAMPLE_COLUMNS = 3

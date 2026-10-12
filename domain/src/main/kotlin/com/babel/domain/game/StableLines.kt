@@ -307,7 +307,12 @@ class StableLines {
      */
     private fun snapped(line: GameLine): GameLine {
         if (!GameLayout.isLabel(line.text) || line.text.length < MIN_SNAP_LENGTH || line.text in knownLabels) return line
-        val known = knownLabels.lastOrNull { it.length == line.text.length && editDistance(it, line.text) == 1 } ?: return line
+        // Or a character read in or left out: 「リオ(臨単戦)」 for 「リオ(臨戦)」
+        // came back a different name, in other brackets, with a stray mark.
+        val known = knownLabels.lastOrNull {
+            (it.length == line.text.length || (min(it.length, line.text.length) >= MIN_SNAP_LENGTH + 2 && abs(it.length - line.text.length) == 1)) &&
+                editDistance(it, line.text) == 1
+        } ?: return line
         return line.copy(text = known)
     }
 

@@ -118,7 +118,19 @@ object GameLayout {
      * same left edge, close below, in the same size of type. A speaker's name
      * is set larger and a choice sits a button's height away, so neither joins.
      */
-    fun joinWrapped(lines: List<GameLine>): List<GameLine> {
+    /**
+     * Whether two lines stand on one panel, for a line to wrap on to the
+     * next; the caller can see the pixels. The home screen's 「ショップ」, just
+     * under a chat window and set where the last bubble's next line would
+     * be, was read as that line.
+     */
+    fun interface Panels {
+        fun joined(above: GameLine, below: GameLine): Boolean
+    }
+
+    private val ANY_PANEL = Panels { _, _ -> true }
+
+    fun joinWrapped(lines: List<GameLine>, panels: Panels = ANY_PANEL): List<GameLine> {
         // A row of two pieces side by side — a name and an affiliation — is a
         // label, not a line of a paragraph. Its height alone does not say so:
         // with ruby over the dialogue, the dialogue's box grew to the name's
@@ -129,6 +141,10 @@ object GameLayout {
             // paragraph was joined.
             lines.any { it !== line && sameRow(it.bounds, line.bounds) && nearAlongRow(it, line) } || namesNext(line, lines)
         }.toSet()
+        // A label said more than once on the screen is a name, a sender's
+        // over each run of her messages: 「アリス(臨戦)」 over 「先生!」 was
+        // joined into it as its first line.
+        val repeated = lines.filter { isLabel(it.text) }.groupingBy { it.text }.eachCount().filterValues { it >= 2 }.keys
         // Each utterance so far, and the last line it took in: a third line
         // wraps under the second, not under the two of them.
         val out = mutableListOf<Pair<GameLine, GameLine>>()
@@ -139,7 +155,7 @@ object GameLayout {
             // read as the end of the line above (「……还有3，播报」).
             val nameLike = isLabel(line.text)
             val i = if (line in labels) -1 else out.indexOfLast { (_, last) ->
-                last !in labels && wraps(last, line) &&
+                last !in labels && last.text !in repeated && wraps(last, line) && panels.joined(last, line) &&
                     !(nameLike && line.typeHeight.toDouble() / last.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO) &&
                     // Nor a label in smaller type over a line: a chat sender's
                     // name over a bubble with no punctuation — 「ケイ」 over
@@ -158,7 +174,12 @@ object GameLayout {
                     // short ones stacked are two things — a chat's 「んー」 and
                     // 「先生」, a bubble each, came back as one translation
                     // drawn across both.
-                    !(isLabel(last.text) && isLabel(line.text))
+                    !(isLabel(last.text) && isLabel(line.text)) &&
+                    // Nor a label over a line starting to the right of it: a
+                    // sender's 「リオ(臨戦)」 sits out to the left of her
+                    // bubble's 「……本当?」, and a wrapped line runs back to the
+                    // margin, not past it.
+                    !(isLabel(last.text) && line.bounds.left > last.bounds.left + line.typeHeight / 4)
             }
             if (i < 0) {
                 out += line to line
@@ -382,7 +403,8 @@ object GameLayout {
         places: List<TextBounds> = emptyList(),
         columns: List<ChatColumn> = emptyList(),
         senders: Set<String> = emptySet(),
-    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders).first
+        panels: Panels = ANY_PANEL,
+    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders, panels).first
 
     /**
      * A column of a chat's messages: their common left edge (or right, for
@@ -426,7 +448,7 @@ object GameLayout {
                 // And a sentence among them: the home screen's icon labels
                 // down its left side lined up as well as any chat, and once
                 // remembered as one were translated with the chat open.
-                if (sized.size < MIN_COLUMN_LINES || sized.none { isSentence(it.text) }) continue
+                if (sized.size < MIN_COLUMN_LINES || sized.count { isSentence(it.text) } < MIN_COLUMN_SENTENCES) continue
                 val edge = sized.map { if (right) it.bounds.right else it.bounds.left }.sorted()[sized.size / 2]
                 out += ChatColumn(edge, right, type, sized.minOf { it.bounds.top }, sized.maxOf { it.bounds.bottom })
             }
@@ -442,12 +464,20 @@ object GameLayout {
      */
     fun underRepeatedNames(lines: List<GameLine>): Set<GameLine> {
         val out = mutableSetOf<GameLine>()
-        for ((_, same) in lines.filter { isLabel(it.text) && !isControlWord(it.text) }.groupBy { it.text }) {
+        for ((_, same) in lines.filter { isLabel(it.text) && !isControlWord(it.text) && it.text.none { c -> c.isDigit() } }.groupBy { it.text }) {
             if (same.size < 2) continue
             val under = same.mapNotNull { name ->
-                lines.filter { it !== name && it.text != name.text && speaksAbove(name.bounds, it.bounds) }.minByOrNull { it.bounds.top }
+                // In type no smaller than a message's under a name: the home
+                // screen's 「生徒」 at 34 px stood just under the list's last
+                // entry, 40, as a message would.
+                lines.filter {
+                    it !== name && it.text != name.text && speaksAbove(name.bounds, it.bounds) &&
+                        it.typeHeight >= name.typeHeight * COLUMN_SIZE_RATIO
+                }.minByOrNull { it.bounds.top }
             }
-            if (under.size >= 2) out += under
+            // One is enough with the name said twice: the chat's 「HELP!」 under
+            // her second 「アリス(臨戦)」 is Latin and left out as a button's.
+            if (under.isNotEmpty()) out += under
         }
         return out
     }
@@ -459,8 +489,29 @@ object GameLayout {
      */
     const val COLUMN_SIZE_RATIO = 0.88
 
-    /** Lines a column needs to be one. */
+    /**
+     * Whether [line] has others beside it on its row, a few characters off:
+     * a menu bar's items, not a chat's message, which stands alone on its
+     * row of its column. The home screen's 「生徒」 under the chat list
+     * lined up with the list's entries, and was taken in as one.
+     */
+    private fun inMenuRow(line: GameLine, lines: List<GameLine>): Boolean = lines.any { other ->
+        other !== line && sameRow(other.bounds, line.bounds) &&
+            min(other.typeHeight, line.typeHeight).toDouble() / max(other.typeHeight, line.typeHeight) >= SAME_SIZE_RATIO &&
+            (max(other.bounds.left, line.bounds.left) - min(other.bounds.right, line.bounds.right)) in 1..line.typeHeight * MENU_GAP_LINES
+    }
+
+    private const val MENU_GAP_LINES = 4
+
+    /** Whether, if either line is in a chat's column, both are in it. */
+    private fun sameColumnIfAny(a: GameLine, b: GameLine, columns: List<ChatColumn>): Boolean {
+        val column = columns.firstOrNull { it.holds(a) || it.holds(b) } ?: return true
+        return column.holds(a) && column.holds(b)
+    }
+
+    /** Lines a column needs to be one, and sentences among them: the home screen's banner was one, beside its icons. */
     const val MIN_COLUMN_LINES = 3
+    const val MIN_COLUMN_SENTENCES = 2
 
     /** How far, in lines, past the stretch it was seen in a column still reaches: a scroll brings in what was above or below. */
     const val COLUMN_SPAN_SLACK_LINES = 4
@@ -477,7 +528,8 @@ object GameLayout {
         columns: List<ChatColumn> = emptyList(),
         /** Names seen standing over more than one run of messages lately; see [repeatedNames]. */
         senders: Set<String> = emptySet(),
-    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders).second
+        panels: Panels = ANY_PANEL,
+    ): Set<GameLine> = spokenAndNames(lines, places, columns, senders, panels).second
 
     /** Labels standing over two runs of lines or more on this screen: a chat's senders. */
     fun repeatedNames(lines: List<GameLine>): Set<String> =
@@ -491,6 +543,7 @@ object GameLayout {
         places: List<TextBounds>,
         columns: List<ChatColumn>,
         senders: Set<String>,
+        panels: Panels,
     ): Pair<Set<GameLine>, Set<GameLine>> {
         // Or anything where dialogue has been: a game's dialogue box and its
         // name tab ([conversationPlaces]). 「うん」 says nothing a sentence
@@ -502,7 +555,18 @@ object GameLayout {
         }.toMutableSet()
         do {
             val more = lines.filter { line ->
-                line !in core && core.any { d -> (sameRow(line.bounds, d.bounds) && nearAlongRow(line, d)) || wraps(line, d) || wraps(d, line) }
+                line !in core && core.any { d ->
+                    (sameRow(line.bounds, d.bounds) && nearAlongRow(line, d)) ||
+                        // A message in a chat's column wraps within it: the
+                        // home screen's 「ショップ」, just under the window
+                        // and three characters to the left of the last
+                        // bubble, read as its next line, and the menu bar
+                        // beside it followed along its row.
+                        (
+                            ((wraps(line, d) && panels.joined(line, d)) || (wraps(d, line) && panels.joined(d, line))) &&
+                                sameColumnIfAny(line, d, columns)
+                            )
+                }
             }
             core += more
         } while (more.isNotEmpty())
@@ -513,11 +577,16 @@ object GameLayout {
         // By the right edge only along a column of right edges already: a
         // line set from the left ends anywhere, and the list's 「最新」 button
         // ended 15 px from where a message preview below it did.
-        val rightSet = core.filter { d -> core.any { it !== d && inColumnWith(it, d, byRight = true) && !inColumnWith(it, d) } }.toMutableSet()
+        // Two sentences, not labels: names end where the short replies under
+        // them do, and a column of 「ケイ」 and 「はい」 drew the home screen's
+        // 「ショップ」 in by its right edge, and the menu bar along with it.
+        val rightSet = core.filter { d ->
+            isSentence(d.text) && core.any { it !== d && isSentence(it.text) && inColumnWith(it, d, byRight = true) && !inColumnWith(it, d) }
+        }.toMutableSet()
         val aligned = mutableSetOf<GameLine>()
         do {
             val more = lines.filter { line ->
-                line !in core && line !in aligned &&
+                line !in core && line !in aligned && !inMenuRow(line, lines) &&
                     ((core + aligned).any { d -> inColumnWith(line, d) } || rightSet.any { d -> inColumnWith(line, d, byRight = true) })
             }
             aligned += more
@@ -545,8 +614,8 @@ object GameLayout {
             fun inColumn(other: GameLine) = abs((if (column.rightAligned) other.bounds.right else other.bounds.left) - column.edge) <= other.typeHeight
             return if (same.size >= 2) same.count(::inColumn) >= 2 else line.text in repeated
         }
-        val speakers = (core + names).filter { line ->
-            line !in aligned && line !in voiced && isLabel(line.text) && sender(line) &&
+        val speakers = (spoken + names).filter { line ->
+            (line.text in repeated || (line !in aligned && line !in voiced)) && isLabel(line.text) && sender(line) &&
                 spoken.any { d -> d !== line && speaksAbove(line.bounds, d.bounds) }
         }.toSet()
         return (spoken + names) to speakers

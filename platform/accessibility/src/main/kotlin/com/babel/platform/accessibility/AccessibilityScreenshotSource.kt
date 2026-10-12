@@ -227,8 +227,14 @@ class AccessibilityScreenshotSource @Inject constructor(
     private companion object {
         const val TAG = "Screenshot"
 
-        /** Short: spike 3 measured a 10 ms stroke landing ~20 ms sooner than 40. */
-        const val TAP_DURATION_MS = 10L
+        /**
+         * As long as a finger's tap. Spike 3 measured a 10 ms stroke landing
+         * ~20 ms sooner than 40, but Blue Archive's buttons outside the story
+         * do not take one that short: a tap handed on from a chat list's
+         * entry opened nothing, and adb's own ~50 ms taps did not either,
+         * where 150 ms did.
+         */
+        const val TAP_DURATION_MS = 120L
 
         /** A handed-on drag keeps the finger's own pace, within these bounds. */
         const val MIN_DRAG_MS = 80L

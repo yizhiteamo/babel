@@ -82,6 +82,7 @@ class MomoTalkTest {
     @Test
     fun `short replies scrolled into a remembered column are dialogue`() {
         val seen = listOf(
+            line("はあ、本当にもう", 1924, 268, 328, 45, 41),
             line("寮に着きました", 1922, 443, 292, 41, 41),
             line("はい", 1924, 739, 76, 37, 37),
             line("デイリーやるの忘れてました!", 1923, 1129, 571, 41, 40),
@@ -130,6 +131,7 @@ class MomoTalkTest {
     @Test
     fun `a label in a chat's column is a message unless it is a sender`() {
         val seen = listOf(
+            line("はあ、本当にもう", 1924, 268, 328, 45, 41),
             line("寮に着きました", 1922, 443, 292, 41, 41),
             line("はい", 1924, 739, 76, 37, 37),
             line("デイリーやるの忘れてました!", 1923, 1129, 571, 41, 40),

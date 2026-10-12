@@ -255,6 +255,15 @@ class StableLinesTest {
         assertEquals("チナツ", lines.next(listOf(line("チナッ", left = 1500)), now = 1000).settled.single().line.text)
     }
 
+    @Test
+    fun `a name read with a character too many is the known name`() {
+        val lines = StableLines()
+        lines.next(listOf(line("リオ(臨戦)")), now = 0)
+        lines.next(listOf(line("リオ(臨戦)")), now = 333)
+
+        assertEquals("リオ(臨戦)", lines.next(listOf(line("リオ(臨単戦)", left = 1500)), now = 666).settled.single().line.text)
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {
