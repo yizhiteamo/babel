@@ -124,11 +124,21 @@ object GameLayout {
      * under a chat window and set where the last bubble's next line would
      * be, was read as that line.
      */
-    fun interface Panels {
+    interface Panels {
         fun joined(above: GameLine, below: GameLine): Boolean
+
+        /**
+         * Whether two lines on one row stand on one panel, the space between
+         * them the colour of their own. A pop-up's line beside an entry of
+         * the dimmed list behind it was taken for a label beside a label, and
+         * never joined to the line it wraps from.
+         */
+        fun beside(a: GameLine, b: GameLine): Boolean = true
     }
 
-    private val ANY_PANEL = Panels { _, _ -> true }
+    private val ANY_PANEL = object : Panels {
+        override fun joined(above: GameLine, below: GameLine) = true
+    }
 
     fun joinWrapped(lines: List<GameLine>, panels: Panels = ANY_PANEL): List<GameLine> {
         // A row of two pieces side by side — a name and an affiliation — is a
@@ -139,7 +149,7 @@ object GameLayout {
             // Beside it, not across the screen: two cards side by side put every
             // line of one synopsis on a row with a line of the other, and no
             // paragraph was joined.
-            lines.any { it !== line && sameRow(it.bounds, line.bounds) && nearAlongRow(it, line) } || namesNext(line, lines)
+            lines.any { it !== line && sameRow(it.bounds, line.bounds) && nearAlongRow(it, line) && panels.beside(it, line) } || namesNext(line, lines)
         }.toSet()
         // A label said more than once on the screen is a name, a sender's
         // over each run of her messages: 「アリス(臨戦)」 over 「先生!」 was

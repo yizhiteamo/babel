@@ -326,7 +326,10 @@ class GameTextSource @Inject constructor(
         val columns = chatColumns.map { it.first }
         senders += GameLayout.repeatedNames(selected)
         while (senders.size > MAX_SENDERS) senders.remove(senders.first())
-        val panels = GameLayout.Panels { above, below -> onePanel(frame, above, below) }
+        val panels = object : GameLayout.Panels {
+            override fun joined(above: GameLine, below: GameLine) = onePanel(frame, above, below)
+            override fun beside(a: GameLine, b: GameLine) = sidePanel(frame, a, b)
+        }
         val kept = GameLayout.joinWrapped(
             GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns, senders, panels)),
             panels,
@@ -435,7 +438,7 @@ class GameTextSource @Inject constructor(
                     "settled ${element.id.value} ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top}," +
                         "${settled.line.bounds.width}x${settled.line.bounds.height} type=${settled.line.typeHeight} " +
                         "${if (element.style.backdrop != null) "erased" else "boxed"} " +
-                        "outline=${element.style.outlineColor != null} weight=${element.style.strokeWeight?.let { "%.2f".format(it) }} " +
+                        "outline=${element.style.outlineColor != null} centred=${element.style.centred} weight=${element.style.strokeWeight?.let { "%.2f".format(it) }} " +
                         "after ${settled.settledAfterMs}ms",
                 )
                 element
@@ -1171,9 +1174,16 @@ class GameTextSource @Inject constructor(
         // Never past halfway to the next piece on its row, though: a short
         // name's patch grew into the affiliation beside it and erased 「玄」.
         val b = recognised.bounds
-        val row = others.filter { it.bounds != b && sameRow(it.bounds, b) }
-        val leftLimit = row.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0
-        val rightLimit = row.filter { it.bounds.left >= b.right }.minOfOrNull { (it.bounds.left + b.right) / 2 } ?: frame.width
+        // On its own panel only: the dimmed list behind a pop-up stood on the
+        // pop-up's rows, and its centred lines were set from the left.
+        // Nor the pieces of the line itself: a wrapped block's own lines are
+        // on its rows, and a centred pop-up's message was set from the left.
+        val beside = others.filter { it.bounds != b && sameRow(it.bounds, b) && !within(it.bounds, b) }
+        val row = beside.filter { sidePanel(frame, it, recognised) }
+        // Every piece on the row bounds the patch, on this panel or another:
+        // a centred pop-up line's patch grew over the dimmed list behind it.
+        val leftLimit = beside.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0
+        val rightLimit = beside.filter { it.bounds.left >= b.right }.minOfOrNull { (it.bounds.left + b.right) / 2 } ?: frame.width
         val extent = inkExtent(frame, b, recognised.typeHeight, leftLimit, rightLimit)
         // Centred on the screen — a choice, a banner — and set again centred,
         // over a box made even about the centre: the ink to one side reached
@@ -1209,6 +1219,7 @@ class GameTextSource @Inject constructor(
         val wide = if (centred) inkExtent(frame, extent, recognised.typeHeight, leftLimit, rightLimit, gapLines = CENTRED_GAP_LINES) else extent
         val centre = panelMiddle ?: mid
         val half = max(centre - wide.left, wide.right - centre)
+            .coerceAtMost(min(centre - leftLimit, rightLimit - centre).coerceAtLeast(max(centre - extent.left, extent.right - centre)))
         // Past the end of a line set from the left, the plain panel it stands
         // on is room for a translation a little wider than the original: in a
         // chat's bubble, 「打扫?」 for 「掃除?」 was a few pixels too wide for the
@@ -1541,6 +1552,33 @@ class GameTextSource @Inject constructor(
         return abs(middle(left, right, y) - middle(aLeft, aRight, under)) <= OTHER_PANEL_LUMA
     }
 
+    private fun within(inner: TextBounds, outer: TextBounds): Boolean =
+        inner.left >= outer.left - 2 && inner.right <= outer.right + 2 && inner.top >= outer.top - 2 && inner.bottom <= outer.bottom + 2
+
+    /** Whether the space between two lines on one row is the panel either stands on. */
+    private fun sidePanel(frame: Bitmap, a: GameLine, b: GameLine): Boolean {
+        val (l, r) = if (a.bounds.left <= b.bounds.left) a to b else b to a
+        val from = l.bounds.right.coerceIn(0, frame.width - 1)
+        val to = r.bounds.left.coerceIn(from, frame.width)
+        if (to - from < 4) return true
+        val y = ((max(a.bounds.top, b.bounds.top) + min(a.bounds.bottom, b.bounds.bottom)) / 2).coerceIn(0, frame.height - 1)
+        val gap = IntArray(to - from).also { frame.getPixels(it, 0, it.size, from, y, it.size, 1) }.map { luma(it) }.sorted()
+        fun own(line: GameLine): Double {
+            val x0 = line.bounds.left.coerceIn(0, frame.width - 1)
+            val x1 = line.bounds.right.coerceIn(x0 + 1, frame.width)
+            val row = IntArray(x1 - x0).also { frame.getPixels(it, 0, it.size, x0, y, it.size, 1) }
+            return row.map { luma(it) }.sorted()[row.size / 2]
+        }
+        val middle = gap[gap.size / 2]
+        // Closer than another panel: a dimmed list behind a pop-up is the
+        // pop-up's own colour darkened by a half, not by a whole panel's step.
+        // And no edge between them: a pop-up's border and its shadow lay
+        // between its line and the white reply button behind it, alike in
+        // colour on either side.
+        val edges = gap.count { abs(it - middle) > SIDE_PANEL_LUMA }
+        return abs(middle - own(a)) <= SIDE_PANEL_LUMA && abs(middle - own(b)) <= SIDE_PANEL_LUMA && edges * 20 < gap.size
+    }
+
     /** How many of [wanted] rows above and below [box] are still the panel its middle row is on. */
     private fun onPanelRows(frame: Bitmap, box: TextBounds, wanted: Int): Int {
         if (box.top - wanted - 1 < 0 || box.bottom + wanted + 1 > frame.height) return wanted
@@ -1838,6 +1876,7 @@ class GameTextSource @Inject constructor(
 
         /** A panel this far from the line's own is a different one: a bubble's page. */
         const val OTHER_PANEL_LUMA = 80.0
+        const val SIDE_PANEL_LUMA = 40.0
 
         /** What is kept of an empty end a box is cut back from. */
         const val SHRINK_SLACK_PX = 2

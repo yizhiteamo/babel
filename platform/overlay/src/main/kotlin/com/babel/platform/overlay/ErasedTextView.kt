@@ -190,7 +190,10 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
         // set from the top, a smaller affiliation beside a larger name came
         // out low, across the rule under the name.
         val horizontal = if (centred) Gravity.CENTER_HORIZONTAL else Gravity.START
-        gravity = if (maxLines == 1) Gravity.CENTER_VERTICAL or horizontal else Gravity.TOP or horizontal
+        // A centred block stays centred up and down as well: a pop-up's two
+        // sentences, four lines in the original, came back as one line at
+        // the top of the space they had filled.
+        gravity = if (maxLines == 1 || centred) Gravity.CENTER_VERTICAL or horizontal else Gravity.TOP or horizontal
         if (maxLines > 1) {
             setAutoSizeTextTypeUniformWithConfiguration(smallest, size, 1, TypedValue.COMPLEX_UNIT_PX)
             return
