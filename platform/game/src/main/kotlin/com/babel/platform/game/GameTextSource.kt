@@ -82,6 +82,9 @@ class GameTextSource @Inject constructor(
      * taken for Chinese already in the reader's language.
      */
     private var kanaVotes = 0.0
+
+    /** The game the last reading was of; see [read]. */
+    private var lastPackage: String? = null
     private var otherVotes = 0.0
     private var lastSelected: List<GameLine> = emptyList()
 
@@ -131,6 +134,15 @@ class GameTextSource @Inject constructor(
         packageName: String,
         stillWanted: () -> Boolean,
     ) = coroutineScope {
+        // Another game, another start: the script votes and everything
+        // remembered are this game's alone. Carried over from Blue Archive,
+        // its kana votes had Shattered Pixel Dungeon's own Chinese menu read
+        // as Japanese kanji, sent, and drawn back over itself — misread
+        // (「排行榜」 as 「排行务」).
+        if (packageName != lastPackage) {
+            if (lastPackage != null) clear()
+            lastPackage = packageName
+        }
         // Pictures are taken all along, as fast as the platform allows, and
         // each is looked at at once for translations whose place it no longer
         // shows ([withdrawReplaced]); the recogniser reads the latest one when
@@ -143,11 +155,12 @@ class GameTextSource @Inject constructor(
             var before: Small? = null
             var takenAt = 0L
             while (stillWanted()) {
-                // Not as fast as the platform allows: each picture is 18 MB,
-                // and taken three times a second the recogniser's readings
-                // slowed from one second to two and more.
-                val wait = WATCH_INTERVAL_MS - (System.currentTimeMillis() - takenAt)
-                if (wait > 0) kotlinx.coroutines.delay(wait)
+                // While the recogniser is busy, not as fast as the platform
+                // allows: each picture is 18 MB, and taken three times a
+                // second beside a reading, readings slowed by a third. Idle,
+                // at once: Fate/Grand Order's band reads take 200 ms, and held
+                // to one picture a second its lines settled a second later.
+                while (reading && System.currentTimeMillis() - takenAt < WATCH_INTERVAL_MS) kotlinx.coroutines.delay(WATCH_POLL_MS)
                 takenAt = System.currentTimeMillis()
                 val frame = frames.windowFrame(windowId) ?: continue
                 runCatching { withdrawReplaced(frame) }
@@ -162,6 +175,7 @@ class GameTextSource @Inject constructor(
         for (signal in fresh) {
             if (!stillWanted()) break
             val shot = latest.getAndSet(null) ?: continue
+            reading = true
             try {
                 readOne(
                     shot.frame, windowBounds, packageName,
@@ -172,6 +186,7 @@ class GameTextSource @Inject constructor(
                     unchangedSince = { box -> newest.let { it == null || it === shot.small || stillBetween(shot.small, it, box) } },
                 )
             } finally {
+                reading = false
                 shot.frame.recycle()
             }
         }
@@ -180,6 +195,10 @@ class GameTextSource @Inject constructor(
         latest.getAndSet(null)?.frame?.recycle()
         Unit
     }
+
+    /** Whether the recogniser is at work on a picture; see [read]. */
+    @Volatile
+    private var reading = false
 
     /** The small copy of the newest picture taken, read or not. */
     @Volatile
@@ -1891,6 +1910,7 @@ class GameTextSource @Inject constructor(
 
         /** How often a picture is taken to watch for translations to withdraw, at most. */
         const val WATCH_INTERVAL_MS = 1000L
+        const val WATCH_POLL_MS = 30L
         const val STILL_SMALL_LUMA = 2.0
 
         /** How far before a chat column's edge a message's patch starts. */
