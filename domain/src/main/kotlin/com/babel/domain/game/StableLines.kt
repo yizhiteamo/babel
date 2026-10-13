@@ -81,7 +81,9 @@ class StableLines {
         val unmatched = seen.toMutableList()
         val next = mutableListOf<Seen>()
 
-        for (line in lines) {
+        // Snapped before matching, as when first seen: compared raw against a
+        // snapped reading, a line differed from itself every frame.
+        for (line in lines.map(::snapped)) {
             val before = unmatched.firstOrNull { samePlace(it.line.bounds, line.bounds) }
             if (before == null) {
                 next += fresh(line, now, settled, stillOnScreen)
@@ -193,7 +195,14 @@ class StableLines {
         }
 
         seen = next
-        return Update(settled, gone, why)
+        // Never a key still shown elsewhere: two entries can come to hold one
+        // key — a line moved by the caller keeps the key of the place it came
+        // from, and a reading back at that place makes the same key again —
+        // and the one not read withdrew the one that was, every four frames:
+        // a name on a list flashed to its original and back.
+        val live = next.mapNotNullTo(HashSet()) { it.publishedKey }
+        val stillGone = gone.filter { it !in live }
+        return Update(settled, stillGone, why.filterKeys { it in stillGone })
     }
 
     /**
@@ -317,12 +326,22 @@ class StableLines {
         if (!GameLayout.isLabel(line.text) || line.text.length < MIN_SNAP_LENGTH || line.text in knownLabels) return line
         // Or a character read in or left out: 「リオ(臨単戦)」 for 「リオ(臨戦)」
         // came back a different name, in other brackets, with a stray mark.
-        val known = knownLabels.lastOrNull {
-            (it.length == line.text.length || (min(it.length, line.text.length) >= MIN_SNAP_LENGTH + 2 && abs(it.length - line.text.length) == 1)) &&
-                editDistance(it, line.text) == 1
+        // A changed character only where the recogniser confuses the two:
+        // 「アカネ」 is another student than 「アカリ」, and snapped to her it was
+        // translated as her, and, read again as itself, withdrawn and drawn
+        // back every four frames.
+        val known = knownLabels.lastOrNull { k ->
+            if (k.length == line.text.length) {
+                val diff = k.indices.filter { k[it] != line.text[it] }
+                diff.size == 1 && confusable(k[diff[0]], line.text[diff[0]])
+            } else {
+                min(k.length, line.text.length) >= MIN_SNAP_LENGTH + 2 && abs(k.length - line.text.length) == 1 && editDistance(k, line.text) == 1
+            }
         } ?: return line
         return line.copy(text = known)
     }
+
+    private fun confusable(a: Char, b: Char): Boolean = CONFUSABLE.any { (a in it) && (b in it) }
 
     private fun remember(line: GameLine) {
         // A line of dialogue too, once it is long enough not to be the start
@@ -447,6 +466,9 @@ class StableLines {
 
         /** Shortest label a one-character misread is corrected in; see [snapped]. */
         const val MIN_SNAP_LENGTH = 3
+
+        /** Characters the recogniser reads one for another: small and full kana, kana and kanji alike. */
+        val CONFUSABLE = listOf("ツッ", "ヤャ", "ユュ", "ヨョ", "アァ", "イィ", "ウゥ", "エェ工", "オォ", "カ力", "ロ口", "ニ二", "ー一", "ヘへ", "ベべ", "ペぺ", "タ夕", "ト卜", "ハ八", "ケヶ", "クワ", "シツ", "ソン")
 
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256

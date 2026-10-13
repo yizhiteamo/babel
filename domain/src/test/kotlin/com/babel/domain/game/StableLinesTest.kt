@@ -273,6 +273,30 @@ class StableLinesTest {
         assertEquals(1, first.settled.size)
     }
 
+    @Test
+    fun `a key still shown is not withdrawn for a twin that went unread`() {
+        val lines = StableLines()
+        lines.next(listOf(line("アカリ")), now = 0)
+        val key = lines.next(listOf(line("アカリ")), now = 333).settled.single().key
+        // Moved away by the caller, then read again where it was: one key, two entries.
+        lines.move(key, TextBounds(400, 1300, 520, 1356, CoordinateSpace.SCREEN))
+        lines.next(listOf(line("アカリ")), now = 666)
+
+        val gone = (1..6).flatMap { lines.next(listOf(line("アカリ")), now = 1000L + it * 333).gone }
+
+        assertTrue(key !in gone, gone.toString())
+    }
+
+    @Test
+    fun `another name one character off is not snapped to a known one`() {
+        val lines = StableLines()
+        lines.next(listOf(line("アカリ")), now = 0)
+        lines.next(listOf(line("アカリ")), now = 333)
+        lines.next(listOf(line("アカネ", left = 1500)), now = 666)
+
+        assertEquals("アカネ", lines.next(listOf(line("アカネ", left = 1500)), now = 1000).settled.single().line.text)
+    }
+
     /** The next line, read off-by-one-word noisily, is still a new line. */
     @Test
     fun `a different line in the same box is still withdrawn`() {
