@@ -398,6 +398,11 @@ class StableLines {
         seen = seen.filter { it.publishedKey !in keys }
     }
 
+    /** The published line [key] now stands at [bounds]: moved by the caller, which saw it move. */
+    fun move(key: String, bounds: TextBounds) {
+        seen = seen.map { if (it.publishedKey == key) Seen(it.line.copy(bounds = bounds), it.firstSeenAt, key, it.misses) else it }
+    }
+
     fun reset(): List<String> {
         val keys = seen.mapNotNull { it.publishedKey }
         seen = emptyList()

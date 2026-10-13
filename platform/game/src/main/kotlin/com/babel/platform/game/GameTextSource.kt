@@ -107,6 +107,9 @@ class GameTextSource @Inject constructor(
     private var session = 0L
     private var published = mutableMapOf<String, TextElementId>()
 
+    /** What each published key was last shown as, for moving it; see [withdrawReplaced]. */
+    private val shownElements = mutableMapOf<String, TextElement>()
+
     /**
      * A published line whose original was painted out, and the panel it was
      * painted from, for [repainted].
@@ -422,7 +425,7 @@ class GameTextSource @Inject constructor(
                     !replacedSince(frame, gone.bounds)
             })
             update.gone.forEach { erased.remove(it) }
-            update.gone.forEach { publishedLooks.remove(it) }
+            update.gone.forEach { publishedLooks.remove(it); shownElements.remove(it) }
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
             if (update.gone.isNotEmpty()) {
@@ -506,7 +509,11 @@ class GameTextSource @Inject constructor(
                 val w = roles[e.id]?.let(::weightOf)
                 if (w == null || e.style.strokeWeight == w) e else e.copy(style = e.style.copy(strokeWeight = w))
             }
-            if (weighed.isNotEmpty()) events.emit(TextSourceEvent.Upserted(weighed))
+            if (weighed.isNotEmpty()) {
+                val keyOf = published.entries.associate { (k, id) -> id to k }
+                for (e in weighed) keyOf[e.id]?.let { shownElements[it] = e }
+                events.emit(TextSourceEvent.Upserted(weighed))
+            }
         }
         logger.debug(TAG, "read $how: ${read.size} lines, kept ${kept.size}, in ${readMs}ms")
         // What was left out and why, as numbers: where a line was, how tall,
@@ -630,20 +637,97 @@ class GameTextSource @Inject constructor(
             // Only lines painted out on a plain panel: over moving art a still
             // line's place changes under it, and would be withdrawn and drawn
             // again frame after frame.
-            val keys = publishedLooks.filter { (key, look) ->
+            val changed = publishedLooks.filter { (key, look) ->
                 val painted = erased[key] ?: return@filter false
                 if (painted.line.backdropError > GameTextFilter.MAX_BACKDROP_ERROR) return@filter false
                 val now = lookOf(frame, look.first)
                 now != null && replaced(look.second, now)
             }.keys.toList()
-            if (keys.isEmpty()) return
+            if (changed.isEmpty()) return
+            // Moved, not gone: dragged slowly, a chat's lines shift a little
+            // between pictures, and each was withdrawn — the original showing
+            // — and published again a reading later where it had got to:
+            // translation, original, translation. Where one shift up or down
+            // finds every changed line's look again, they are moved there.
+            // The shift found on the topmost line, checked line by line: one
+            // replaced or gone off the edge does not stop the rest moving.
+            val dy = sharedShift(frame, changed)
+            val follows = if (dy == null) emptyList() else changed.filter { foundAt(frame, it, dy) }
+            if (dy != null && follows.isNotEmpty()) {
+                val moved = follows.mapNotNull { key ->
+                    val (box, _) = publishedLooks[key] ?: return@mapNotNull null
+                    val shifted = TextBounds(box.left, box.top + dy, box.right, box.bottom + dy, box.space)
+                    val element = shownElements[key] ?: return@mapNotNull null
+                    val look = lookOf(frame, shifted) ?: return@mapNotNull null
+                    publishedLooks[key] = shifted to look
+                    erased[key]?.let { e -> erased[key] = Erased(e.line.copy(bounds = shifted), e.conversational, e.speaker, panelAround(frame, shifted)) }
+                    lines.move(key, shifted)
+                    val b0 = element.bounds
+                    val next = element.copy(bounds = TextBounds(b0.left, b0.top + dy, b0.right, b0.bottom + dy, b0.space))
+                    shownElements[key] = next
+                    next
+                }
+                movedOut = moved
+            }
+            val keys = changed - follows.toSet()
             lines.forget(keys)
-            keys.forEach { publishedLooks.remove(it); erased.remove(it) }
+            keys.forEach { publishedLooks.remove(it); erased.remove(it); shownElements.remove(it) }
             keys.mapNotNull { published.remove(it) }
+        }
+        if (movedOut.isNotEmpty()) {
+            events.emit(TextSourceEvent.Upserted(movedOut))
+            logger.debug(TAG, "moved before reading: ${movedOut.size}")
+            movedOut = emptyList()
         }
         val ids = keys
         if (ids.isNotEmpty()) events.emit(TextSourceEvent.Removed(ids))
-        logger.debug(TAG, "withdrawn before reading: ${ids.size}")
+        if (ids.isNotEmpty()) logger.debug(TAG, "withdrawn before reading: ${ids.size}")
+    }
+
+    private var movedOut: List<TextElement> = emptyList()
+
+    /**
+     * One vertical shift that finds every one of [keys]'s looks again, or
+     * null. Scrolled, a chat's lines move together; a line replaced by other
+     * words matches at no shift.
+     */
+    private fun sharedShift(frame: Bitmap, keys: List<String>): Int? {
+        // The first of a few lines, top down, that is found again: one
+        // replaced by other words, or gone past the edge, is found nowhere.
+        for (look in keys.mapNotNull { publishedLooks[it] }.sortedBy { it.first.top }.take(SHIFT_TRIES)) {
+            shiftOf(frame, look.first, look.second)?.let { return it }
+        }
+        return null
+    }
+
+    private fun shiftOf(frame: Bitmap, b: TextBounds, then: IntArray): Int? {
+        fun score(d: Int): Double? {
+            val now = lookOf(frame, TextBounds(b.left, b.top + d, b.right, b.bottom + d, b.space)) ?: return null
+            return now.indices.sumOf { abs(now[it] - then[it]) }.toDouble() / now.size
+        }
+        val reach = b.height * MAX_TRACK_LINES
+        var best: Int? = null
+        var bestScore = Double.MAX_VALUE
+        var dy = -reach
+        while (dy <= reach) {
+            if (dy != 0) score(dy)?.let { if (it < bestScore) { bestScore = it; best = dy } }
+            dy += TRACK_STEP_PX
+        }
+        val coarse = best ?: return null
+        var fine = coarse
+        var fineScore = bestScore
+        for (d in coarse - TRACK_STEP_PX + 1 until coarse + TRACK_STEP_PX) {
+            if (d == 0) continue
+            score(d)?.let { if (it < fineScore) { fineScore = it; fine = d } }
+        }
+        return if (fineScore <= STILL_LOOK_LUMA) fine else null
+    }
+
+    /** Whether the line at [key] is found again shifted by [dy]. */
+    private fun foundAt(frame: Bitmap, key: String, dy: Int): Boolean {
+        val (b, then) = publishedLooks[key] ?: return false
+        val now = lookOf(frame, TextBounds(b.left, b.top + dy, b.right, b.bottom + dy, b.space)) ?: return false
+        return now.indices.sumOf { abs(now[it] - then[it]) }.toDouble() / now.size <= STILL_LOOK_LUMA
     }
 
     private fun largestDifference(a: IntArray, b: IntArray): Double =
@@ -719,6 +803,7 @@ class GameTextSource @Inject constructor(
             published.clear()
             erased.clear()
             publishedLooks.clear()
+            shownElements.clear()
             lines = StableLines()
             lastGrid = null
             lastLines = emptyList()
@@ -1976,6 +2061,9 @@ class GameTextSource @Inject constructor(
         const val LOOK_COLUMNS = 24
         const val LOOK_ROWS = 4
         const val REPLACED_LOOK_LUMA = 16.0
+        const val MAX_TRACK_LINES = 4
+        const val SHIFT_TRIES = 3
+        const val TRACK_STEP_PX = 4
         const val STILL_LOOK_LUMA = 12.0
 
         /** A line with this many times less ink than one over it is behind it. */
