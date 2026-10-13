@@ -548,7 +548,8 @@ class DefaultTranslationCoordinator(
                 val cached = cache.get(key)
                 if (cached != null) {
                     logger.debug(TAG, "cached in ${System.currentTimeMillis() - started}ms")
-                    mailbox.send(Message.Translated(element.id, cached, key))
+                    val text = if (isSpeaker(element)) withoutAddedStop(element.text, cached) else cached
+                    mailbox.send(Message.Translated(element.id, text, key))
                     return@launch
                 }
 
@@ -577,13 +578,16 @@ class DefaultTranslationCoordinator(
                     )
                     when (val status = result.status) {
                         TranslationStatus.Translated -> {
+                            // A name comes back as a name: 「オルガマリー」 was
+                            // answered 「奥尔加玛丽。」, a sentence's stop on a tab.
+                            val text = if (isSpeaker(element)) withoutAddedStop(element.text, result.translatedText) else result.translatedText
                             if (isDurableLabel(element)) {
-                                cache.putDurable(key, result.translatedText)
+                                cache.putDurable(key, text)
                             } else {
-                                cache.put(key, result.translatedText)
+                                cache.put(key, text)
                             }
                             mailbox.send(
-                                Message.Translated(element.id, result.translatedText, key),
+                                Message.Translated(element.id, text, key),
                             )
                         }
 
@@ -772,3 +776,9 @@ class DefaultTranslationCoordinator(
 private fun TextSourceType.carriesContext(): Boolean =
     this == TextSourceType.OCR || this == TextSourceType.GAME
 
+/** [translated] without a stop at its end that [source] does not end with. */
+internal fun withoutAddedStop(source: String, translated: String): String {
+    val stops = "。．.!！?？、,，"
+    if (source.trimEnd().lastOrNull()?.let { it in stops } == true) return translated
+    return translated.trimEnd().trimEnd { it in stops }.ifEmpty { translated }
+}

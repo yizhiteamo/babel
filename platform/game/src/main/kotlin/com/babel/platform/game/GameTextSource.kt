@@ -196,6 +196,13 @@ class GameTextSource @Inject constructor(
         Unit
     }
 
+    /** Grid cells of moving art, until when; see [readOne]. */
+    private val artUntil = LongArray(GRID_COLUMNS * GRID_ROWS)
+    private var lastWholeAt = 0L
+    private var readParts: List<IntArray> = emptyList()
+    private var lastGridBefore: IntArray? = null
+    private var linesBefore: List<GameLine> = emptyList()
+
     /** Whether the recogniser is at work on a picture; see [read]. */
     @Volatile
     private var reading = false
@@ -247,7 +254,16 @@ class GameTextSource @Inject constructor(
     ) {
         val started = System.currentTimeMillis()
         val grid = gridOf(frame)
-        val band = ChangedBand.of(lastGrid, grid, GRID_COLUMNS)
+        // Moving art where nothing was read lately is left alone between
+        // whole readings ([artUntil]): the home screen behind a chat animates
+        // in six places, and each was read again, frame after frame, for
+        // nothing — reading them took longer than reading the frame whole.
+        val nowMs = System.currentTimeMillis()
+        val wholeDue = nowMs - lastWholeAt >= WHOLE_EVERY_MS
+        val seen = if (wholeDue) grid else lastGrid?.let { before -> IntArray(grid.size) { if (artUntil[it] > nowMs) before[it] else grid[it] } } ?: grid
+        val band = ChangedBand.of(lastGrid, seen, GRID_COLUMNS)
+        lastGridBefore = lastGrid
+        linesBefore = lastLines
         // A cut or a fade moves the whole picture a long way; an animated
         // character only moves part of it a little. Most frames of a story
         // scene are read whole for the second reason, so extent alone would
@@ -273,12 +289,31 @@ class GameTextSource @Inject constructor(
                 margin = cellHeight.toInt() / 2,
                 frameHeight = frame.height,
             )
-            // Not cut to the changed columns as well: tried, and a box
-            // through a chat list's avatar was read with the avatar's edge as
-            // part of the name beside it, which then matched nothing and was
-            // left untranslated. A band runs the frame's width.
-            val fresh = if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION) {
+            // Only the parts that changed, when they are a part of the frame:
+            // a chat beside a list that did not move, the home screen's art
+            // animating at the frame's ends, and the whole frame was read
+            // every time. Each part's edges are moved out to blank panel
+            // first: cut through an avatar, the avatar's edge was read as part
+            // of the name beside it, which then matched nothing.
+            val boxes = if (wholeDue) null else changedBoxes(frame, seen)
+            val boxArea = boxes?.sumOf { (it[2] - it[0]).toLong() * (it[3] - it[1]) } ?: Long.MAX_VALUE
+            val fresh = if (boxes != null && boxes.isNotEmpty() && boxArea < frame.width.toLong() * frame.height * PART_AREA_FRACTION) {
+                how = "${boxes.size} parts, ${boxArea * 100 / (frame.width.toLong() * frame.height)}%"
+                var merged = lastLines
+                for (box in boxes) {
+                    val (l, t, r, b) = box.toList()
+                    merged = ChangedBand.mergeBox(merged, recognise(frame, t, b, l, r), l, t, r, b)
+                }
+                readParts = boxes
+                frontLayer(frame, merged)
+            } else if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION || wholeDue) {
                 how = "whole"
+                // The art mask outlives a whole reading taken because much
+                // changed; only the periodic one, which ignores it, renews it.
+                if (wholeDue) {
+                    lastWholeAt = nowMs
+                    artUntil.fill(0L)
+                }
                 frontLayer(frame, recognise(frame, 0, frame.height))
             } else {
                 how = "band ${bottom - top}px"
@@ -306,6 +341,28 @@ class GameTextSource @Inject constructor(
             columns = chatColumns.map { it.first },
         )
         lastSelected = selected
+        // Art is what changed and said nothing new: every line read there now
+        // was read there before. A line still typing, a scrolled bubble, a
+        // new choice — new words — keeps its part read. A whole reading is
+        // how anything new over art is found.
+        val cw = frame.width.toFloat() / GRID_COLUMNS
+        val ch = frame.height.toFloat() / GRID_ROWS
+        val parts = readParts.ifEmpty {
+            if (how != "whole") emptyList() else ChangedBand.regions(lastGridBefore, grid, GRID_COLUMNS, gap = REGION_GAP_CELLS).map { region ->
+                intArrayOf((region.columns.first * cw).toInt(), (region.rows.first * ch).toInt(), ((region.columns.last + 1) * cw).toInt(), ((region.rows.last + 1) * ch).toInt())
+            }
+        }
+        for (part in parts) {
+            val inPart = read.filter { it.bounds.right > part[0] && it.bounds.left < part[2] && it.bounds.bottom > part[1] && it.bounds.top < part[3] }
+            // The same words in the same place: scrolled, a chat's bubbles say
+            // what they said, somewhere else, and are not art.
+            if (inPart.any { line -> linesBefore.none { it.text == line.text && abs(it.bounds.top - line.bounds.top) <= line.bounds.height / 2 && abs(it.bounds.left - line.bounds.left) <= line.bounds.height } }) continue
+            for (r in (part[1] / ch).toInt() until ((part[3] / ch).toInt() + 1).coerceAtMost(GRID_ROWS))
+                for (c in (part[0] / cw).toInt() until ((part[2] / cw).toInt() + 1).coerceAtMost(GRID_COLUMNS))
+                    artUntil[r * GRID_COLUMNS + c] = nowMs + WHOLE_EVERY_MS
+        }
+        readParts = emptyList()
+
         for (spot in GameLayout.speakerSpots(selected, minOf(frame.height, frame.width))) {
             val others = speakerSpots.filter { abs(it.left - spot.left) > spot.height / 2 || abs(it.top - spot.top) > spot.height / 2 }
             speakerSpots = (listOf(spot) + others).take(MAX_SPEAKER_SPOTS)
@@ -666,6 +723,8 @@ class GameTextSource @Inject constructor(
             lastGrid = null
             lastLines = emptyList()
             lastLooks = emptyMap()
+            artUntil.fill(0L)
+            lastWholeAt = 0L
             otherScript = null
             latinVotes = 0.0
             kanaVotes = 0.0
@@ -692,8 +751,9 @@ class GameTextSource @Inject constructor(
      * coordinates. The backdrop is judged on the frame's own pixels around
      * each line, so a band's edge cannot make a panel look like artwork.
      */
-    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int): List<GameLine> = try {
-        val part = if (top == 0 && bottom == frame.height) frame else Bitmap.createBitmap(frame, 0, top, frame.width, bottom - top)
+    private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int, left: Int = 0, right: Int = frame.width): List<GameLine> = try {
+        val whole = top == 0 && bottom == frame.height && left == 0 && right == frame.width
+        val part = if (whole) frame else Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
         val result = try {
             recognizer.process(InputImage.fromBitmap(part, 0)).await()
         } finally {
@@ -703,7 +763,7 @@ class GameTextSource @Inject constructor(
         val height = frame.height
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
-            val read = TextBounds(box.left, box.top + top, box.right, box.bottom + top, CoordinateSpace.SCREEN)
+            val read = TextBounds(box.left + left, box.top + top, box.right + left, box.bottom + top, CoordinateSpace.SCREEN)
             val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
@@ -1555,6 +1615,105 @@ class GameTextSource @Inject constructor(
     private fun within(inner: TextBounds, outer: TextBounds): Boolean =
         inner.left >= outer.left - 2 && inner.right <= outer.right + 2 && inner.top >= outer.top - 2 && inner.bottom <= outer.bottom + 2
 
+    /**
+     * The parts of [frame] that changed since the last reading, as boxes with
+     * edges on blank panel; null where an edge finds none, and the caller
+     * reads the band instead.
+     */
+    private fun changedBoxes(frame: Bitmap, grid: IntArray): List<IntArray>? {
+        val cellWidth = frame.width.toFloat() / GRID_COLUMNS
+        val cellHeight = frame.height.toFloat() / GRID_ROWS
+        val out = mutableListOf<IntArray>()
+        for (region in ChangedBand.regions(lastGrid, grid, GRID_COLUMNS, gap = REGION_GAP_CELLS)) {
+            var box = ChangedBand.widenedBox(
+                lastLines,
+                ((region.columns.first - BAND_MARGIN_CELLS) * cellWidth).toInt(),
+                ((region.rows.first - BAND_MARGIN_CELLS) * cellHeight).toInt(),
+                ((region.columns.last + 1 + BAND_MARGIN_CELLS) * cellWidth).toInt(),
+                ((region.rows.last + 1 + BAND_MARGIN_CELLS) * cellHeight).toInt(),
+                marginX = cellWidth.toInt(),
+                marginY = cellHeight.toInt() / 2,
+                frameWidth = frame.width,
+                frameHeight = frame.height,
+            )
+            // Where an edge finds no blank panel, the part is read as a band
+            // the frame's width instead, as a whole change of those rows is.
+            box = onBlank(frame, box) ?: run {
+                val (t, b) = ChangedBand.widened(lastLines, box[1], box[3], margin = cellHeight.toInt() / 2, frameHeight = frame.height)
+                intArrayOf(0, t, frame.width, b)
+            }
+            out += box
+        }
+        // Parts that came to overlap are read as one.
+        var merged = true
+        while (merged) {
+            merged = false
+            loop@ for (i in out.indices) for (j in i + 1 until out.size) {
+                val a = out[i]
+                val b = out[j]
+                if (a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3]) {
+                    out[i] = intArrayOf(min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3]))
+                    out.removeAt(j)
+                    merged = true
+                    break@loop
+                }
+            }
+        }
+        return out
+    }
+
+    /** [box] with each edge moved out to the nearest blank column or row, or null where there is none near. */
+    private fun onBlank(frame: Bitmap, box: IntArray): IntArray? {
+        var (l, t, r, b) = box.toList()
+        val reach = (frame.height * BLANK_REACH_OF_HEIGHT).toInt()
+        // Blank is panels, not one colour: a column down a chat list
+        // crosses its header, its rows, the selected row's shade — a few
+        // long runs. Type is many short ones.
+        fun blank(lumas: List<Double>): Boolean {
+            var changes = 0
+            var run = 0
+            var shortRuns = 0
+            for (i in 1 until lumas.size) {
+                if (abs(lumas[i] - lumas[i - 1]) > BARE_LUMA) {
+                    changes++
+                    if (run < BLANK_MIN_RUN) shortRuns++
+                    run = 0
+                } else {
+                    run++
+                }
+            }
+            return shortRuns <= BLANK_STRAY && changes <= BLANK_MAX_CHANGES
+        }
+        fun columnBlank(x: Int): Boolean {
+            if (x <= 0 || x >= frame.width - 1) return true
+            val c = IntArray(b - t).also { frame.getPixels(it, 0, 1, x, t, 1, b - t) }
+            return blank((c.indices step 2).map { luma(c[it]) })
+        }
+        fun rowBlank(y: Int): Boolean {
+            if (y <= 0 || y >= frame.height - 1) return true
+            val row = IntArray(r - l).also { frame.getPixels(it, 0, it.size, l, y, it.size, 1) }
+            return blank((row.indices step 2).map { luma(row[it]) })
+        }
+        // An edge with no blank near it is no edge: a speech bubble just
+        // appearing over the art was cut where nothing had been read yet, and
+        // read as two lines, two translations stacked on each other. The
+        // caller reads such a part as a band; moving art is left out by the
+        // art mask instead.
+        var n = 0
+        while (!rowBlank(t) && n++ < reach) t--
+        if (n > reach) return null
+        n = 0
+        while (!rowBlank(b - 1) && n++ < reach) b++
+        if (n > reach) return null
+        n = 0
+        while (!columnBlank(l) && n++ < reach) l--
+        if (n > reach) return null
+        n = 0
+        while (!columnBlank(r - 1) && n++ < reach) r++
+        if (n > reach) return null
+        return intArrayOf(l.coerceAtLeast(0), t.coerceAtLeast(0), r.coerceAtMost(frame.width), b.coerceAtMost(frame.height))
+    }
+
     /** Whether the space between two lines on one row is the panel either stands on. */
     private fun sidePanel(frame: Bitmap, a: GameLine, b: GameLine): Boolean {
         val (l, r) = if (a.bounds.left <= b.bounds.left) a to b else b to a
@@ -1950,6 +2109,22 @@ class GameTextSource @Inject constructor(
         /** How often a picture is taken to watch for translations to withdraw, at most. */
         const val WATCH_INTERVAL_MS = 1000L
         const val WATCH_POLL_MS = 30L
+
+        /**
+         * Reading parts: below this share of the frame in all; parts this
+         * many grid cells apart are separate; an edge is moved at most this
+         * share of the frame's height to find blank panel, and blank allows
+         * this many stray samples.
+         */
+        const val PART_AREA_FRACTION = 0.45
+
+        /** The longest between whole readings, which find what appears over art left alone. */
+        const val WHOLE_EVERY_MS = 4_000L
+        const val REGION_GAP_CELLS = 3
+        const val BLANK_REACH_OF_HEIGHT = 0.08
+        const val BLANK_STRAY = 1
+        const val BLANK_MIN_RUN = 4
+        const val BLANK_MAX_CHANGES = 24
         const val STILL_SMALL_LUMA = 2.0
 
         /** How far before a chat column's edge a message's patch starts. */

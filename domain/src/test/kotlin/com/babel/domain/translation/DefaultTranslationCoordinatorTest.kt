@@ -533,6 +533,12 @@ class DefaultTranslationCoordinatorTest {
         coordinator.stop()
     }
 
+    @Test
+    fun `a speaker's name loses a stop its original does not have`() {
+        assertEquals("奥尔加玛丽", withoutAddedStop("オルガマリー", "奥尔加玛丽。"))
+        assertEquals("先生！", withoutAddedStop("先生！", "先生！"))
+    }
+
     /** Half a batch must not vanish quietly. */
     @Test
     fun `a mixed batch keeps only the image elements while paused`() = runTest {
