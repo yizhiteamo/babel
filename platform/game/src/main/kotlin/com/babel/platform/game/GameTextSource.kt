@@ -199,6 +199,13 @@ class GameTextSource @Inject constructor(
         Unit
     }
 
+    /**
+     * For tests that hold the rules against scenes (`GameCorpusTest`): each
+     * frame's reading, what was kept and joined, and what of it is dialogue
+     * and speakers. Never set in the app.
+     */
+    internal var inspect: ((read: List<GameLine>, kept: List<GameLine>, dialogue: Set<GameLine>, speakers: Set<GameLine>, why: Map<GameLine, String>) -> Unit)? = null
+
     /** Grid cells of moving art, until when; see [readOne]. */
     private val artUntil = LongArray(GRID_COLUMNS * GRID_ROWS)
     private var lastWholeAt = 0L
@@ -389,6 +396,7 @@ class GameTextSource @Inject constructor(
         val panels = object : GameLayout.Panels {
             override fun joined(above: GameLine, below: GameLine) = onePanel(frame, above, below)
             override fun beside(a: GameLine, b: GameLine) = sidePanel(frame, a, b)
+            override fun across(line: GameLine, fromX: Int) = onePage(frame, line, fromX)
         }
         val kept = GameLayout.joinWrapped(
             GameLayout.joinRows(selected, GameLayout.dialogue(selected, places, columns, senders, panels)),
@@ -397,6 +405,11 @@ class GameTextSource @Inject constructor(
 
         val dialogue = GameLayout.dialogue(kept, places, columns, senders, panels)
         val speakers = GameLayout.speakers(kept, places, columns, senders, panels)
+        inspect?.let { look ->
+            val reasons = HashMap<GameLine, String>()
+            GameLayout.dialogue(kept, places, columns, senders, panels, reasons)
+            look(read, kept, dialogue, speakers, reasons)
+        }
         for (column in GameLayout.chatColumns(dialogue - speakers, GameLayout.underRepeatedNames(kept))) {
             val i = chatColumns.indexOfFirst { it.first.sameAs(column) }
             if (i < 0) chatColumns += column to now else chatColumns[i] = chatColumns[i].first.merged(column) to now
@@ -1799,6 +1812,35 @@ class GameTextSource @Inject constructor(
         return intArrayOf(l.coerceAtLeast(0), t.coerceAtLeast(0), r.coerceAtMost(frame.width), b.coerceAtMost(frame.height))
     }
 
+    /**
+     * Whether the row from [fromX] to [line]'s start, at its middle, crosses
+     * at most the edge of the line's own bubble: a window's border into the
+     * art behind it is more.
+     */
+    private fun onePage(frame: Bitmap, line: GameLine, fromX: Int): Boolean {
+        val from = fromX.coerceIn(0, frame.width - 1)
+        val to = line.bounds.left.coerceIn(from, frame.width)
+        if (to - from < 4) return true
+        val y = ((line.bounds.top + line.bounds.bottom) / 2).coerceIn(0, frame.height - 1)
+        val row = IntArray(to - from).also { frame.getPixels(it, 0, it.size, from, y, it.size, 1) }
+        var edges = 0
+        var last = luma(row[0])
+        for (x in SAMPLE_STEP until row.size step SAMPLE_STEP) {
+            val l = luma(row[x])
+            if (abs(l - last) > SIDE_PANEL_LUMA) edges++
+            last = l
+        }
+        // And the line stands on that page, not past its edge: the page's
+        // colour where the row starts is the colour just before the line.
+        // and just after it: a badge past the window's edge had the page up
+        // to its left side and the art beyond its right.
+        val page = luma(row[0])
+        val before = luma(row[(row.size - 1 - SAMPLE_STEP * 2).coerceAtLeast(0)])
+        val afterX = (line.bounds.right + line.bounds.height / 2).coerceAtMost(frame.width - 1)
+        val after = luma(frame.getPixel(afterX, y))
+        return edges <= PAGE_EDGES && abs(before - page) <= SIDE_PANEL_LUMA && abs(after - page) <= SIDE_PANEL_LUMA
+    }
+
     /** Whether the space between two lines on one row is the panel either stands on. */
     private fun sidePanel(frame: Bitmap, a: GameLine, b: GameLine): Boolean {
         val (l, r) = if (a.bounds.left <= b.bounds.left) a to b else b to a
@@ -2124,6 +2166,7 @@ class GameTextSource @Inject constructor(
         /** A panel this far from the line's own is a different one: a bubble's page. */
         const val OTHER_PANEL_LUMA = 80.0
         const val SIDE_PANEL_LUMA = 40.0
+        const val PAGE_EDGES = 2
 
         /** What is kept of an empty end a box is cut back from. */
         const val SHRINK_SLACK_PX = 2

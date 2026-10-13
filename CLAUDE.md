@@ -151,6 +151,7 @@ Common system documents:
 - Capabilities: `docs/systems/capabilities.md`
 - Privacy: `docs/systems/privacy.md`
 - Translation scope: `docs/systems/scope.md`
+- Game text (what game mode translates, and the scene corpus): `docs/systems/game-text.md`
 - Releases (when to publish, what each needs): `docs/systems/release.md`
 - Testing: `docs/systems/testing.md` (traps and principles); `docs/testing/` (the pages and images to test against)
 
