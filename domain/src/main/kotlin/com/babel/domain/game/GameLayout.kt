@@ -832,7 +832,9 @@ object GameLayout {
         // screen's notice button with a speck the recogniser took for 「、」.
         (punctuated(text) && text.count { it.isLetter() } >= MIN_SENTENCE_LETTERS && !strayComma(text) && !hanBadge(text)) ||
             // A question: 「バグ？」 is asked, and no interface word asks.
-            ((text.contains('?') || text.contains('？')) && text.count { it.isLetter() } >= 2) ||
+            // Asked, not a help button beside a title: 「生徒 ?」's mark stands
+            // apart from the word, a question's against it.
+            (text.indices.any { i -> (text[i] == '?' || text[i] == '？') && i > 0 && !text[i - 1].isWhitespace() } && text.count { it.isLetter() } >= 2) ||
             // Trailing off: 「はああ……」, 「くっ……」 are a breath, not a label —
             // no interface word is set with an ellipsis after two letters.
             (ELLIPSES.any { it in text } && text.count { it.isLetter() } >= 2) ||
@@ -885,6 +887,21 @@ object GameLayout {
 
     private const val BRACKETS = "「」『』"
     private val ELLIPSES = listOf("…", "‥", "...")
+
+    /**
+     * An interface word the reader cannot read: written mostly in kana. The
+     * story is translated whatever its script, the interface only where it
+     * would otherwise be closed to the reader — 「ステータス」, 「ノーマルスキル」
+     * — while 「攻撃力」, 「固有武器」 are left as a reader of Han reads them.
+     */
+    fun unreadableLabel(line: GameLine, controls: Set<GameLine> = emptySet()): Boolean {
+        if (line in controls || !isLabel(line.text) || figures(line.text) || isControlWord(line.text)) return false
+        val letters = line.text.count { it.isLetter() }
+        val kana = line.text.count { it in '぀'..'ヿ' }
+        return kana >= MIN_LABEL_KANA && kana * 2 >= letters
+    }
+
+    private const val MIN_LABEL_KANA = 2
 
     /** A name or an interface word: no sentence's mark and not a sentence's length. */
     fun isLabel(text: String): Boolean = !punctuated(text) && !isSentence(text)

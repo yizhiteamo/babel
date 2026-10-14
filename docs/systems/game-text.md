@@ -6,7 +6,11 @@ The code is `GameTextFilter` (verdicts per line), `GameLayout` (layout rules) an
 
 ## The rule set
 
-A line is translated when it is **said**: dialogue, narration, a chat message, a choice, or a pop-up's sentence. The speaker's name over any of these is translated too. Everything else is interface: menus, buttons, tabs, stats and badges.
+A line is translated when it is **said**: dialogue, narration, a chat message, a choice, a pop-up's or a detail panel's sentence (a skill's description). The speaker's name over any of these is translated too.
+
+The interface is translated **only where the reader cannot read it**: a label written mostly in kana (「ステータス」, 「ノーマルスキル」, 「アタッカー」, a student's name), on a plain panel, in full view. Labels in kanji (「攻撃力」, 「固有武器」, 「基本情報」) are left as they are, because a reader of Han reads them. Numbers, stats, Latin controls and badges are never translated. (This replaced the earlier "story only" decision on 2026-10-14: a screen of katakana game terms was closed to a Chinese player, while its kanji labels were not.)
+
+Nothing is translated **behind a dimmer**. When a pop-up opens, the screen under it darkens, and none of that screen is translated: a line in which nothing is bright (95th-percentile brightness under 120) is dimmed. Measured on dimmed white type: 44–83.
 
 The decision runs in four stages.
 
@@ -19,6 +23,7 @@ The decision runs in four stages.
 - **Type too large** (`TOO_LARGE`) is a logo or title art, and is not translated.
 - **Type too small** (`TOO_SMALL`) is not translated on its own, only as part of a paragraph.
 - **Controls** are a game's own words in another script: mostly-Latin words in a Japanese game (AUTO, MENU, MomoTalk). They are never translated.
+- **Icons read as characters** are taken off a line's start: 「◆アタッカー」, a badge 「④」, or a badge's number glued to a name in katakana (「9ハナコ」). Their place still bounds the patch, so the icon is not painted over.
 
 ### 2. What is said: seeds
 
@@ -26,7 +31,7 @@ A line is dialogue on its own when any of these holds:
 
 - **It is a sentence.**
   - Punctuation with four letters or more counts. A badge does not: kanji alone with a `!` (「演習開始!」), or a word with only a stray `、` after it.
-  - A question with two letters or more counts.
+  - A question with two letters or more counts, with its mark against the word: in 「生徒 ?」 the mark is a help button.
   - An ellipsis after two letters or more counts.
   - Length counts too: more than twelve letters, unless it is labels spaced apart, or fewer than five Latin words (「Enter the Dungeon」 is a button).
 - **It is in a place a conversation has been** in the last minute: a dialogue box and its name tab.
@@ -52,6 +57,8 @@ From the seeds, dialogue spreads to:
 Afterwards these are removed: a line in a **menu bar** (four labels or more of one size on a row), and **figures**.
 
 ### 4. Over time
+
+When the scene changes (most of the picture changes at once, such as a pop-up opening or closing), everything remembered of where dialogue stood is forgotten: dialogue places, chat columns and senders. Kept after a skill pop-up closed, the pop-up's place had the status screen's labels under it translated as dialogue for a minute, until they vanished.
 
 `StableLines` publishes a line once two readings agree. A line known already is published at its first reading.
 
@@ -87,8 +94,8 @@ To change a rule:
 
 Scenes so far (2026-10-13):
 
-- **Blue Archive:** the chat list, five chats (including scrolled ones), the student list and profile, the home screen, and story frames.
+- **Blue Archive:** the chat list, five chats (including scrolled ones), the student list and profile, a student's status screen and two skill pop-ups, the home screen, and story frames.
 - **Fate/Grand Order:** a servant card, the title screen, and story frames.
 - **Shattered Pixel Dungeon:** the title menu.
 
-All 156 expectations pass.
+All 190 expectations pass (2026-10-14).

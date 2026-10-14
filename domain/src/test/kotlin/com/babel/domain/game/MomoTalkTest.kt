@@ -180,4 +180,10 @@ class MomoTalkTest {
 
         assertEquals(true, reply in GameLayout.dialogue(listOf(reply), columns = columns))
     }
+
+    @Test
+    fun `a title beside its help button is not a question`() {
+        assertEquals(false, GameLayout.isSentence("生徒 ?"))
+        assertEquals(true, GameLayout.isSentence("掃除?"))
+    }
 }

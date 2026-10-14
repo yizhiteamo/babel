@@ -378,6 +378,16 @@ class GameTextSource @Inject constructor(
             speakerSpots = (listOf(spot) + others).take(MAX_SPEAKER_SPOTS)
         }
         val now = System.currentTimeMillis()
+        // Everything remembered of where dialogue stood goes with the scene:
+        // a skill's pop-up — its name over its description, a speaker over a
+        // line — left its place remembered after it closed, and for a minute
+        // the status screen's labels under it were translated as dialogue,
+        // then vanished.
+        if (sceneChanged) {
+            chatColumns.clear()
+            conversation.clear()
+            senders.clear()
+        }
         for (place in GameLayout.conversationPlaces(selected)) {
             conversation.removeAll { (old, _) -> covers(old, place) }
             conversation += place to now
@@ -388,7 +398,6 @@ class GameTextSource @Inject constructor(
         // A chat's columns: gone with the scene — closed, the chat's place
         // is the home screen's buttons — and otherwise kept a while, so a
         // screen of short replies scrolled into view is still the chat.
-        if (sceneChanged) chatColumns.clear()
         chatColumns.removeAll { (_, at) -> now - at > CONVERSATION_KEPT_MS }
         val columns = chatColumns.map { it.first }
         senders += GameLayout.repeatedNames(selected)
@@ -423,7 +432,25 @@ class GameTextSource @Inject constructor(
         // came out half-covered (「合同火力演習」 as 「大决战」 and 「演习」 over
         // what was left of it), came and went as the art moved, and stood
         // between the player and the buttons — for words learnt in an hour.
-        val shown = kept.filter { it in dialogue && unchangedSince(it.bounds) }
+        // And the interface words the reader cannot read, where they can be
+        // painted out cleanly and are not behind something: on a plain panel,
+        // in full contrast — a pop-up dims what is behind it, and the labels
+        // there are not what the player is looking at
+        // (`docs/systems/game-text.md`).
+        val labels = read.filter { line ->
+            kept.none { it.bounds == line.bounds && it in dialogue } && GameLayout.unreadableLabel(line) &&
+                GameTextFilter.judge(line, minOf(frame.height, frame.width)).let {
+                    it == GameTextFilter.Verdict.TRANSLATE || it == GameTextFilter.Verdict.TOO_SMALL
+                } &&
+                contrastOf(frame, line.bounds) >= ACTIVE_CONTRAST
+        }.toSet()
+        // Nothing behind a dimmer, dialogue or label: a pop-up darkens the
+        // screen under it, and the student's name and role there were read
+        // as a sentence and a reply and drawn over the dark — at the pop-up's
+        // side, the player not looking at them. Dimmed, nothing in the line
+        // is bright: neither its ink nor its panel.
+        val shown = (kept.filter { it in dialogue } + labels.filter { l -> kept.none { it.bounds == l.bounds && it in dialogue } })
+            .filter { unchangedSince(it.bounds) && !dimmed(frame, it.bounds) }
         lock.withLock {
             val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged, stillOnScreen = stillOnScreen, stillInked = { gone ->
                 // Still there only if its place still holds ink, and not other
@@ -850,6 +877,8 @@ class GameTextSource @Inject constructor(
      * each line, so a band's edge cannot make a panel look like artwork.
      */
     private suspend fun recognise(frame: Bitmap, top: Int, bottom: Int, left: Int = 0, right: Int = frame.width): List<GameLine> = try {
+        // Icons are those of the area read now; elsewhere the last stand.
+        iconBoxes.removeAll { it.bottom > top && it.top < bottom && it.right > left && it.left < right }
         val whole = top == 0 && bottom == frame.height && left == 0 && right == frame.width
         val part = if (whole) frame else Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
         val result = try {
@@ -862,7 +891,8 @@ class GameTextSource @Inject constructor(
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
             if (text.isBlank()) return@mapNotNull null
             val read = TextBounds(box.left + left, box.top + top, box.right + left, box.bottom + top, CoordinateSpace.SCREEN)
-            val (kept, bounds) = withoutTail(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
+            val (unmarked, unmarkedBox) = withoutLeadingIcon(GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
+            val (kept, bounds) = withoutTail(frame, unmarked, unmarkedBox)
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
         }
@@ -873,6 +903,11 @@ class GameTextSource @Inject constructor(
         val around = lines + lastLines
         lines.flatMap { line ->
             if (around.any { it !== line && GameLayout.speaksAbove(line.bounds, it.bounds) }) splitByColour(frame, line) else listOf(line)
+        }.flatMap(::atDividers).map { line ->
+            // Split pieces too: a name and its badge are cut apart by colour
+            // and the badge's 「④」 came back on the name's piece.
+            val (text, box) = withoutLeadingIcon(line.text, line.bounds)
+            if (text == line.text) line else line.copy(text = text, bounds = box)
         }
     } catch (cancellation: CancellationException) {
         throw cancellation
@@ -942,6 +977,61 @@ class GameTextSource @Inject constructor(
         if (left == 0 && right == box.width) return box
         return TextBounds(box.left + left, box.top, box.left + right, box.bottom, box.space)
     }
+
+    /**
+     * A line cut where the recogniser read a divider as a bar: two tabs side
+     * by side came back as 「ノーマルスキル||バッシブスキル+」 on one frame and
+     * as one run of letters on the next, and the two readings took turns.
+     * Each piece gets its share of the box by its characters.
+     */
+    private fun atDividers(line: GameLine): List<GameLine> {
+        val pieces = line.text.split('|', '｜').map { it.trim() }.filter { it.any(Char::isLetter) }
+        if (pieces.size < 2 || pieces.any { GameLayout.isSentence(it) }) return listOf(line)
+        val total = line.text.length.toDouble()
+        val out = mutableListOf<GameLine>()
+        var at = 0
+        for (piece in pieces) {
+            val start = line.text.indexOf(piece, at).coerceAtLeast(at)
+            val end = start + piece.length
+            at = end
+            val l = line.bounds.left + (line.bounds.width * start / total).toInt()
+            val r = line.bounds.left + (line.bounds.width * end / total).toInt()
+            out += line.copy(text = piece, bounds = TextBounds(l, line.bounds.top, r, line.bounds.bottom, line.bounds.space))
+        }
+        return out
+    }
+
+    /**
+     * [text] without an icon read as its first character, and [box] without
+     * the icon: a role's 「◆アタッカー」, a name's affection badge as 「④」.
+     * Kept, the icon was painted out with the word and the translation set
+     * over where it had been.
+     */
+    private fun withoutLeadingIcon(text: String, box: TextBounds): Pair<String, TextBounds> {
+        val t = text.trimStart()
+        // Or a badge's number, read as a digit or two glued to a name in
+        // katakana: the affection badge's 「44」 before 「ハナコ(水着)」 came
+        // back 「9ハナコ(水着)」, and the name was translated 「9花子」.
+        val digits = t.takeWhile { it.isDigit() }.length
+        if (digits in 1..2 && t.length > digits + 2 && t[digits] in '゠'..'ヿ' && GameLayout.isLabel(t)) {
+            val shift = min(box.height, box.width / 3)
+            iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
+            return t.drop(digits).trimStart() to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+        }
+        if (t.length < 3 || !isIcon(t[0]) || !t[1].isLetter()) return text to box
+        val shift = min(box.height, box.width / 3)
+        iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
+        return t.drop(1).trimStart() to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+    }
+
+    /**
+     * Where icons were taken off lines' starts, kept to bound the lines'
+     * patches: grown to the ink, the name's patch took the badge in again.
+     */
+    private val iconBoxes = mutableListOf<TextBounds>()
+
+    private fun isIcon(c: Char): Boolean = c in '①'..'⓿' || c in '■'..'◿' || c in '☀'..'⛿' ||
+        c in '⊕'..'⊙' || c in '❤'..'❥' || c in '㉑'..'㉟' || c in '㊱'..'㊿'
 
     /**
      * [text] without a last mark that was never there: the tail of a chat
@@ -1336,7 +1426,7 @@ class GameTextSource @Inject constructor(
         // pop-up's rows, and its centred lines were set from the left.
         // Nor the pieces of the line itself: a wrapped block's own lines are
         // on its rows, and a centred pop-up's message was set from the left.
-        val beside = others.filter { it.bounds != b && sameRow(it.bounds, b) && !within(it.bounds, b) }
+        val beside = (others + iconBoxes.map { GameLine("", it, 0.0) }).filter { it.bounds != b && sameRow(it.bounds, b) && !within(it.bounds, b) }
         val row = beside.filter { sidePanel(frame, it, recognised) }
         // Every piece on the row bounds the patch, on this panel or another:
         // a centred pop-up line's patch grew over the dimmed list behind it.
@@ -1841,6 +1931,40 @@ class GameTextSource @Inject constructor(
         return edges <= PAGE_EDGES && abs(before - page) <= SIDE_PANEL_LUMA && abs(after - page) <= SIDE_PANEL_LUMA
     }
 
+    /** Whether nothing in [box] is bright: a dimmer over it. */
+    private fun dimmed(frame: Bitmap, box: TextBounds): Boolean = brightestOf(frame, box) < DIMMED_BRIGHTEST
+
+    private fun brightestOf(frame: Bitmap, box: TextBounds): Double {
+        val l = box.left.coerceIn(0, frame.width - 1)
+        val r = box.right.coerceIn(l + 1, frame.width)
+        val t = box.top.coerceIn(0, frame.height - 1)
+        val b = box.bottom.coerceIn(t + 1, frame.height)
+        val row = IntArray(r - l)
+        val lumas = ArrayList<Double>()
+        for (y in t until b step 2) {
+            frame.getPixels(row, 0, row.size, l, y, row.size, 1)
+            for (x in row.indices step 2) lumas += luma(row[x])
+        }
+        lumas.sort()
+        return lumas[(lumas.size * 95) / 100]
+    }
+
+    /** The spread of brightness in [box], ink to panel: low where a dimmer lies over the line. */
+    private fun contrastOf(frame: Bitmap, box: TextBounds): Double {
+        val l = box.left.coerceIn(0, frame.width - 1)
+        val r = box.right.coerceIn(l + 1, frame.width)
+        val t = box.top.coerceIn(0, frame.height - 1)
+        val b = box.bottom.coerceIn(t + 1, frame.height)
+        val row = IntArray(r - l)
+        val lumas = ArrayList<Double>()
+        for (y in t until b step 2) {
+            frame.getPixels(row, 0, row.size, l, y, row.size, 1)
+            for (x in row.indices step 2) lumas += luma(row[x])
+        }
+        lumas.sort()
+        return lumas[(lumas.size * 95) / 100] - lumas[lumas.size / 20]
+    }
+
     /** Whether the space between two lines on one row is the panel either stands on. */
     private fun sidePanel(frame: Bitmap, a: GameLine, b: GameLine): Boolean {
         val (l, r) = if (a.bounds.left <= b.bounds.left) a to b else b to a
@@ -2166,6 +2290,12 @@ class GameTextSource @Inject constructor(
         /** A panel this far from the line's own is a different one: a bubble's page. */
         const val OTHER_PANEL_LUMA = 80.0
         const val SIDE_PANEL_LUMA = 40.0
+
+        /** Ink against its panel at least this far apart (0..255) is in full view; dimmed, it measured 22–55, bright 150 and more. */
+        const val ACTIVE_CONTRAST = 100.0
+
+        /** A line whose brightest is under this is behind a dimmer: dimmed white measured 44–83. */
+        const val DIMMED_BRIGHTEST = 120.0
         const val PAGE_EDGES = 2
 
         /** What is kept of an empty end a box is cut back from. */
