@@ -23,6 +23,7 @@ The decision runs in four stages.
 - **Type too large** (`TOO_LARGE`) is a logo or title art, and is not translated.
 - **Type too small** (`TOO_SMALL`) is not translated on its own, only as part of a paragraph.
 - **Controls** are a game's own words in another script: mostly-Latin words in a Japanese game (AUTO, MENU, MomoTalk). They are never translated.
+- **Two labels read as one** are cut apart where the ink stops for a type height or more (a word's glyphs stand a fraction apart), or at a divider read as `|`; each piece gets the letters its share of the ink holds. Two tabs' 「ノーマルスキル」「パッシブスキル+」 had been one squeezed translation across both tabs. Not for anything with sentence marks or spaces.
 - **Icons read as characters** are taken off a line's start: 「◆アタッカー」, a badge 「④」, or a badge's number glued to a name in katakana (「9ハナコ」). Their place still bounds the patch, so the icon is not painted over.
 
 ### 2. What is said: seeds
@@ -98,4 +99,4 @@ Scenes so far (2026-10-13):
 - **Fate/Grand Order:** a servant card, the title screen, and story frames.
 - **Shattered Pixel Dungeon:** the title menu.
 
-All 190 expectations pass (2026-10-14).
+All 194 expectations pass (2026-10-14).

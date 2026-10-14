@@ -903,7 +903,7 @@ class GameTextSource @Inject constructor(
         val around = lines + lastLines
         lines.flatMap { line ->
             if (around.any { it !== line && GameLayout.speaksAbove(line.bounds, it.bounds) }) splitByColour(frame, line) else listOf(line)
-        }.flatMap(::atDividers).map { line ->
+        }.flatMap(::atDividers).flatMap { atInkGaps(frame, it) }.map { line ->
             // Split pieces too: a name and its badge are cut apart by colour
             // and the badge's 「④」 came back on the name's piece.
             val (text, box) = withoutLeadingIcon(line.text, line.bounds)
@@ -979,6 +979,61 @@ class GameTextSource @Inject constructor(
     }
 
     /**
+     * A label cut where its ink stops for longer than a word ever does: two
+     * tabs' names side by side — 「ノーマルスキル」 and 「パッシブスキル+」 — read
+     * as one run of letters, translated as one, and set squeezed across both
+     * tabs and the border between them. Glyphs of a word stand a fraction of
+     * the type apart; [INK_GAP_OF_TYPE] of it, inked nowhere, is between
+     * words. Each piece takes the letters its share of the width holds.
+     */
+    private fun atInkGaps(frame: Bitmap, line: GameLine): List<GameLine> {
+        // Never a sentence: words in a line of dialogue stand apart too.
+        if (line.text.length < MIN_GAP_SPLIT_LETTERS || line.text.any { it in GameLayout.SENTENCE_MARKS || it == ' ' || it == '　' }) return listOf(line)
+        val b = line.bounds
+        if (b.left < 0 || b.right > frame.width || b.top < 0 || b.bottom > frame.height || b.width < 8) return listOf(line)
+        val h = b.height
+        val column = IntArray(h)
+        val middle = IntArray(b.width).also { frame.getPixels(it, 0, b.width, b.left, b.top + h / 2, b.width, 1) }
+            .map { luma(it) }.sorted()[b.width / 2]
+        val inked = BooleanArray(b.width) { x ->
+            frame.getPixels(column, 0, 1, b.left + x, b.top, 1, h)
+            column.count { abs(luma(it) - middle) >= INK_CONTRAST } >= 2
+        }
+        val minGap = (line.typeHeight * INK_GAP_OF_TYPE).toInt().coerceAtLeast(4)
+        val first = inked.indexOfFirst { it }
+        val last = inked.indexOfLast { it }
+        if (first < 0) return listOf(line)
+        val cuts = mutableListOf<Pair<Int, Int>>()
+        var x = first
+        while (x <= last) {
+            if (inked[x]) { x++; continue }
+            val start = x
+            while (x <= last && !inked[x]) x++
+            if (x - start >= minGap) cuts += start to x
+        }
+        if (cuts.isEmpty()) return listOf(line)
+        // Letters by width: each piece gets the characters its ink spans.
+        val inkWidth = (last - first + 1).toDouble()
+        val n = line.text.length
+        val edges = listOf(first) + cuts.flatMap { listOf(it.first, it.second) } + listOf(last + 1)
+        val out = mutableListOf<GameLine>()
+        var from = 0
+        for (i in edges.indices step 2) {
+            val l = edges[i]
+            val r = edges[i + 1]
+            val to = if (i + 2 >= edges.size) n else (n * ((r - first + (edges.getOrNull(i + 2) ?: r) - first) / 2.0) / inkWidth).roundToIntSafe().coerceIn(from + 1, n)
+            // A divider between the two read as a stroke goes with neither.
+            val text = GameLayout.withoutStrayStroke(line.text.substring(from, to).trim())
+            from = to
+            if (text.none(Char::isLetterOrDigit)) continue
+            out += line.copy(text = text, bounds = TextBounds(b.left + l, b.top, b.left + r, b.bottom, b.space))
+        }
+        return if (out.size >= 2) out else listOf(line)
+    }
+
+    private fun Double.roundToIntSafe(): Int = kotlin.math.round(this).toInt()
+
+    /**
      * A line cut where the recogniser read a divider as a bar: two tabs side
      * by side came back as 「ノーマルスキル||バッシブスキル+」 on one frame and
      * as one run of letters on the next, and the two readings took turns.
@@ -996,7 +1051,7 @@ class GameTextSource @Inject constructor(
             at = end
             val l = line.bounds.left + (line.bounds.width * start / total).toInt()
             val r = line.bounds.left + (line.bounds.width * end / total).toInt()
-            out += line.copy(text = piece, bounds = TextBounds(l, line.bounds.top, r, line.bounds.bottom, line.bounds.space))
+            out += line.copy(text = GameLayout.withoutStrayStroke(piece), bounds = TextBounds(l, line.bounds.top, r, line.bounds.bottom, line.bounds.space))
         }
         return out
     }
@@ -2370,6 +2425,10 @@ class GameTextSource @Inject constructor(
         /** How often a picture is taken to watch for translations to withdraw, at most. */
         const val WATCH_INTERVAL_MS = 1000L
         const val WATCH_POLL_MS = 30L
+
+        /** No ink for this much of the type's height inside a label is between two of them. */
+        const val INK_GAP_OF_TYPE = 1.0
+        const val MIN_GAP_SPLIT_LETTERS = 5
 
         /**
          * Reading parts: below this share of the frame in all; parts this
