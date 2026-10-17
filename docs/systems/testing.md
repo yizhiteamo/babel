@@ -68,6 +68,13 @@ Found the hard way, each one having cost a wrong diagnosis:
   the exact split state the capability check exists for. Rebind before judging
   any V1 result, or a working build reads as a dead one.
 - **`adb install -r` unbinds the accessibility service.** Re-enabling it takes `am force-stop`, deleting `enabled_accessibility_services`, writing it again, and then **about fifteen seconds** before `dumpsys accessibility` reports it bound. Eight seconds reads as a failure to bind and invites a wrong diagnosis. On this phone that same window is when the grant gets taken away again — next bullet.
+- **The first bind after `adb install -r` can come with an empty window
+  list.** The service connects, game mode turns on, and `getWindows()` returns
+  nothing for as long as that bind lasts: game mode logs `game mode on, nothing
+  to read: no application window in front (0 windows)` and reads nothing,
+  while the game is plainly in front. Seen three times on the phone
+  (2026-10-17), each time cured by a second `am force-stop` and opening the
+  app. Check for `game mode reading <package>` before trusting a run.
 - **With `WRITE_SECURE_SETTINGS` granted, opening the app re-enables the
   service** after a force stop or a reinstall (`AccessibilityServiceRestorer`).
   That is the quickest rebind, and also a trap: a test that force-stops the

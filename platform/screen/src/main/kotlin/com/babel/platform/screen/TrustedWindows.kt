@@ -44,4 +44,12 @@ interface TapForwarder {
      * a swipe that began on a translation, handed on when the finger lifts.
      */
     fun drag(points: List<Pair<Float, Float>>, durationMs: Long, done: () -> Unit) = done()
+
+    /**
+     * When the player last touched the screen, in `SystemClock.elapsedRealtime`
+     * ms, or 0: a tap or drag handed on through a translation, or one that
+     * went straight to the app. A touch is about to change the screen, so
+     * game mode looks again at once (`CapturePace`).
+     */
+    val lastTouchAt: Long get() = 0L
 }

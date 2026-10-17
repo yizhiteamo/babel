@@ -80,5 +80,5 @@ at least one game:
 3. **Fit:** on plain and graded panels the original is not visible under the translation, and the translation's colour and alignment follow the original's.
 4. **Play is not interrupted:** a short tap on a translation advances the game as a tap on the game would; a long press shows the original.
 5. **No feedback:** Babel never reads its own translation back as game text.
-6. **Resource use:** with the screen still, capture slows down; a 30-minute session does not overheat the phone or run away with memory (the threshold to be set from the first measurements).
+6. **Resource use:** with the screen still, capture slows down; a 30-minute session does not overheat the phone or run away with memory: same scene and starting temperature, the battery ends no more than 3 °C above 30 minutes of the game alone, the thermal status never reaches moderate, and memory levels off (agreed 2026-10-17).
 7. Nothing in the translation core is game-specific.

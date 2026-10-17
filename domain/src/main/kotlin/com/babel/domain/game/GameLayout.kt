@@ -896,12 +896,33 @@ object GameLayout {
      */
     fun unreadableLabel(line: GameLine, controls: Set<GameLine> = emptySet()): Boolean {
         if (line in controls || !isLabel(line.text) || figures(line.text) || isControlWord(line.text)) return false
+        if (scriptSwitches(line.text) >= MAX_LABEL_SCRIPT_SWITCHES) return false
         val letters = line.text.count { it.isLetter() }
         val kana = line.text.count { it in '぀'..'ヿ' }
         return kana >= MIN_LABEL_KANA && kana * 2 >= letters
     }
 
     private const val MIN_LABEL_KANA = 2
+
+    /**
+     * How often a line's letters go from Latin to Japanese or back. A word
+     * goes once at most (「EXスキル」); a counter misread among art goes back
+     * and forth — the dimmed top bar's 「74/240」 behind a pop-up came back
+     * 「フA/のA0」, passed for a kana label and was translated 「FA/的 A0」.
+     */
+    private fun scriptSwitches(text: String): Int {
+        var last: Boolean? = null
+        var switches = 0
+        for (c in text) {
+            if (!c.isLetter()) continue
+            val latin = c.code < 0x80
+            if (last != null && latin != last) switches++
+            last = latin
+        }
+        return switches
+    }
+
+    private const val MAX_LABEL_SCRIPT_SWITCHES = 2
 
     /** A name or an interface word: no sentence's mark and not a sentence's length. */
     fun isLabel(text: String): Boolean = !punctuated(text) && !isSentence(text)

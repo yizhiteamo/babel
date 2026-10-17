@@ -696,6 +696,7 @@ class BabelAccessibilityService : AccessibilityService() {
         while (currentCoroutineContext().isActive) {
             val target = if (gameMode.state.value == CaptureState.ACTIVE) gameWindow() else null
             if (target == null) {
+                if (gameMode.state.value == CaptureState.ACTIVE) noteNoGame()
                 standDownGamePath()
                 delay(GAME_IDLE_POLL_MS)
                 continue
@@ -703,6 +704,7 @@ class BabelAccessibilityService : AccessibilityService() {
             if (gamePathOwner != target.packageName) {
                 standDownGamePath()
                 gamePathOwner = target.packageName
+                screenshots.watchTouches(true)
                 logger.info(TAG, "game mode reading ${target.packageName}")
             }
             // Reads until this game's window is no longer the one in front.
@@ -720,9 +722,30 @@ class BabelAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** Why game mode, on, reads nothing — logged when the reason changes. */
+    private var noGameReason: String? = null
+
+    private fun noteNoGame() {
+        val front = try {
+            windows.firstOrNull {
+                it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION && (it.isActive || it.isFocused)
+            }
+        } catch (failure: Exception) {
+            null
+        }
+        val reason = when {
+            front == null -> "no application window in front (${runCatching { windows.size }.getOrDefault(-1)} windows)"
+            front.root?.packageName == null -> "the front window has no root"
+            else -> "the front app is not a game"
+        }
+        if (reason != noGameReason) logger.debug(TAG, "game mode on, nothing to read: $reason")
+        noGameReason = reason
+    }
+
     private suspend fun standDownGamePath() {
         if (gamePathOwner == null) return
         gamePathOwner = null
+        screenshots.watchTouches(false)
         gameScanner.clear()
     }
 

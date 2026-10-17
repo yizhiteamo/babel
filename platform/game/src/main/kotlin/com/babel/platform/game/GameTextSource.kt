@@ -2,6 +2,7 @@ package com.babel.platform.game
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.SystemClock
 import com.babel.core.common.BabelLogger
 import com.babel.core.common.Redact
 import com.babel.core.model.CoordinateSpace
@@ -17,14 +18,17 @@ import com.babel.core.model.TextOrientation
 import com.babel.core.model.TextSourceType
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.game.BackdropEdges
+import com.babel.domain.game.CapturePace
 import com.babel.domain.game.ChangedBand
 import com.babel.domain.game.GameLayout
 import com.babel.domain.game.GameLine
 import com.babel.domain.game.GameTextFilter
 import com.babel.domain.game.GameTextScanner
 import com.babel.domain.game.StableLines
+import com.babel.domain.game.ThermalLevel
 import com.babel.domain.vision.JapaneseScript
 import com.babel.platform.screen.ScreenFrameSource
+import com.babel.platform.screen.TapForwarder
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.japanese.JapaneseTextRecognizerOptions
@@ -63,6 +67,9 @@ import kotlinx.coroutines.tasks.await
 class GameTextSource @Inject constructor(
     private val frames: ScreenFrameSource,
     private val logger: BabelLogger,
+    private val taps: TapForwarder? = null,
+    private val heat: ThermalLevels? = null,
+    private val pace: CapturePace = CapturePace(),
 ) : GameTextScanner {
 
     override val sourceType: TextSourceType = TextSourceType.GAME
@@ -157,17 +164,34 @@ class GameTextSource @Inject constructor(
         val taking = launch {
             var before: Small? = null
             var takenAt = 0L
+            activeAt = SystemClock.elapsedRealtime()
             while (stillWanted()) {
                 // While the recogniser is busy, not as fast as the platform
                 // allows: each picture is 18 MB, and taken three times a
                 // second beside a reading, readings slowed by a third. Idle,
                 // at once: Fate/Grand Order's band reads take 200 ms, and held
                 // to one picture a second its lines settled a second later.
-                while (reading && System.currentTimeMillis() - takenAt < WATCH_INTERVAL_MS) kotlinx.coroutines.delay(WATCH_POLL_MS)
-                takenAt = System.currentTimeMillis()
+                // And slower once nothing has happened for a while
+                // ([CapturePace]); a touch anywhere ends the wait at once, the
+                // screen being about to change.
+                val hot = heat?.level() ?: ThermalLevel.NONE
+                heatLevel = hot
+                while (true) {
+                    val now = SystemClock.elapsedRealtime()
+                    taps?.lastTouchAt?.let { if (it > activeAt) activeAt = it }
+                    gapMs = pace.gapMs(now - activeAt, hot)
+                    if (now - takenAt >= maxOf(gapMs, if (reading) WATCH_INTERVAL_MS else 0L)) break
+                    kotlinx.coroutines.delay(WATCH_POLL_MS)
+                }
+                takenAt = SystemClock.elapsedRealtime()
                 val frame = frames.windowFrame(windowId) ?: continue
+                val watchFrom = SystemClock.elapsedRealtime()
+                duty.frames.incrementAndGet()
+                duty.captureMs.addAndGet(watchFrom - takenAt)
+                duty.logIfDue()
                 runCatching { withdrawReplaced(frame) }
                 val small = smallOf(frame)
+                duty.watchMs.addAndGet(SystemClock.elapsedRealtime() - watchFrom)
                 newest = small
                 latest.getAndSet(Shot(frame, small, before))?.frame?.recycle()
                 before = small
@@ -179,6 +203,7 @@ class GameTextSource @Inject constructor(
             if (!stillWanted()) break
             val shot = latest.getAndSet(null) ?: continue
             reading = true
+            val readFrom = System.currentTimeMillis()
             try {
                 readOne(
                     shot.frame, windowBounds, packageName,
@@ -189,6 +214,7 @@ class GameTextSource @Inject constructor(
                     unchangedSince = { box -> newest.let { it == null || it === shot.small || stillBetween(shot.small, it, box) } },
                 )
             } finally {
+                duty.readMs.addAndGet(System.currentTimeMillis() - readFrom)
                 reading = false
                 shot.frame.recycle()
             }
@@ -212,6 +238,69 @@ class GameTextSource @Inject constructor(
     private var readParts: List<IntArray> = emptyList()
     private var lastGridBefore: IntArray? = null
     private var linesBefore: List<GameLine> = emptyList()
+
+    /**
+     * What game mode spent in the last minute, logged once a minute: the
+     * measure for heat and battery (`docs/milestones/v3.md`, criterion 6).
+     * Counts and times only.
+     */
+    private inner class Duty {
+        val frames = java.util.concurrent.atomic.AtomicInteger()
+        val reads = Array(KINDS.size) { java.util.concurrent.atomic.AtomicInteger() }
+        val ocrMs = java.util.concurrent.atomic.AtomicLong()
+        val captureMs = java.util.concurrent.atomic.AtomicLong()
+        val watchMs = java.util.concurrent.atomic.AtomicLong()
+        val readMs = java.util.concurrent.atomic.AtomicLong()
+        val published = java.util.concurrent.atomic.AtomicInteger()
+        val withdrawn = java.util.concurrent.atomic.AtomicInteger()
+        val moved = java.util.concurrent.atomic.AtomicInteger()
+        private val since = java.util.concurrent.atomic.AtomicLong(System.currentTimeMillis())
+
+        suspend fun <T> timed(block: suspend () -> T): T {
+            val start = System.currentTimeMillis()
+            try {
+                return block()
+            } finally {
+                ocrMs.addAndGet(System.currentTimeMillis() - start)
+            }
+        }
+
+        fun logIfDue() {
+            val now = System.currentTimeMillis()
+            val from = since.get()
+            if (now - from < DUTY_EVERY_MS || !since.compareAndSet(from, now)) return
+            logger.info(
+                TAG,
+                "duty ${(now - from) / 1000}s: frames ${frames.getAndSet(0)}, reads " +
+                    KINDS.indices.joinToString(" ") { "${KINDS[it]}=${reads[it].getAndSet(0)}" } +
+                    ", capture ${captureMs.getAndSet(0)}ms, watch ${watchMs.getAndSet(0)}ms, read ${readMs.getAndSet(0)}ms" +
+                    " (ocr ${ocrMs.getAndSet(0)}ms), published ${published.getAndSet(0)}, " +
+                    "withdrawn ${withdrawn.getAndSet(0)}, moved ${moved.getAndSet(0)}; " +
+                    "gap ${gapMs}ms, thermal ${heat?.level()}, battery ${heat?.batteryCelsius()}°C",
+            )
+        }
+    }
+
+    private val duty = Duty()
+
+    /** When anything last happened on the game's screen, in elapsed-realtime ms; see [CapturePace]. */
+    @Volatile
+    private var activeAt = 0L
+
+    /** The device's thermal level as last read, for [readOne]'s whole readings. */
+    @Volatile
+    private var heatLevel = ThermalLevel.NONE
+
+    /** The gap between pictures [CapturePace] last set, for the log. */
+    @Volatile
+    private var gapMs = 0L
+
+    /** The words [readOne] offered for translation lately, and when; see [active]. */
+    private val offered = HashMap<String, Long>()
+
+    private fun active() {
+        activeAt = SystemClock.elapsedRealtime()
+    }
 
     /** Whether the recogniser is at work on a picture; see [read]. */
     @Volatile
@@ -269,7 +358,8 @@ class GameTextSource @Inject constructor(
         // in six places, and each was read again, frame after frame, for
         // nothing — reading them took longer than reading the frame whole.
         val nowMs = System.currentTimeMillis()
-        val wholeDue = nowMs - lastWholeAt >= WHOLE_EVERY_MS
+        val wholeEvery = pace.wholeEveryMs(SystemClock.elapsedRealtime() - activeAt, heatLevel)
+        val wholeDue = nowMs - lastWholeAt >= wholeEvery
         val seen = if (wholeDue) grid else lastGrid?.let { before -> IntArray(grid.size) { if (artUntil[it] > nowMs) before[it] else grid[it] } } ?: grid
         val band = ChangedBand.of(lastGrid, seen, GRID_COLUMNS)
         lastGridBefore = lastGrid
@@ -365,11 +455,20 @@ class GameTextSource @Inject constructor(
         for (part in parts) {
             val inPart = read.filter { it.bounds.right > part[0] && it.bounds.left < part[2] && it.bounds.bottom > part[1] && it.bounds.top < part[3] }
             // The same words in the same place: scrolled, a chat's bubbles say
-            // what they said, somewhere else, and are not art.
-            if (inPart.any { line -> linesBefore.none { it.text == line.text && abs(it.bounds.top - line.bounds.top) <= line.bounds.height / 2 && abs(it.bounds.left - line.bounds.left) <= line.bounds.height } }) continue
+            // what they said, somewhere else, and are not art. Nor are words
+            // read off the art itself, or a label over it read a little
+            // differently: a student's waterfall and the translucent panel
+            // over it were never left alone, and were read whole 20 times a
+            // minute on a screen nobody touched.
+            val minSide = minOf(frame.height, frame.width)
+            if (inPart.any { line ->
+                    GameTextFilter.judge(line, minSide) != GameTextFilter.Verdict.ON_ARTWORK &&
+                        linesBefore.none { !otherWords(it.text, line.text) && abs(it.bounds.top - line.bounds.top) <= line.bounds.height / 2 && abs(it.bounds.left - line.bounds.left) <= line.bounds.height }
+                }
+            ) continue
             for (r in (part[1] / ch).toInt() until ((part[3] / ch).toInt() + 1).coerceAtMost(GRID_ROWS))
                 for (c in (part[0] / cw).toInt() until ((part[2] / cw).toInt() + 1).coerceAtMost(GRID_COLUMNS))
-                    artUntil[r * GRID_COLUMNS + c] = nowMs + WHOLE_EVERY_MS
+                    artUntil[r * GRID_COLUMNS + c] = nowMs + wholeEvery
         }
         readParts = emptyList()
 
@@ -451,6 +550,15 @@ class GameTextSource @Inject constructor(
         // is bright: neither its ink nor its panel.
         val shown = (kept.filter { it in dialogue } + labels.filter { l -> kept.none { it.bounds == l.bounds && it in dialogue } })
             .filter { unchangedSince(it.bounds) && !dimmed(frame, it.bounds) }
+        // Words to translate not offered lately: a line typing out, a new
+        // one. Not every word read — over a student's waterfall the
+        // recogniser read new nonsense off the art every frame — nor a word
+        // coming and going: on a translucent panel 「サポーター」 and
+        // 「あサポータ」 took turns, and the screen never counted as still.
+        val offeredAt = System.currentTimeMillis()
+        if (shown.any { it.text !in offered }) active()
+        shown.forEach { offered[it.text] = offeredAt }
+        offered.values.removeAll { offeredAt - it > OFFERED_KEPT_MS }
         lock.withLock {
             val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged, stillOnScreen = stillOnScreen, stillInked = { gone ->
                 // Still there only if its place still holds ink, and not other
@@ -463,11 +571,15 @@ class GameTextSource @Inject constructor(
                     // into its place, nothing read there matched it, and its
                     // translation stood over them for four frames — 3 s.
                     !replacedSince(frame, gone.bounds)
+            }, heldStill = { key ->
+                publishedLooks[key]?.let { (box, then) -> lookOf(frame, box)?.let { now -> lookDifference(then, now) <= STILL_LOOK_LUMA } } == true
             })
             update.gone.forEach { erased.remove(it) }
             update.gone.forEach { publishedLooks.remove(it); shownElements.remove(it) }
             val gone = update.gone.mapNotNull { published.remove(it) }
             if (gone.isNotEmpty()) events.emit(TextSourceEvent.Removed(gone))
+            duty.withdrawn.addAndGet(gone.size)
+            if (gone.isNotEmpty()) active()
             if (update.gone.isNotEmpty()) {
                 // Where and why, never what: the key's text is screen text.
                 logger.debug(TAG, "withdrawn " + update.gone.joinToString { "${it.substringAfterLast('@')} ${update.why[it]}" })
@@ -553,8 +665,11 @@ class GameTextSource @Inject constructor(
                 val keyOf = published.entries.associate { (k, id) -> id to k }
                 for (e in weighed) keyOf[e.id]?.let { shownElements[it] = e }
                 events.emit(TextSourceEvent.Upserted(weighed))
+                duty.published.addAndGet(weighed.size)
+                active()
             }
         }
+        duty.reads[kindOf(how)].incrementAndGet()
         logger.debug(TAG, "read $how: ${read.size} lines, kept ${kept.size}, in ${readMs}ms")
         // What was left out and why, as numbers: where a line was, how tall,
         // how busy behind it. Never its words.
@@ -659,11 +774,13 @@ class GameTextSource @Inject constructor(
      * what moved, not what was shaded. A chat list's selected row darkens
      * evenly under its words, which stay; a scrolled bubble's words go.
      */
-    private fun replaced(then: IntArray, now: IntArray): Boolean {
-        if (then.size != now.size) return true
+    private fun replaced(then: IntArray, now: IntArray): Boolean = lookDifference(then, now) > REPLACED_LOOK_LUMA
+
+    private fun lookDifference(then: IntArray, now: IntArray): Double {
+        if (then.size != now.size) return Double.MAX_VALUE
         val a = then.average()
         val b = now.average()
-        return then.indices.sumOf { abs((then[it] - a) - (now[it] - b)) } / then.size > REPLACED_LOOK_LUMA
+        return then.indices.sumOf { abs((then[it] - a) - (now[it] - b)) } / then.size
     }
 
     /**
@@ -716,11 +833,15 @@ class GameTextSource @Inject constructor(
         }
         if (movedOut.isNotEmpty()) {
             events.emit(TextSourceEvent.Upserted(movedOut))
+            duty.moved.addAndGet(movedOut.size)
+            active()
             logger.debug(TAG, "moved before reading: ${movedOut.size}")
             movedOut = emptyList()
         }
         val ids = keys
         if (ids.isNotEmpty()) events.emit(TextSourceEvent.Removed(ids))
+        duty.withdrawn.addAndGet(ids.size)
+        if (ids.isNotEmpty()) active()
         if (ids.isNotEmpty()) logger.debug(TAG, "withdrawn before reading: ${ids.size}")
     }
 
@@ -850,6 +971,7 @@ class GameTextSource @Inject constructor(
             lastLooks = emptyMap()
             artUntil.fill(0L)
             lastWholeAt = 0L
+            offered.clear()
             otherScript = null
             latinVotes = 0.0
             kanaVotes = 0.0
@@ -882,16 +1004,21 @@ class GameTextSource @Inject constructor(
         val whole = top == 0 && bottom == frame.height && left == 0 && right == frame.width
         val part = if (whole) frame else Bitmap.createBitmap(frame, left, top, right - left, bottom - top)
         val result = try {
-            recognizer.process(InputImage.fromBitmap(part, 0)).await()
+            duty.timed { recognizer.process(InputImage.fromBitmap(part, 0)).await() }
         } finally {
             if (part !== frame) part.recycle()
         }
         val width = frame.width
         val height = frame.height
-        val lines = result.textBlocks.flatMap { it.lines }.flatMap { line -> separated(line) }.mapNotNull { (text, box) ->
+        fun onFrame(box: android.graphics.Rect) = TextBounds(box.left + left, box.top + top, box.right + left, box.bottom + top, CoordinateSpace.SCREEN)
+        val lines = result.textBlocks.flatMap { it.lines }.flatMap { line ->
+            // Never a sentence: a highlighted word in one is another colour,
+            // and with it a little taller or shorter (「イベント」 in a guide).
+            line.boundingBox?.takeIf { line.text.none { c -> c in GameLayout.SENTENCE_MARKS } }?.let { atTypeChange(frame, onFrame(it)) }
+                ?: separated(line).map { (text, box) -> text to onFrame(box) }
+        }.mapNotNull { (text, read) ->
             if (text.isBlank()) return@mapNotNull null
-            val read = TextBounds(box.left + left, box.top + top, box.right + left, box.bottom + top, CoordinateSpace.SCREEN)
-            val (unmarked, unmarkedBox) = withoutLeadingIcon(GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
+            val (unmarked, unmarkedBox) = withoutLeadingIcon(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
             val (kept, bounds) = withoutTail(frame, unmarked, unmarkedBox)
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
@@ -906,8 +1033,13 @@ class GameTextSource @Inject constructor(
         }.flatMap(::atDividers).flatMap { atInkGaps(frame, it) }.map { line ->
             // Split pieces too: a name and its badge are cut apart by colour
             // and the badge's 「④」 came back on the name's piece.
-            val (text, box) = withoutLeadingIcon(line.text, line.bounds)
+            val (text, box) = withoutLeadingIcon(frame, line.text, line.bounds)
             if (text == line.text) line else line.copy(text = text, bounds = box)
+        }.mapNotNull { line ->
+            // Last, on each label alone: two tabs read as one line lost only
+            // the first's letter, not the second.
+            val whole = withLostStart(frame, line.text, line.bounds) ?: return@mapNotNull null
+            if (whole == line.text) line else line.copy(text = whole)
         }
     } catch (cancellation: CancellationException) {
         throw cancellation
@@ -1062,8 +1194,16 @@ class GameTextSource @Inject constructor(
      * Kept, the icon was painted out with the word and the translation set
      * over where it had been.
      */
-    private fun withoutLeadingIcon(text: String, box: TextBounds): Pair<String, TextBounds> {
+    private fun withoutLeadingIcon(frame: Bitmap, text: String, box: TextBounds): Pair<String, TextBounds> {
         val t = text.trimStart()
+        // Or any character standing for a badge in another colour than the
+        // word after it: the affection badge, a pink heart, before a
+        // student's name came back 「@ナギサ」 and 「Cウイ(水着)」, and the
+        // name was translated 「@渚」 with the badge painted out.
+        badgeWidth(frame, t, box)?.let { shift ->
+            iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
+            return t.drop(1).trimStart() to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+        }
         // Or a badge's number, read as a digit or two glued to a name in
         // katakana: the affection badge's 「44」 before 「ハナコ(水着)」 came
         // back 「9ハナコ(水着)」, and the name was translated 「9花子」.
@@ -1077,6 +1217,171 @@ class GameTextSource @Inject constructor(
         val shift = min(box.height, box.width / 3)
         iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
         return t.drop(1).trimStart() to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+    }
+
+    /**
+     * How far into [box] a badge read as [text]'s first character reaches,
+     * or null when that character is a letter of the word: the first stretch
+     * of ink, no wider than a glyph and set apart, in a colour far from the
+     * rest of the line's.
+     */
+    private fun badgeWidth(frame: Bitmap, text: String, box: TextBounds): Int? {
+        // Only a character that cannot begin the Japanese word after it: the
+        // badge's ink is not always a stretch the recogniser read as one, and
+        // taken by colour alone 「アタッカー」 lost its 「ア」 to the icon
+        // before it.
+        if (text.length < 3 || text[1].isWhitespace() || text[1].code < JAPANESE_FROM || text[0].code >= JAPANESE_FROM) return null
+        // A sign — 「@」 — never begins a word; a Latin letter might (「Cランク」),
+        // so it is taken only where its ink is another colour. A quote does
+        // begin one: a story's lines are set in 「"カッコイイ……。"」.
+        if (!text[0].isLetterOrDigit()) {
+            return if (text[0] in LOST_START_MARKS || text[0] in OPENING_MARKS) null else min(box.height, box.width / 3)
+        }
+        if (box.left < 0 || box.top < 0 || box.right > frame.width || box.bottom > frame.height) return null
+        // The first glyph's width against the rest, by the colour of their
+        // ink: a badge is not one stretch of ink — the heart's outline, its
+        // fill and its number came back as five — so it is taken by place.
+        val glyph = min(box.height, box.width / 3)
+        val first = inkColour(frame, box.left, box.top, box.left + glyph, box.bottom) ?: return null
+        val rest = inkColour(frame, box.left + glyph, box.top, box.right, box.bottom) ?: return null
+        val d = kotlin.math.sqrt((0..2).sumOf { (first[it] - rest[it]) * (first[it] - rest[it]) })
+        return if (d > BADGE_COLOUR) glyph else null
+    }
+
+    /** The mean colour (r, g, b) of the ink in a box, by each column's middle value; null without ink. */
+    private fun inkColour(frame: Bitmap, left: Int, top: Int, right: Int, bottom: Int): DoubleArray? {
+        val h = bottom - top
+        if (right <= left || h <= 0) return null
+        val column = IntArray(h)
+        val sum = DoubleArray(3)
+        var n = 0
+        for (x in left until right) {
+            frame.getPixels(column, 0, 1, x, top, 1, h)
+            val middle = column.map { luma(it) }.sorted()[h / 2]
+            for (p in column) if (abs(luma(p) - middle) >= INK_CONTRAST) {
+                sum[0] += Color.red(p).toDouble(); sum[1] += Color.green(p).toDouble(); sum[2] += Color.blue(p).toDouble(); n++
+            }
+        }
+        return if (n == 0) null else DoubleArray(3) { sum[it] / n }
+    }
+
+    /**
+     * [text] with a first letter the recogniser lost given back, [text] when
+     * it lost none, or null when it cannot be had: a word does not begin
+     * with a lengthening mark. Small italic 「ノーマルスキル」 came back
+     * 「-マルスキル」 and was translated 「玛尔斯技能」, Mars skill; it is read
+     * again on its own at twice the size, and a reading that still begins
+     * with the mark is left untranslated rather than translated as another
+     * word.
+     */
+    private suspend fun withLostStart(frame: Bitmap, text: String, box: TextBounds): String? {
+        if (text.length < 2 || text[0] !in LOST_START_MARKS || text[1] !in '゠'..'ヿ') return text
+        val key = "lost:$text@${box.left / 8},${box.top / 8}"
+        rereads[key]?.let { return it.firstOrNull()?.text }
+        val again = reread(frame, box.left - box.height, box.top, box.right, box.bottom, scale = 2)
+            ?.filterNot { it.isWhitespace() }
+            ?.takeIf { it.isNotEmpty() && it[0] !in LOST_START_MARKS && it.endsWith(text.drop(1)) && it.length > text.length - 1 }
+        rereads[key] = listOfNotNull(again?.let { GameLine(it, box, 0.0) })
+        return again
+    }
+
+    /** What the recogniser reads in columns [left, right) on a margin of their own backdrop, scaled; null when it fails. */
+    private suspend fun reread(frame: Bitmap, left: Int, top: Int, right: Int, bottom: Int, scale: Int = 1): String? {
+        val l = left.coerceAtLeast(0)
+        val r = right.coerceAtMost(frame.width)
+        if (r - l < MIN_PIECE_PX || bottom <= top) return null
+        val crop = padded(frame, l, top, r, bottom, pad = (bottom - top) / 4)
+        val sized = if (scale == 1) crop else Bitmap.createScaledBitmap(crop, crop.width * scale, crop.height * scale, true)
+        return try {
+            duty.timed { recognizer.process(InputImage.fromBitmap(sized, 0)).await() }.text.replace("\n", "").trim()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Exception) {
+            null
+        } finally {
+            if (sized !== crop) sized.recycle()
+            crop.recycle()
+        }
+    }
+
+    /**
+     * One line of the recogniser's cut where its type changes size and
+     * colour together, each piece read again on its own; null when it does
+     * not. A skill's small blue-grey label in its card and the skill's name
+     * in large dark type beside it came back as one line, 「ノーマルスキル決定的
+     * な手がかり」, and were translated and painted as one across both. Both
+     * signals, because either alone happens inside one piece of text: a
+     * coloured word in a sentence, a 「……」 lower than the letters after it.
+     */
+    private suspend fun atTypeChange(frame: Bitmap, box: TextBounds): List<Pair<String, TextBounds>>? {
+        val h = box.height
+        if (h <= 0 || box.left < 0 || box.top < 0 || box.right > frame.width || box.bottom > frame.height || box.width < h * MIN_SPLIT_ASPECT) return null
+        val key = "size@${box.left / 8},${box.top / 8},${box.right / 8},${box.bottom / 8}"
+        rereads[key]?.let { cached -> return cached.takeIf { it.size > 1 }?.map { it.text to it.bounds } }
+        val w = box.width
+        val pixels = IntArray(w * h)
+        frame.getPixels(pixels, 0, w, box.left, box.top, w, h)
+        val column = DoubleArray(h)
+        val tops = IntArray(w) { -1 }
+        val bottoms = IntArray(w) { -1 }
+        val colours = Array(w) { LongArray(4) }
+        for (x in 0 until w) {
+            for (y in 0 until h) column[y] = luma(pixels[y * w + x])
+            val bg = column.sortedArray()[h / 2]
+            for (y in 0 until h) if (abs(column[y] - bg) >= INK_CONTRAST) {
+                if (tops[x] < 0) tops[x] = y
+                bottoms[x] = y
+                val p = pixels[y * w + x]
+                colours[x][0] += Color.red(p).toLong()
+                colours[x][1] += Color.green(p).toLong()
+                colours[x][2] += Color.blue(p).toLong()
+                colours[x][3]++
+            }
+        }
+        // Each side's type height and ink colour; null with too little ink to
+        // judge. The height is the tall end of its columns' ink, not the
+        // tallest: a card's slanted edge beside a label is ink from top to
+        // bottom, a few columns wide.
+        fun side(from: Int, to: Int): DoubleArray? {
+            val heights = (from until to).filter { tops[it] >= 0 }.map { bottoms[it] - tops[it] + 1 }.sorted()
+            val sum = LongArray(4)
+            for (x in from until to) for (i in 0..3) sum[i] += colours[x][i]
+            if (heights.size < h / 2 || sum[3] == 0L) return null
+            val tall = heights[(heights.size * TYPE_HEIGHT_PERCENTILE).toInt()].toDouble()
+            return doubleArrayOf(tall, sum[0].toDouble() / sum[3], sum[1].toDouble() / sum[3], sum[2].toDouble() / sum[3])
+        }
+        val minGap = (h * TYPE_CHANGE_GAP_OF_HEIGHT).toInt().coerceAtLeast(4)
+        var cut: Pair<Int, Int>? = null
+        var x = 0
+        while (x < w && cut == null) {
+            if (tops[x] >= 0) {
+                x++
+                continue
+            }
+            val start = x
+            while (x < w && tops[x] < 0) x++
+            if (x - start < minGap || start == 0 || x >= w) continue
+            // The type either side of the gap, a few glyphs of it: a speaker's
+            // large name further left made a small affiliation's katakana and
+            // its kanji look like two sizes of type, and 「ワイルドハント芸術学院」
+            // was cut in two.
+            val reach = (h * TYPE_CHANGE_REACH_OF_HEIGHT).toInt()
+            val a = side((start - reach).coerceAtLeast(0), start) ?: continue
+            val b = side(x, (x + reach).coerceAtMost(w)) ?: continue
+            val sizes = min(a[0], b[0]) / max(a[0], b[0])
+            val colour = kotlin.math.sqrt((a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]) + (a[3] - b[3]) * (a[3] - b[3]))
+            if (sizes in MIN_TYPE_CHANGE..MAX_TYPE_CHANGE && colour > TYPE_CHANGE_COLOUR) cut = start to x
+        }
+        val pieces = cut?.let { (gapStart, gapEnd) ->
+            val l = reread(frame, box.left, box.top, box.left + gapStart, box.bottom)
+            val r = reread(frame, box.left + gapEnd, box.top, box.right, box.bottom)
+            if (l.isNullOrBlank() || r.isNullOrBlank()) null else listOf(
+                GameLine(l, TextBounds(box.left, box.top, box.left + gapStart, box.bottom, box.space), 0.0),
+                GameLine(r, TextBounds(box.left + gapEnd, box.top, box.right, box.bottom, box.space), 0.0),
+            )
+        }.orEmpty()
+        rereads[key] = pieces
+        return pieces.takeIf { it.size > 1 }?.map { it.text to it.bounds }
     }
 
     /**
@@ -1243,6 +1548,17 @@ class GameTextSource @Inject constructor(
     }
 
     /**
+     * Lines read again in pieces or larger ([atTypeChange], [withLostStart]),
+     * and lines looked at and left whole. Every line of a whole reading is
+     * looked at, a screen holds fifty, and the pieces are read by the
+     * recogniser: among [splits]' 64 they would be pushed out and read again
+     * on every whole reading.
+     */
+    private val rereads = object : LinkedHashMap<String, List<GameLine>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<GameLine>>?) = size > REREAD_CACHE
+    }
+
+    /**
      * A line set in two colours — a speaker's name and their affiliation —
      * read again piece by piece (`GameLayout.splitPoints`). The recogniser
      * returns the two as one line and one word, so the cut can only be found
@@ -1272,7 +1588,7 @@ class GameTextSource @Inject constructor(
                 // frame around the piece clears that and keeps the glyphs' edges.
                 val crop = padded(frame, l, b.top, r, b.bottom, pad = b.height / 4)
                 val text = try {
-                    recognizer.process(InputImage.fromBitmap(crop, 0)).await().text.replace("\n", "").trim()
+                    duty.timed { recognizer.process(InputImage.fromBitmap(crop, 0)).await() }.text.replace("\n", "").trim()
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (failure: Exception) {
@@ -2244,9 +2560,42 @@ class GameTextSource @Inject constructor(
         const val MIN_PIECE_PX = 24
         const val MIN_RECOGNISABLE_PX = 32
 
+        /** Ink colours (0–441) this far apart make a first glyph a badge: the heart against a white name measured 111. */
+        const val BADGE_COLOUR = 80.0
+
+        /** Where Japanese script starts in Unicode (CJK punctuation, kana, Han). */
+        const val JAPANESE_FROM = 0x3000
+
+        /** Quotes and brackets: they open a line of text, and are no badge. */
+        const val OPENING_MARKS = "\"'“‘(（[［<〈《【"
+
+        /** Marks a word cannot begin with; a reading that does lost its first letter. */
+        const val LOST_START_MARKS = "-ー一―‐"
+
+        /**
+         * A change of type within a line: across a gap of this much of its
+         * height, the smaller type this share of the larger. A skill's label
+         * against the skill's name measured 0.40–0.41; a speaker's katakana
+         * name against the kanji of a smaller affiliation 0.75–0.78, katakana
+         * so much shorter than kanji that size alone does not tell them apart.
+         */
+        const val TYPE_CHANGE_GAP_OF_HEIGHT = 0.25
+        const val MIN_TYPE_CHANGE = 0.3
+        const val MAX_TYPE_CHANGE = 0.7
+        const val TYPE_HEIGHT_PERCENTILE = 0.8
+        const val TYPE_CHANGE_REACH_OF_HEIGHT = 2.5
+
+        /**
+         * Ink colours (0–441) this far apart along with a change of size: the
+         * skill label's blue-grey against the name's dark grey measured 40–47,
+         * one stretch of a guide's text against the next 31.
+         */
+        const val TYPE_CHANGE_COLOUR = 36.0
+
         /** A speaker's name takes at most this much of its line: チナツ took 45%, レイジョ 61%, 「玄龍門の構成員」 beside 「玄龍門」 over 75%. */
         const val MAX_NAME_FRACTION = 0.85
         const val SPLIT_CACHE = 64
+        const val REREAD_CACHE = 512
 
         /**
          * The most backdrop error a line may have and still be erased: the
@@ -2426,6 +2775,21 @@ class GameTextSource @Inject constructor(
         const val WATCH_INTERVAL_MS = 1000L
         const val WATCH_POLL_MS = 30L
 
+        /** How long a word offered for translation stays known: a still screen's readings take turns within it. */
+        const val OFFERED_KEPT_MS = 30_000L
+
+        /** How often what game mode spent is logged. */
+        const val DUTY_EVERY_MS = 60_000L
+
+        /** The kinds of reading [Duty] counts, as `readOne` names them. */
+        val KINDS = listOf("unchanged", "parts", "band", "whole")
+        fun kindOf(how: String): Int = when {
+            how == "unchanged" -> 0
+            how.endsWith("%") -> 1
+            how.startsWith("band") -> 2
+            else -> 3
+        }
+
         /** No ink for this much of the type's height inside a label is between two of them. */
         const val INK_GAP_OF_TYPE = 1.0
         const val MIN_GAP_SPLIT_LETTERS = 5
@@ -2438,8 +2802,6 @@ class GameTextSource @Inject constructor(
          */
         const val PART_AREA_FRACTION = 0.45
 
-        /** The longest between whole readings, which find what appears over art left alone. */
-        const val WHOLE_EVERY_MS = 4_000L
         const val REGION_GAP_CELLS = 3
         const val BLANK_REACH_OF_HEIGHT = 0.08
         const val BLANK_STRAY = 1

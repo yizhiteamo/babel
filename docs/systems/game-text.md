@@ -25,6 +25,10 @@ The decision runs in four stages.
 - **Controls** are a game's own words in another script: mostly-Latin words in a Japanese game (AUTO, MENU, MomoTalk). They are never translated.
 - **Two labels read as one** are cut apart where the ink stops for a type height or more (a word's glyphs stand a fraction apart), or at a divider read as `|`; each piece gets the letters its share of the ink holds. Two tabs' 「ノーマルスキル」「パッシブスキル+」 had been one squeezed translation across both tabs. Not for anything with sentence marks or spaces.
 - **Icons read as characters** are taken off a line's start: 「◆アタッカー」, a badge 「④」, or a badge's number glued to a name in katakana (「9ハナコ」). Their place still bounds the patch, so the icon is not painted over.
+  - A sign before Japanese (「@ナギサ」, the affection badge read as `@`) is always an icon; a quote or bracket is not.
+  - A Latin letter before Japanese (「Cウイ」) is an icon only where the first glyph's ink is another colour than the rest's (the badge's pink against a white name measured 111 of 441). 「Cランク」 keeps its C.
+- **A lost first letter**: a word cannot begin with a lengthening mark, so a label read 「-マルスキル」 is read again on its own at twice the size, which gave back 「ノーマルスキル」; when it still begins with the mark it is left untranslated. It had been translated 「玛尔斯技能」, Mars skill.
+- **A label and what it labels read as one**: a line whose type changes size and colour together across a gap is cut there, and each piece read again on its own. A skill pop-up's small blue-grey 「ノーマルスキル」 in its card and the skill's large dark name beside it came back as 「ノーマルスキル決定的な手がかり」 and were painted as one across both. The sizes are compared a few glyphs either side of the gap (measured 0.40 against a speaker's katakana name and kanji affiliation's 0.75–0.78), and never in a line with sentence marks: a highlighted word in a sentence is another colour too.
 
 ### 2. What is said: seeds
 
@@ -57,6 +61,8 @@ From the seeds, dialogue spreads to:
 
 Afterwards these are removed: a line in a **menu bar** (four labels or more of one size on a row), and **figures**.
 
+Afterwards, an interface label must also be one word's script: letters that go from Latin to Japanese and back twice or more (「フA/のA0」, the dimmed top bar's 「74/240」 misread behind a pop-up) are not a label.
+
 ### 4. Over time
 
 When the scene changes (most of the picture changes at once, such as a pop-up opening or closing), everything remembered of where dialogue stood is forgotten: dialogue places, chat columns and senders. Kept after a skill pop-up closed, the pop-up's place had the status screen's labels under it translated as dialogue for a minute, until they vanished.
@@ -66,6 +72,7 @@ When the scene changes (most of the picture changes at once, such as a pop-up op
 - **Unchanged:** a line that stood still between two pictures is published at its first reading.
 - **Misread names:** a name read one character off a known one is snapped to it, but only where the two characters are ones the recogniser confuses (ツ/ッ, カ/力, ー/一, and so on). 「アカネ」 is not 「アカリ」.
 - **Withdrawn:** a published line is withdrawn when its place goes blank, when other words are read there, or when the picture shows its place changed.
+- **Held:** a published line whose place looks as it did when it was published is never withdrawn, whatever is read there or not: its words cannot have changed if its pixels did not. On a translucent panel over a waterfall, 「サポーター」 read 「あサポータ」 every few frames and went missing on others, and its translation went and came back every few seconds — 18 withdrawals a minute on a screen nobody touched, none after.
 - **Moved:** a line found again a little up or down is moved, not withdrawn.
 
 ## How a rule is changed: the scene corpus
@@ -99,4 +106,6 @@ Scenes so far (2026-10-13):
 - **Fate/Grand Order:** a servant card, the title screen, and story frames.
 - **Shattered Pixel Dungeon:** the title menu.
 
-All 194 expectations pass (2026-10-14).
+Added 2026-10-17: two students' status screens (an affection badge before the name, 「ノーマルスキル」 read 「-マルスキル」) and a skill-growth pop-up (labels read together with the skill names beside them, the dimmed top bar behind).
+
+All 218 expectations pass (2026-10-17).

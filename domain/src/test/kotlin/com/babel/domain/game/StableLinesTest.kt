@@ -368,4 +368,29 @@ class StableLinesTest {
         assertEquals(1110, update.settled.single().line.bounds.top)
         assertTrue(update.gone.isEmpty())
     }
+
+    /** 「サポーター」 on a translucent panel over a waterfall, read two ways and sometimes not at all. */
+    @Test
+    fun `a published line whose place has not changed stays through other readings and misses`() {
+        val lines = StableLines()
+        lines.next(listOf(line("サポーター")), now = 0)
+        val key = lines.next(listOf(line("サポーター")), now = 333).settled.single().key
+
+        for (t in 1..8) {
+            val reading = if (t % 2 == 0) listOf(line("あサポータ")) else emptyList()
+            val update = lines.next(reading, now = 333L + t * 2000, heldStill = { it == key })
+            assertTrue(update.gone.isEmpty(), "withdrawn at frame $t")
+        }
+    }
+
+    @Test
+    fun `a published line whose place changed is withdrawn for new words`() {
+        val lines = StableLines()
+        lines.next(listOf(line("ふふ。みなさん")), now = 0)
+        val key = lines.next(listOf(line("ふふ。みなさん")), now = 333).settled.single().key
+
+        val update = lines.next(listOf(line("それでは、また")), now = 666, heldStill = { false })
+
+        assertEquals(listOf(key), update.gone)
+    }
 }

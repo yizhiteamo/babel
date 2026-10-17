@@ -74,6 +74,16 @@ class StableLines {
          * for words that were not going to change.
          */
         stillOnScreen: (GameLine) -> Boolean = { false },
+        /**
+         * Whether the place of the published line under this key looks as it
+         * did when it was published, as the caller saw. Its words cannot have
+         * changed if its pixels did not: a reading that differs there, or none
+         * at all, is the recogniser's, and the translation stays. On a
+         * translucent panel over a waterfall 「サポーター」 was read
+         * 「あサポータ」 every few frames, missed on others, and its translation
+         * went and came back every few seconds.
+         */
+        heldStill: (key: String) -> Boolean = { false },
     ): Update {
         val settled = mutableListOf<Settled>()
         val gone = mutableListOf<String>()
@@ -155,6 +165,10 @@ class StableLines {
             } else {
                 // Same place, new words: the old line is over, whatever it was.
                 val published = before.publishedKey
+                if (published != null && !sceneChanged && heldStill(published)) {
+                    next += before
+                    continue
+                }
                 if (published != null && (flips(before.line, line) || akin(before.line.text, line.text))) {
                     // Two readings that have taken turns here before: one
                     // place read two ways, not a new line. Kept as a miss.
@@ -180,6 +194,10 @@ class StableLines {
         for (missing in unmatched) {
             val key = missing.publishedKey
             if (key == null) continue
+            if (!sceneChanged && heldStill(key)) {
+                next += missing
+                continue
+            }
             val blank = !sceneChanged && !stillInked(missing.line)
             missing.misses += if (sceneChanged || blank) GRACE_FRAMES else 1
             if (missing.misses >= GRACE_FRAMES) {

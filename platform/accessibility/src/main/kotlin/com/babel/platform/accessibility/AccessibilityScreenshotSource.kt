@@ -38,8 +38,13 @@ class AccessibilityScreenshotSource @Inject constructor(
 
     override val canForward: Boolean get() = service != null
 
+    @Volatile
+    override var lastTouchAt: Long = 0L
+        private set
+
     override fun tap(x: Float, y: Float, done: () -> Unit) {
         val current = service ?: return done()
+        lastTouchAt = SystemClock.elapsedRealtime()
         val gesture = android.accessibilityservice.GestureDescription.Builder()
             .addStroke(
                 android.accessibilityservice.GestureDescription.StrokeDescription(
@@ -63,6 +68,7 @@ class AccessibilityScreenshotSource @Inject constructor(
     override fun drag(points: List<Pair<Float, Float>>, durationMs: Long, done: () -> Unit) {
         val current = service ?: return done()
         if (points.size < 2) return done()
+        lastTouchAt = SystemClock.elapsedRealtime()
         val path = android.graphics.Path().apply {
             moveTo(points.first().first, points.first().second)
             points.drop(1).forEach { (x, y) -> lineTo(x, y) }
@@ -102,8 +108,54 @@ class AccessibilityScreenshotSource @Inject constructor(
     }
 
     internal fun detach() {
+        watchTouches(false)
         service = null
     }
+
+    /**
+     * A one-pixel window that is told of every touch elsewhere on the screen
+     * (`FLAG_WATCH_OUTSIDE_TOUCH`), so [lastTouchAt] knows of taps that go
+     * straight to the game — a label's translation lets them through, and
+     * most of a game's screen has none. Only that a touch happened: for
+     * another app's window the platform gives no position.
+     *
+     * Game mode slows its pictures down on a still screen (`CapturePace`);
+     * without this a tap that opened a pop-up left the screen's old
+     * translations standing over it for up to two seconds.
+     */
+    internal fun watchTouches(on: Boolean) {
+        main.post {
+            val current = service
+            val manager = current?.getSystemService(android.view.WindowManager::class.java)
+            touchWatcher?.let { watcher -> runCatching { manager?.removeView(watcher) } }
+            touchWatcher = null
+            if (!on || current == null || manager == null) return@post
+            val watcher = android.view.View(current).apply {
+                setOnTouchListener { _, event ->
+                    if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) lastTouchAt = SystemClock.elapsedRealtime()
+                    false
+                }
+            }
+            val params = android.view.WindowManager.LayoutParams(
+                1, 1,
+                android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    android.view.WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                    android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                android.graphics.PixelFormat.TRANSLUCENT,
+            ).apply {
+                gravity = android.view.Gravity.TOP or android.view.Gravity.START
+                x = 0
+                y = 0
+                title = "Babel touch watcher"
+            }
+            if (runCatching { manager.addView(watcher, params) }.isSuccess) touchWatcher = watcher
+        }
+    }
+
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+    private var touchWatcher: android.view.View? = null
 
     /**
      * Waits out the platform's screenshot interval rather than failing on it.

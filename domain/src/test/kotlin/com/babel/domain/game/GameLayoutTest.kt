@@ -5,6 +5,8 @@ import com.babel.core.model.TextBounds
 import com.babel.domain.game.GameLayout.InkRun
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /** Boxes and colours are the ones measured on Blue Archive screenshots. */
 class GameLayoutTest {
@@ -396,5 +398,16 @@ class GameLayoutTest {
         val art = line("イペントアイテムを種得しましょう!", 1717, 954, 2525, 1017, error = 20.0)
 
         assertEquals(emptyList(), GameLayout.select(listOf(art), frameHeight = 1440))
+    }
+
+    @Test
+    fun `a kana label with a Latin prefix is still a label`() {
+        assertTrue(GameLayout.unreadableLabel(line("EXスキル", 1763, 640, 1904, 670)))
+    }
+
+    /** The dimmed top bar's 「74/240」, misread behind a pop-up. */
+    @Test
+    fun `letters going back and forth between Latin and kana are not a label`() {
+        assertFalse(GameLayout.unreadableLabel(line("フA/のA0", 1229, 21, 1460, 55)))
     }
 }
