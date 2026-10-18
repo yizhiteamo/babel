@@ -405,4 +405,15 @@ class StableLinesTest {
 
         assertEquals(listOf(key), update.gone)
     }
+
+    @Test
+    fun `a label read with the other voicing mark is the label already known`() {
+        val lines = StableLines()
+        lines.next(listOf(line("サブスキル")), now = 0)
+        lines.next(listOf(line("サブスキル")), now = 333)
+
+        val update = lines.next(listOf(line("サブスキル"), line("サプスキル", top = 1300)), now = 666)
+
+        assertEquals("サブスキル", update.settled.single().line.text)
+    }
 }

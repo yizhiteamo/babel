@@ -416,5 +416,6 @@ class GameLayoutTest {
         assertEquals("レベルアップ", GameLayout.withoutStrayStroke("レベルアップ |"))
         assertEquals("レベルアップ", GameLayout.withoutStrayStroke("レベルアップ|"))
         assertEquals("BOX 1", GameLayout.withoutStrayStroke("BOX 1"))
+        assertEquals("大活躍のよて~", GameLayout.withoutStrayStroke("||大活躍のよて~"))
     }
 }

@@ -1021,7 +1021,9 @@ class GameTextSource @Inject constructor(
         val lines = result.textBlocks.flatMap { it.lines }.flatMap { line ->
             // Never a sentence: a highlighted word in one is another colour,
             // and with it a little taller or shorter (「イベント」 in a guide).
-            line.boundingBox?.takeIf { line.text.none { c -> c in GameLayout.SENTENCE_MARKS } }?.let { atTypeChange(frame, onFrame(it)) }
+            // Nor one with figures: a skill's description sets its numbers in
+            // blue and larger, and 「…攻撃速度を30.6%増加…」 was cut before them.
+            line.boundingBox?.takeIf { line.text.none { c -> c in GameLayout.SENTENCE_MARKS || c.isDigit() } }?.let { atTypeChange(frame, onFrame(it)) }
                 ?: separated(line).map { (text, box) -> text to onFrame(box) }
         }.mapNotNull { (text, read) ->
             if (text.isBlank()) return@mapNotNull null
@@ -1049,7 +1051,7 @@ class GameTextSource @Inject constructor(
             // the first's letter, not the second.
             val whole = withLostStart(frame, line.text, line.bounds) ?: return@mapNotNull null
             if (whole == line.text) line else line.copy(text = whole)
-        }.let(::withBracketedParts).let { withRowGapsRead(frame, it) }
+        }.let(::withBracketedParts).let(::withSentencePiecesJoined).let { withRowGapsRead(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {
@@ -1122,6 +1124,40 @@ class GameTextSource @Inject constructor(
             }
         }
         return lines + added
+    }
+
+    /**
+     * [lines] with the pieces of one sentence the recogniser cut apart joined
+     * again: two pieces on a row, of one size of type, with no more than
+     * half a glyph between them, one of them a sentence. A skill's
+     * description came back as 「…攻撃速度?」 and 「を30.6%増加(20秒間)/」
+     * touching end to end; the two were translated apart, the first squeezed
+     * into two tiny lines, and the paragraph was no longer joined line to
+     * line.
+     */
+    private fun withSentencePiecesJoined(lines: List<GameLine>): List<GameLine> {
+        val out = lines.toMutableList()
+        var i = 0
+        while (i < out.size) {
+            val a = out[i]
+            val b = out.firstOrNull { it !== a && sameRow(it.bounds, a.bounds) && it.bounds.left >= a.bounds.right - a.typeHeight / 4 &&
+                it.bounds.left - a.bounds.right <= a.typeHeight / 2 && abs(it.typeHeight - a.typeHeight) <= a.typeHeight / 6 }
+            if (b == null || !(GameLayout.isSentence(a.text) || GameLayout.isSentence(b.text) || a.text.any { it in GameLayout.SENTENCE_MARKS } || b.text.any { it in GameLayout.SENTENCE_MARKS })) {
+                i++
+                continue
+            }
+            // A question mark straight before a particle was a particle cut
+            // in half: 「攻撃速度を」 read 「攻撃速度?」 + 「を…」.
+            val head = a.text.trimEnd().let { t -> if (t.lastOrNull()?.let { c -> c in "?？" } == true && b.text.trimStart().firstOrNull()?.let { it in PARTICLES } == true) t.dropLast(1) else t }
+            val joined = a.copy(
+                text = head + b.text.trimStart(),
+                bounds = TextBounds(a.bounds.left, min(a.bounds.top, b.bounds.top), b.bounds.right, max(a.bounds.bottom, b.bounds.bottom), a.bounds.space),
+                backdropError = max(a.backdropError, b.backdropError),
+            )
+            out[i] = joined
+            out.remove(b)
+        }
+        return out
     }
 
     /**
@@ -1451,6 +1487,10 @@ class GameTextSource @Inject constructor(
         val rest = inkColour(frame, box.left + glyph, box.top, min(box.right, box.left + 3 * glyph), box.bottom) ?: return null
         val d = kotlin.math.sqrt((0..2).sumOf { (first[it] - rest[it]) * (first[it] - rest[it]) })
         if (d <= BADGE_COLOUR) return null
+        // A bar in another colour before a title — a pop-up's accent — is a
+        // few columns of ink and a gap before the word: the title's patch
+        // painted it out. Its width, and no letter lost.
+        bar(frame, box)?.let { return -it }
         if (text[0].code < JAPANESE_FROM) return glyph
         if (!kana) return null
         // A kana in another colour is a badge only if, read alone, it is the
@@ -1505,6 +1545,63 @@ class GameTextSource @Inject constructor(
             x--
         }
         return null
+    }
+
+    /**
+     * How far into [box] a bar at its start reaches with the gap after it, or
+     * null: a first run of ink no wider than a quarter of the line's height,
+     * then blank columns.
+     */
+    private fun bar(frame: Bitmap, box: TextBounds): Int? {
+        val h = box.height
+        val column = IntArray(h)
+        fun inked(x: Int): Boolean {
+            frame.getPixels(column, 0, 1, x, box.top, 1, h)
+            val middle = column.map { luma(it) }.sorted()[h / 2]
+            return column.count { abs(luma(it) - middle) >= INK_CONTRAST } * 2 >= h
+        }
+        var x = box.left
+        while (x < box.right && !inked(x)) x++
+        val start = x
+        while (x < box.right && inked(x)) x++
+        if (x == start || x - start > h / 4) return null
+        val end = x
+        frame.getPixels(column, 0, 1, x, box.top, 1, h)
+        while (x < box.right && column.let { frame.getPixels(it, 0, 1, x, box.top, 1, h); val m = it.map { p -> luma(p) }.sorted()[h / 2]; it.none { p -> abs(luma(p) - m) >= INK_CONTRAST } }) x++
+        return if (x - end >= BAR_GAP_PX) x - box.left else null
+    }
+
+    /**
+     * Where a coloured mark inside [box], before its first ink, ends: a
+     * pop-up title's accent bar, light cyan on white, too pale to count as
+     * ink, sat inside the recogniser's box and was painted out with it.
+     * Null when there is none.
+     */
+    private fun colouredMarkInside(frame: Bitmap, box: TextBounds): Int? {
+        val h = box.height
+        if (h <= 0 || box.left < 0 || box.right > frame.width || box.top < 0 || box.bottom > frame.height) return null
+        val column = IntArray(h)
+        fun inkAt(x: Int): Boolean {
+            frame.getPixels(column, 0, 1, x, box.top, 1, h)
+            val middle = column.map { luma(it) }.sorted()[h / 2]
+            return column.count { abs(luma(it) - middle) >= INK_CONTRAST } >= 2
+        }
+        val firstInk = (box.left until box.right).firstOrNull(::inkAt) ?: return null
+        if (firstInk - box.left < 4) return null
+        frame.getPixels(column, 0, 1, firstInk - 2, box.top, 1, h)
+        val panel = column[h / 2]
+        var end: Int? = null
+        for (x in box.left until firstInk - 2) {
+            frame.getPixels(column, 0, 1, x, box.top, 1, h)
+            val marked = column.count { p ->
+                val dr = Color.red(p) - Color.red(panel)
+                val dg = Color.green(p) - Color.green(panel)
+                val db = Color.blue(p) - Color.blue(panel)
+                dr * dr + dg * dg + db * db > MARK_COLOUR * MARK_COLOUR
+            }
+            if (marked * 2 >= h) end = x + 1
+        }
+        return end?.plus(SIDE_MARGIN_PX)
     }
 
     /** How many columns of a box hold ink against their own middle value. */
@@ -2094,6 +2191,7 @@ class GameTextSource @Inject constructor(
         val row = beside.filter { sidePanel(frame, it, recognised) }
         // Every piece on the row bounds the patch, on this panel or another:
         // a centred pop-up line's patch grew over the dimmed list behind it.
+        val markEnd = colouredMarkInside(frame, b)
         val leftLimit = maxOf(
             beside.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0,
             iconBefore(frame, b, recognised.typeHeight) ?: 0,
@@ -2155,7 +2253,7 @@ class GameTextSource @Inject constructor(
             bounds = if (centred) {
                 TextBounds(centre - half - roomEach, wide.top, centre + half + roomEach, wide.bottom, wide.space)
             } else {
-                TextBounds(extent.left, extent.top, extent.right + room, extent.bottom, extent.space)
+                TextBounds(max(extent.left, markEnd ?: 0), extent.top, extent.right + room, extent.bottom, extent.space)
             },
         )
         // Room for a line of type the original's height: a typeface's line is
@@ -2860,6 +2958,11 @@ class GameTextSource @Inject constructor(
         const val SMALL_LABEL_OF_HEIGHT = 0.024
         const val LABEL_INK_DISTANCE = 60.0
         const val MIN_ICON_PX = 6
+        const val BAR_GAP_PX = 4
+
+        /** Colour distance (0–441) from the panel that makes a column a coloured mark: the cyan bar on white measured 128. */
+        const val MARK_COLOUR = 90.0
+        const val PARTICLES = "をがにはのでとへも"
 
         /**
          * Ink colours (0–441) this far apart make a first glyph a badge: the

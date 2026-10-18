@@ -31,6 +31,8 @@ The decision runs in four stages.
   - An icon of another colour just left of a line's box, unread, still bounds the patch: 「ユズ」's patch had grown over her badge and painted it out.
   - A role icon read as one hiragana before a katakana word (「あサポータ」, 「もサポーター」) is taken off.
   - Icons inside a line cut it there: 「(臨戦)★食★STRIKE」 is 「(臨戦)」.
+- **Pieces of one sentence cut apart** — touching on a row, one type size, one of them a sentence — are joined again, and a 「?」 straight before a particle is dropped as half a cut 「を」. A skill description's line 「…攻撃速度を30.6%増加…」 had come back as 「…攻撃速度?」 and 「を30.6%…」, translated apart, and the paragraph no longer joined line to line. A line with figures is never cut by a change of type either: its numbers are set larger and in blue.
+- **A coloured mark inside a line's box** before its ink — a pop-up title's pale accent bar — bounds the patch, and strokes read off it (「||」) are taken off the text.
 - **A bracketed part** after a word on its row is joined to it (「ハナコ」「(水着)」 → 「ハナコ(水着)」), so the name and its outfit are one label.
 - **A filled 「?」 at a line's end** is a help button, not the word's question: 「生徒?」 is 「生徒」, and the button is not painted over.
 - **A row of small labels with a gap** where a label should be: what is in the gap is read again at twice the size. 「ノーマルスキル」 in a skill card was left out on three students of five.

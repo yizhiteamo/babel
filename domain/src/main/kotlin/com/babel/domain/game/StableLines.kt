@@ -505,7 +505,11 @@ class StableLines {
         const val MIN_SNAP_LENGTH = 3
 
         /** Characters the recogniser reads one for another: small and full kana, kana and kanji alike. */
-        val CONFUSABLE = listOf("ツッ", "ヤャ", "ユュ", "ヨョ", "アァ", "イィ", "ウゥ", "エェ工", "オォ", "カ力", "ロ口", "ニ二", "ー一", "ヘへ", "ベべ", "ペぺ", "タ夕", "ト卜", "ハ八", "ケヶ", "クワ", "シツ", "ソン")
+        val CONFUSABLE = listOf("ツッ", "ヤャ", "ユュ", "ヨョ", "アァ", "イィ", "ウゥ", "エェ工", "オォ", "カ力", "ロ口", "ニ二", "ー一", "ヘへ", "ベべ", "ペぺ", "タ夕", "ト卜", "ハ八", "ケヶ", "クワ", "シツ", "ソン",
+            // Voiced and half-voiced marks: small italic type came back
+            // 「サプスキル」 beside 「サブスキル」 on one screen, and the two were
+            // translated apart (「辅助技能」, 「副技能」).
+            "ハバパ", "ヒビピ", "フブプ", "ヘベペ", "ホボポ")
 
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256
