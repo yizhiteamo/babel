@@ -555,7 +555,8 @@ class DefaultTranslationCoordinator(
 
                 permits.withPermit {
                     val waitedMs = System.currentTimeMillis() - started
-                    val first = translateWithRetry(element, pair, context, known)
+                    val first = (if (isDurableLabel(element)) labelInParts(element, pair) else null)
+                        ?: translateWithRetry(element, pair, context, known)
                     // The page's context can make the model translate the wrong
                     // line: measured on a character sheet, three of four
                     // descriptions came back as another character's, and with no
@@ -627,6 +628,62 @@ class DefaultTranslationCoordinator(
         } else {
             this
         }
+
+    /** A label translated from its words when it is made of them ([BracketedLabel]); null otherwise. */
+    private suspend fun labelInParts(element: TextElement, pair: LanguagePair): TranslationResult? {
+        BracketedLabel.marked(element.text)?.let { (word, mark) ->
+            val rendered = translatedWord(element, pair, word) ?: return null
+            return TranslationResult(
+                requestId = RequestId("req-${requestIds.incrementAndGet()}"),
+                elementId = element.id,
+                revision = element.revision,
+                originalText = element.text,
+                translatedText = rendered + mark,
+                provider = translator.id,
+                status = if (rendered == word) TranslationStatus.Unchanged else TranslationStatus.Translated,
+            )
+        }
+        return BracketedLabel.split(element.text)?.let { (word, part) -> translateParts(element, pair, word, part) }
+    }
+
+    /** One word of a label, from the cache or translated and kept there; null when it fails. */
+    private suspend fun translatedWord(element: TextElement, pair: LanguagePair, text: String): String? {
+        val key = TranslationCacheKey.of(text, pair.forElement(element), translator.id)
+        cache.get(key)?.let { return it }
+        val result = translateWithRetry(element.copy(text = text), pair, context = null)
+        return when (result.status) {
+            TranslationStatus.Translated -> result.translatedText.trim().also { cache.putDurable(key, it) }
+            // Already in the reader's language: 「(EX)」 stays as it is. Not a
+            // kana word, which the reader cannot read: sent alone, 「カンナ」
+            // and 「水着」 both came back as they were once, and the student's
+            // name was left untranslated. The label then goes whole.
+            TranslationStatus.Unchanged -> if (com.babel.domain.vision.JapaneseScript.isJapanese(text)) null else text
+            is TranslationStatus.Failed -> null
+        }
+    }
+
+    /**
+     * A word and its bracketed part translated apart and joined
+     * ([BracketedLabel]), each part from the cache when it is there and kept
+     * there after. Null when either part fails, and the label goes whole.
+     */
+    private suspend fun translateParts(element: TextElement, pair: LanguagePair, word: String, part: String): TranslationResult? {
+        // Keyed as the word alone would be, so a student's name reads the same
+        // in her card on the list and on her own page: keyed apart, the list
+        // said 「花子（泳装）」 and her page 「花」.
+        val languages = pair.forElement(element)
+        val rendered = listOf(word, part).map { text -> translatedWord(element, pair, text) ?: return null }
+        val joined = BracketedLabel.join(rendered[0], rendered[1], languages.target)
+        return TranslationResult(
+            requestId = RequestId("req-${requestIds.incrementAndGet()}"),
+            elementId = element.id,
+            revision = element.revision,
+            originalText = element.text,
+            translatedText = joined,
+            provider = translator.id,
+            status = if (rendered[0] == word && rendered[1] == part) TranslationStatus.Unchanged else TranslationStatus.Translated,
+        )
+    }
 
     private suspend fun translateWithRetry(
         element: TextElement,

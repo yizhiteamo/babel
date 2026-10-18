@@ -393,4 +393,16 @@ class StableLinesTest {
 
         assertEquals(listOf(key), update.gone)
     }
+
+    /** The next student's name where the last one's was, the place's look near enough the same. */
+    @Test
+    fun `other words are not held even where the place looks the same`() {
+        val lines = StableLines()
+        lines.next(listOf(line("ハナコ(水着)")), now = 0)
+        val key = lines.next(listOf(line("ハナコ(水着)")), now = 333).settled.single().key
+
+        val update = lines.next(listOf(line("ヒナ(ドレス)")), now = 666, heldStill = { true })
+
+        assertEquals(listOf(key), update.gone)
+    }
 }

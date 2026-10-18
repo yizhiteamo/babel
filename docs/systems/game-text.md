@@ -27,6 +27,13 @@ The decision runs in four stages.
 - **Icons read as characters** are taken off a line's start: 「◆アタッカー」, a badge 「④」, or a badge's number glued to a name in katakana (「9ハナコ」). Their place still bounds the patch, so the icon is not painted over.
   - A sign before Japanese (「@ナギサ」, the affection badge read as `@`) is always an icon; a quote or bracket is not.
   - A Latin letter before Japanese (「Cウイ」) is an icon only where the first glyph's ink is another colour than the rest's (the badge's pink against a white name measured 111 of 441). 「Cランク」 keeps its C.
+  - A kana before Japanese (「ワホシノ」, 「マアル」) is an icon only where its ink is another colour **and**, read alone at twice the size, it is the badge's number; what stands beside it is read again on its own and taken when it gives a letter back (「ハナコ」, which had lost its 「ハ」 to the badge's box).
+  - An icon of another colour just left of a line's box, unread, still bounds the patch: 「ユズ」's patch had grown over her badge and painted it out.
+  - A role icon read as one hiragana before a katakana word (「あサポータ」, 「もサポーター」) is taken off.
+  - Icons inside a line cut it there: 「(臨戦)★食★STRIKE」 is 「(臨戦)」.
+- **A bracketed part** after a word on its row is joined to it (「ハナコ」「(水着)」 → 「ハナコ(水着)」), so the name and its outfit are one label.
+- **A filled 「?」 at a line's end** is a help button, not the word's question: 「生徒?」 is 「生徒」, and the button is not painted over.
+- **A row of small labels with a gap** where a label should be: what is in the gap is read again at twice the size. 「ノーマルスキル」 in a skill card was left out on three students of five.
 - **A lost first letter**: a word cannot begin with a lengthening mark, so a label read 「-マルスキル」 is read again on its own at twice the size, which gave back 「ノーマルスキル」; when it still begins with the mark it is left untranslated. It had been translated 「玛尔斯技能」, Mars skill.
 - **A label and what it labels read as one**: a line whose type changes size and colour together across a gap is cut there, and each piece read again on its own. A skill pop-up's small blue-grey 「ノーマルスキル」 in its card and the skill's large dark name beside it came back as 「ノーマルスキル決定的な手がかり」 and were painted as one across both. The sizes are compared a few glyphs either side of the gap (measured 0.40 against a speaker's katakana name and kanji affiliation's 0.75–0.78), and never in a line with sentence marks: a highlighted word in a sentence is another colour too.
 
@@ -61,6 +68,8 @@ From the seeds, dialogue spreads to:
 
 Afterwards these are removed: a line in a **menu bar** (four labels or more of one size on a row), and **figures**.
 
+A label already translated on a plain panel is translated on a translucent one too (backdrop error up to 28), so a tab over a student's blurred art reads as it does on the next student's page.
+
 Afterwards, an interface label must also be one word's script: letters that go from Latin to Japanese and back twice or more (「フA/のA0」, the dimmed top bar's 「74/240」 misread behind a pop-up) are not a label.
 
 ### 4. Over time
@@ -72,7 +81,7 @@ When the scene changes (most of the picture changes at once, such as a pop-up op
 - **Unchanged:** a line that stood still between two pictures is published at its first reading.
 - **Misread names:** a name read one character off a known one is snapped to it, but only where the two characters are ones the recogniser confuses (ツ/ッ, カ/力, ー/一, and so on). 「アカネ」 is not 「アカリ」.
 - **Withdrawn:** a published line is withdrawn when its place goes blank, when other words are read there, or when the picture shows its place changed.
-- **Held:** a published line whose place looks as it did when it was published is never withdrawn, whatever is read there or not: its words cannot have changed if its pixels did not. On a translucent panel over a waterfall, 「サポーター」 read 「あサポータ」 every few frames and went missing on others, and its translation went and came back every few seconds — 18 withdrawals a minute on a screen nobody touched, none after.
+- **Held:** a published line whose place looks as it did when it was published is never withdrawn by a miss or by another reading of the same words (mostly the same characters): its words cannot have changed if its pixels did not. On a translucent panel over a waterfall, 「サポーター」 read 「あサポータ」 every few frames and went missing on others, and its translation went and came back every few seconds — 18 withdrawals a minute on a screen nobody touched, none after.
 - **Moved:** a line found again a little up or down is moved, not withdrawn.
 
 ## How a rule is changed: the scene corpus
@@ -106,6 +115,12 @@ Scenes so far (2026-10-13):
 - **Fate/Grand Order:** a servant card, the title screen, and story frames.
 - **Shattered Pixel Dungeon:** the title menu.
 
+Added 2026-10-18: the student list and thirteen students' status pages (Hanako, Hina, Hoshino twice, Mika, Wakamo, Hifumi, Mine, Aru, Toki, Hibiki, Iroha, Izuna, Kanna, Yuzu, Rio) — badges, outfits in brackets, role icons, skill labels.
+
 Added 2026-10-17: two students' status screens (an affection badge before the name, 「ノーマルスキル」 read 「-マルスキル」) and a skill-growth pop-up (labels read together with the skill names beside them, the dimmed top bar behind).
 
-All 218 expectations pass (2026-10-17).
+All 307 expectations pass (2026-10-18). Three are kept as notes rather than checks: labels the recogniser does not read at all on that one picture, or translucent tabs translated only once known from another page.
+
+## How a label is translated
+
+A label made of a word and a bracketed part (「ハナコ(水着)」), or of a word and a trailing 「+」 (「ノーマルスキル+」), is translated as its words and put back together, with the target language's brackets (`BracketedLabel`). Each word is cached under the key the same word alone would have, so a student's name reads the same in her card and on her page, and a skill label the same with or without its 「+」. Sent whole, one screen's names had come back 「花子(泳装)」, 「星野（泳装）」 and 「泳装小优」. A kana word that comes back unchanged sends the label whole instead.

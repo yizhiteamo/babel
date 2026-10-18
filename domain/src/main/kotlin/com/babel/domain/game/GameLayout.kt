@@ -782,8 +782,9 @@ object GameLayout {
         if (isSentence(text)) return text
         var t = text.trim()
         fun foreign(c: Char) = c.isLetter() && c.code >= 0x250
-        if (t.length >= 3 && t.last() in STRAY_STROKES && foreign(t[t.length - 2])) t = t.dropLast(1).trimEnd()
-        if (t.length >= 3 && t.first() in STRAY_STROKES && foreign(t[1])) t = t.drop(1).trimStart()
+        // With a space between or not: a tab's divider came back 「レベルアップ |」.
+        if (t.length >= 3 && t.last() in STRAY_STROKES && t.dropLast(1).trimEnd().lastOrNull()?.let(::foreign) == true) t = t.dropLast(1).trimEnd()
+        if (t.length >= 3 && t.first() in STRAY_STROKES && t.drop(1).trimStart().firstOrNull()?.let(::foreign) == true) t = t.drop(1).trimStart()
         return t
     }
 

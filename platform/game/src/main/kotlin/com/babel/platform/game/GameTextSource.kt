@@ -539,7 +539,14 @@ class GameTextSource @Inject constructor(
         val labels = read.filter { line ->
             kept.none { it.bounds == line.bounds && it in dialogue } && GameLayout.unreadableLabel(line) &&
                 GameTextFilter.judge(line, minOf(frame.height, frame.width)).let {
-                    it == GameTextFilter.Verdict.TRANSLATE || it == GameTextFilter.Verdict.TOO_SMALL
+                    it == GameTextFilter.Verdict.TRANSLATE || it == GameTextFilter.Verdict.TOO_SMALL ||
+                        // A label already translated on a plain panel is
+                        // translated on a translucent one too: 「レベルアップ」 on
+                        // one student's page and not on the next, its tab over
+                        // her blurred art (backdrop 17–24), read as two kinds of
+                        // screen. How busy a backdrop is still a panel (28)
+                        // is a first guess from these tabs, not a measurement.
+                        (it == GameTextFilter.Verdict.ON_ARTWORK && line.backdropError <= KNOWN_LABEL_MAX_BACKDROP && lines.knows(line.text))
                 } &&
                 contrastOf(frame, line.bounds) >= ACTIVE_CONTRAST
         }.toSet()
@@ -1030,22 +1037,122 @@ class GameTextSource @Inject constructor(
         val around = lines + lastLines
         lines.flatMap { line ->
             if (around.any { it !== line && GameLayout.speaksAbove(line.bounds, it.bounds) }) splitByColour(frame, line) else listOf(line)
-        }.flatMap(::atDividers).flatMap { atInkGaps(frame, it) }.map { line ->
+        }.flatMap(::atDividers).flatMap { atInkGaps(frame, it) }.flatMap { atIcons(frame, it) }.map { line ->
             // Split pieces too: a name and its badge are cut apart by colour
             // and the badge's 「④」 came back on the name's piece.
-            val (text, box) = withoutLeadingIcon(frame, line.text, line.bounds)
+            // Not a kana again: the badge before a name is gone by now, and
+            // the name's first letter beside its edge read as a number.
+            val (text, box) = withoutLeadingIcon(frame, line.text, line.bounds, kana = false)
             if (text == line.text) line else line.copy(text = text, bounds = box)
         }.mapNotNull { line ->
             // Last, on each label alone: two tabs read as one line lost only
             // the first's letter, not the second.
             val whole = withLostStart(frame, line.text, line.bounds) ?: return@mapNotNull null
             if (whole == line.text) line else line.copy(text = whole)
-        }
+        }.let(::withBracketedParts).let { withRowGapsRead(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {
         logger.warn(TAG, "recognition failed", failure)
         emptyList()
+    }
+
+    /**
+     * [lines] with what stands in a gap of a row of small labels read again,
+     * larger. A student's four skill labels are set in small italic type and
+     * the recogniser left out the first, 「ノーマルスキル」, on three students of
+     * five: the row came out translated three of four. A gap is a label left
+     * out when it is twice the row's narrowest gap and more; what is read there
+     * at twice the size is added.
+     */
+    private suspend fun withRowGapsRead(frame: Bitmap, lines: List<GameLine>): List<GameLine> {
+        val small = lines.filter { it.typeHeight <= frame.height * SMALL_LABEL_OF_HEIGHT && GameLayout.isLabel(it.text) }
+        val added = mutableListOf<GameLine>()
+        val done = HashSet<GameLine>()
+        for (line in small) {
+            if (line in done) continue
+            val row = small.filter { sameRow(it.bounds, line.bounds) && abs(it.typeHeight - line.typeHeight) <= line.typeHeight / 4 }.sortedBy { it.bounds.left }
+            done += row
+            if (row.size < 3) continue
+            val gaps = row.zipWithNext { a, b -> b.bounds.left - a.bounds.right }
+            val usual = gaps.minOrNull() ?: continue
+            for ((i, gap) in gaps.withIndex()) {
+                if (gap < usual * 2 + line.typeHeight * 2) continue
+                val l = row[i].bounds.right + usual / 2
+                val r = row[i + 1].bounds.left - usual / 2
+                val t = row.minOf { it.bounds.top }
+                val b = row.maxOf { it.bounds.bottom }
+                // The ink's own extent, not the gap's: the columns holding ink
+                // of the row's labels' colour, so the patch covers the label
+                // and nothing of the cards' edges.
+                val colour = inkColour(frame, row[i].bounds.left, row[i].bounds.top, row[i].bounds.right, row[i].bounds.bottom) ?: continue
+                val column = IntArray(b - t)
+                val inked = (l until r).filter { x ->
+                    frame.getPixels(column, 0, 1, x, t, 1, b - t)
+                    column.count { p ->
+                        val dr = Color.red(p) - colour[0]
+                        val dg = Color.green(p) - colour[1]
+                        val db = Color.blue(p) - colour[2]
+                        dr * dr + dg * dg + db * db < LABEL_INK_DISTANCE * LABEL_INK_DISTANCE
+                    } >= 2
+                }
+                // The widest cluster of them: a card's edge is a column or two
+                // of the same grey, further off than a glyph's width.
+                val clusters = mutableListOf<IntRange>()
+                for (x in inked) {
+                    val last = clusters.lastOrNull()
+                    if (last != null && x - last.last <= line.typeHeight) clusters[clusters.lastIndex] = last.first..x else clusters += x..x
+                }
+                val label = clusters.maxByOrNull { it.last - it.first } ?: continue
+                if (label.last - label.first < line.typeHeight * 2) continue
+                val extent = TextBounds(label.first - SIDE_MARGIN_PX, t, label.last + 1 + SIDE_MARGIN_PX, b, line.bounds.space)
+                // Nothing read there already, in any size: a menu bar's
+                // 「ソーシャル」 stood in its row's gap, taller than its
+                // neighbours, and was read again as 「シャル」.
+                if (lines.any { overlaps(it.bounds, extent) }) continue
+                // Read in the ink's extent alone: the whole gap took in the
+                // cards' edges, read as 「1|ノーマルスキル」」.
+                val key = "gap@${extent.left / 8},${t / 8},${extent.right / 8}"
+                val text = rereads[key]?.firstOrNull()?.text
+                    ?: GameLayout.withoutStrayStroke((reread(frame, extent.left, t, extent.right, b, scale = 2) ?: "").replace(" ", ""))
+                        .trim { !it.isLetterOrDigit() && it !in "(（)）" }
+                        .also { rereads[key] = listOf(GameLine(it, line.bounds, 0.0)) }
+                if (text.length < 2 || !GameLayout.isLabel(text)) continue
+                added += GameLine(text, extent, backdropError(frame, frame.width, frame.height, extent), line.typeHeight)
+            }
+        }
+        return lines + added
+    }
+
+    /**
+     * [lines] with each bracketed part joined to the word before it on its
+     * row. A full-width bracket stands half a glyph off the word, and
+     * 「ハナコ(水着)」 came back as 「ハナコ」 and 「(水着)」: the name was
+     * translated alone, drawn at the left of its place, and the kanji part
+     * left in Japanese after a gap — 「花子　(水着)」 beside 「日奈(礼服)」,
+     * read as one, in the next card.
+     */
+    private fun withBracketedParts(lines: List<GameLine>): List<GameLine> {
+        val out = lines.toMutableList()
+        for (part in lines) {
+            val t = part.text.trim()
+            if (t.length < 3 || t.first() !in "(（" || t.last() !in ")）") continue
+            val word = out.filter { it !== part && sameRow(it.bounds, part.bounds) && it.bounds.right <= part.bounds.left + part.typeHeight / 2 }
+                .maxByOrNull { it.bounds.right }
+                ?.takeIf { part.bounds.left - it.bounds.right <= max(it.typeHeight, part.typeHeight) && it.text.none { c -> c in "(（" } }
+                ?: continue
+            val b = word.bounds
+            val joined = word.copy(
+                text = word.text.trimEnd() + t,
+                bounds = TextBounds(b.left, min(b.top, part.bounds.top), part.bounds.right, max(b.bottom, part.bounds.bottom), b.space),
+                backdropError = max(word.backdropError, part.backdropError),
+                // The word's type: brackets stand taller than the letters.
+                typeHeight = word.typeHeight,
+            )
+            out[out.indexOf(word)] = joined
+            out.remove(part)
+        }
+        return out
     }
 
     /**
@@ -1058,6 +1165,7 @@ class GameTextSource @Inject constructor(
      */
     private fun separated(line: com.google.mlkit.vision.text.Text.Line): List<Pair<String, android.graphics.Rect>> {
         val box = line.boundingBox ?: return emptyList()
+        atIconSymbols(line)?.let { return it }
         val elements = line.elements.filter { it.boundingBox != null }
         if (elements.size < 2) return listOf(line.text to box)
         val groups = mutableListOf(mutableListOf(elements.first()))
@@ -1083,6 +1191,38 @@ class GameTextSource @Inject constructor(
             group.forEach { rect.union(it.boundingBox!!) }
             group.joinToString(" ") { it.text } to rect
         }
+    }
+
+    /**
+     * A line cut at icons the recogniser read as characters inside it, each
+     * piece boxed by its own characters; null when there are none. A
+     * student's 「(臨戦)」, her rarity stars and her 「STRIKER」 badge came back
+     * as one line, 「(臨戦)★食★STRIKE」, and the bracketed part was never
+     * joined to the name before it.
+     */
+    private fun atIconSymbols(line: com.google.mlkit.vision.text.Text.Line): List<Pair<String, android.graphics.Rect>>? {
+        val first = line.text.indexOfFirst(::isIcon)
+        if (first <= 0) return null
+        val pieces = mutableListOf<Pair<StringBuilder, android.graphics.Rect>>()
+        var open: Pair<StringBuilder, android.graphics.Rect>? = null
+        for (element in line.elements) {
+            var newElement = true
+            for (symbol in element.symbols) {
+                val box = symbol.boundingBox ?: continue
+                if (symbol.text.any(::isIcon)) {
+                    open = null
+                    continue
+                }
+                val current = open ?: (StringBuilder() to android.graphics.Rect(box)).also { pieces += it; open = it }
+                // Latin words keep the space the recogniser put between them.
+                if (newElement && current.first.lastOrNull()?.let { it.code < 0x80 && it.isLetterOrDigit() } == true && symbol.text.first().code < 0x80) current.first.append(' ')
+                newElement = false
+                current.first.append(symbol.text)
+                current.second.union(box)
+            }
+        }
+        val kept = pieces.filter { (text, _) -> text.any(Char::isLetterOrDigit) }
+        return kept.map { (text, box) -> text.toString() to box }.takeIf { it.isNotEmpty() }
     }
 
     /**
@@ -1119,8 +1259,12 @@ class GameTextSource @Inject constructor(
      * words. Each piece takes the letters its share of the width holds.
      */
     private fun atInkGaps(frame: Bitmap, line: GameLine): List<GameLine> {
-        // Never a sentence: words in a line of dialogue stand apart too.
-        if (line.text.length < MIN_GAP_SPLIT_LETTERS || line.text.any { it in GameLayout.SENTENCE_MARKS || it == ' ' || it == '　' }) return listOf(line)
+        // Never a sentence: words in a line of dialogue stand apart too. Nor
+        // Latin words, spaced as a sentence's are. A space between Japanese
+        // words is two labels: 「ノーマルスキル+ パッシブスキル+」, two skill
+        // cards, came back one line and was drawn as one across both.
+        val latinSpace = line.text.indices.any { i -> line.text[i] == ' ' && (line.text.getOrNull(i - 1)?.code ?: 0) < 0x80 && (line.text.getOrNull(i + 1)?.code ?: 0) < 0x80 }
+        if (line.text.length < MIN_GAP_SPLIT_LETTERS || latinSpace || line.text.any { it in GameLayout.SENTENCE_MARKS }) return listOf(line)
         val b = line.bounds
         if (b.left < 0 || b.right > frame.width || b.top < 0 || b.bottom > frame.height || b.width < 8) return listOf(line)
         val h = b.height
@@ -1166,6 +1310,35 @@ class GameTextSource @Inject constructor(
     private fun Double.roundToIntSafe(): Int = kotlin.math.round(this).toInt()
 
     /**
+     * A line cut where icons read as characters stand inside it: a student's
+     * 「(臨戦)」, her rarity stars and her 「STRIKER」 badge came back as one
+     * line, 「(臨戦)★食★STRIKE」, and the bracketed part was never joined to
+     * the name before it. The letters before the icons keep the width their
+     * characters take, full or half, to the column with the least ink near
+     * there; what follows the icons goes with them.
+     */
+    private fun atIcons(frame: Bitmap, line: GameLine): List<GameLine> {
+        val t = line.text
+        val first = t.indexOfFirst(::isIcon)
+        if (first <= 0 || t.substring(0, first).none(Char::isLetter)) return listOf(line)
+        val b = line.bounds
+        if (b.left < 0 || b.right > frame.width || b.top < 0 || b.bottom > frame.height) return listOf(line)
+        fun units(text: String) = text.sumOf { c -> if (c.isWhitespace()) 0.0 else if (c.code >= FULL_WIDTH_FROM || c in FULL_WIDTH_MARKS || isIcon(c)) 1.0 else HALF_WIDTH }
+        val em = b.width / units(t).coerceAtLeast(1.0)
+        val estimate = b.left + (em * units(t.substring(0, first))).toInt()
+        val column = IntArray(b.height)
+        val middle = IntArray(b.width).also { frame.getPixels(it, 0, b.width, b.left, b.top + b.height / 2, b.width, 1) }
+            .map { luma(it) }.sorted()[b.width / 2]
+        val reach = (em / 2).toInt().coerceAtLeast(1)
+        val end = ((estimate - reach).coerceAtLeast(b.left + 1)..(estimate + reach).coerceAtMost(b.right - 1)).minByOrNull { x ->
+            frame.getPixels(column, 0, 1, x, b.top, 1, b.height)
+            column.count { abs(luma(it) - middle) >= INK_CONTRAST } * 4 + abs(x - estimate) / reach.toDouble()
+        } ?: return listOf(line)
+        return listOf(GameLine(t.substring(0, first).trim(), TextBounds(b.left, b.top, end, b.bottom, b.space), line.backdropError, line.typeHeight))
+    }
+
+
+    /**
      * A line cut where the recogniser read a divider as a bar: two tabs side
      * by side came back as 「ノーマルスキル||バッシブスキル+」 on one frame and
      * as one run of letters on the next, and the two readings took turns.
@@ -1194,15 +1367,32 @@ class GameTextSource @Inject constructor(
      * Kept, the icon was painted out with the word and the translation set
      * over where it had been.
      */
-    private fun withoutLeadingIcon(frame: Bitmap, text: String, box: TextBounds): Pair<String, TextBounds> {
+    private suspend fun withoutLeadingIcon(frame: Bitmap, text: String, box: TextBounds, kana: Boolean = true): Pair<String, TextBounds> {
         val t = text.trimStart()
         // Or any character standing for a badge in another colour than the
         // word after it: the affection badge, a pink heart, before a
         // student's name came back 「@ナギサ」 and 「Cウイ(水着)」, and the
         // name was translated 「@渚」 with the badge painted out.
-        badgeWidth(frame, t, box)?.let { shift ->
+        badgeWidth(frame, t, box, kana)?.let { signed ->
+            val shift = abs(signed)
             iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
-            return t.drop(1).trimStart() to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+            val rest = TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+            if (signed < 0) return t to rest
+            // A kana taken for the badge may not be the badge's own reading:
+            // the recogniser left the heart out of 「ハナコ」 but not out of its
+            // box, and the name lost its 「ハ」. What is beside the badge is
+            // read again on its own.
+            if (t[0].code >= JAPANESE_FROM) {
+                val key = "beside@${rest.left / 8},${rest.top / 8},${rest.right / 8}"
+                val again = rereads[key]?.firstOrNull()?.text
+                    ?: (reread(frame, rest.left, rest.top, rest.right, rest.bottom) ?: "").also { rereads[key] = listOf(GameLine(it, rest, 0.0)) }
+                // Taken only if it gives the letter back: read alone, 「ホシノ」
+                // came back 「ホシ.」, worse than the line without its badge.
+                val without = t.drop(1).trimStart()
+                if (again.length > without.length && again.endsWith(without)) return again to rest
+                return without to rest
+            }
+            return t.drop(1).trimStart() to rest
         }
         // Or a badge's number, read as a digit or two glued to a name in
         // katakana: the affection badge's 「44」 before 「ハナコ(水着)」 came
@@ -1213,6 +1403,16 @@ class GameTextSource @Inject constructor(
             iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
             return t.drop(digits).trimStart() to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
         }
+        // Or a role icon read as one hiragana before a katakana word: the
+        // supporter's icon came back 「あサポータ」 and 「もサポーター」, and was
+        // translated 「也支援者」. A label is not written so.
+        // With a space or not after it (「あ ヒーラー」 became 「啊，治疗师」).
+        val word = t.drop(1).trimStart()
+        if (kana && word.length >= 4 && t[0] in 'ぁ'..'ゖ' && word.all { it in 'ァ'..'ヺ' || it == 'ー' }) {
+            val shift = min(box.height, box.width / 3)
+            iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
+            return word to TextBounds(box.left + shift, box.top, box.right, box.bottom, box.space)
+        }
         if (t.length < 3 || !isIcon(t[0]) || !t[1].isLetter()) return text to box
         val shift = min(box.height, box.width / 3)
         iconBoxes += TextBounds(box.left, box.top, box.left + shift, box.bottom, box.space)
@@ -1220,32 +1420,103 @@ class GameTextSource @Inject constructor(
     }
 
     /**
-     * How far into [box] a badge read as [text]'s first character reaches,
-     * or null when that character is a letter of the word: the first stretch
-     * of ink, no wider than a glyph and set apart, in a colour far from the
-     * rest of the line's.
+     * How far into [box] a badge or icon before [text]'s word reaches; negative
+     * when the icon is in the box but not in the text, so no letter goes with
+     * it. Null when there is none.
      */
-    private fun badgeWidth(frame: Bitmap, text: String, box: TextBounds): Int? {
-        // Only a character that cannot begin the Japanese word after it: the
-        // badge's ink is not always a stretch the recogniser read as one, and
-        // taken by colour alone 「アタッカー」 lost its 「ア」 to the icon
-        // before it.
-        if (text.length < 3 || text[1].isWhitespace() || text[1].code < JAPANESE_FROM || text[0].code >= JAPANESE_FROM) return null
-        // A sign — 「@」 — never begins a word; a Latin letter might (「Cランク」),
+    private suspend fun badgeWidth(frame: Bitmap, text: String, box: TextBounds, kana: Boolean): Int? {
+        // Before a Japanese word only. The heart came back as 「@」, 「C」 and
+        // 「ワ」 (「ワホシノ(水着)」); a kana is taken only by colour like a
+        // Latin letter, and a crosshair icon before 「アタッカー」, ink of the
+        // word's own colour, leaves its 「ア」 alone.
+        // Two letters are enough for a kana: 「ミカ」 had the heart painted out
+        // and her name drawn from its edge.
+        if (text.length < 2 || text[1].isWhitespace() || text[1].code < JAPANESE_FROM) return null
+        if (text.length < 3 && text[0].code < JAPANESE_FROM) return null
+        // A sign — 「@」 — never begins a word; a letter might (「Cランク」),
         // so it is taken only where its ink is another colour. A quote does
         // begin one: a story's lines are set in 「"カッコイイ……。"」.
-        if (!text[0].isLetterOrDigit()) {
+        if (!text[0].isLetterOrDigit() && text[0].code < JAPANESE_FROM) {
             return if (text[0] in LOST_START_MARKS || text[0] in OPENING_MARKS) null else min(box.height, box.width / 3)
         }
         if (box.left < 0 || box.top < 0 || box.right > frame.width || box.bottom > frame.height) return null
-        // The first glyph's width against the rest, by the colour of their
+        // The first glyph's width against what follows, by the colour of their
         // ink: a badge is not one stretch of ink — the heart's outline, its
         // fill and its number came back as five — so it is taken by place.
         val glyph = min(box.height, box.width / 3)
         val first = inkColour(frame, box.left, box.top, box.left + glyph, box.bottom) ?: return null
-        val rest = inkColour(frame, box.left + glyph, box.top, box.right, box.bottom) ?: return null
+        // Against the next two glyphs, not the whole rest: a name and the
+        // affiliation after it in another colour were one line, and the name's
+        // first letter was the colour of neither.
+        val rest = inkColour(frame, box.left + glyph, box.top, min(box.right, box.left + 3 * glyph), box.bottom) ?: return null
         val d = kotlin.math.sqrt((0..2).sumOf { (first[it] - rest[it]) * (first[it] - rest[it]) })
-        return if (d > BADGE_COLOUR) glyph else null
+        if (d <= BADGE_COLOUR) return null
+        if (text[0].code < JAPANESE_FROM) return glyph
+        if (!kana) return null
+        // A kana in another colour is a badge only if, read alone, it is the
+        // badge's number: 「リオ」 beside its avatar lost its 「リ」 by colour.
+        val key = "badge:${text[0]}@${box.left / 8},${box.top / 8}"
+        val number = rereads[key]?.firstOrNull()?.text
+            ?: (reread(frame, box.left, box.top, box.left + glyph, box.bottom, scale = 2) ?: "").also {
+                rereads[key] = listOf(GameLine(it, box, 0.0))
+            }
+        return when {
+            number.isNotEmpty() && number.all(Char::isDigit) -> glyph
+            // Nothing to read there: an icon in the box but not in the text
+            // (the student list's book before 「生徒リスト」, painted out and
+            // the title drawn over its place). Its width, and no letter lost.
+            // An icon, not a divider: the blue bar before a list's heading
+            // 「全生徒」 is a few columns of ink.
+            // And read as a mark, not as nothing: alone, a kanji the line
+            // begins with may read as nothing at all (「画像はイメージです」
+            // lost its 「画」 to a patch).
+            number.isNotBlank() && number.none(Char::isLetterOrDigit) &&
+                inkedColumns(frame, box.left, box.top, box.left + glyph, box.bottom) * 2 >= glyph -> -glyph
+            else -> null
+        }
+    }
+
+    /**
+     * Where an icon just before [box] ends, when its ink is another colour
+     * than the line's: the patch stops there. The affection badge before
+     * 「ユズ」 was outside the recogniser's box, nothing read it, and the
+     * name's patch grew left over it and painted it out.
+     */
+    private fun iconBefore(frame: Bitmap, box: TextBounds, typeHeight: Int): Int? {
+        val reach = (typeHeight * 1.5).toInt()
+        val left = (box.left - reach).coerceAtLeast(0)
+        if (box.left - left < 4 || box.top < 0 || box.bottom > frame.height) return null
+        val own = inkColour(frame, box.left, box.top, min(box.right, box.left + typeHeight * 2), box.bottom) ?: return null
+        val column = IntArray(box.height)
+        var x = box.left - 1
+        while (x >= left) {
+            frame.getPixels(column, 0, 1, x, box.top, 1, box.height)
+            val middle = column.map { luma(it) }.sorted()[box.height / 2]
+            val ink = column.filter { abs(luma(it) - middle) >= INK_CONTRAST }
+            if (ink.size >= 2) {
+                val r = ink.sumOf { Color.red(it) }.toDouble() / ink.size - own[0]
+                val g = ink.sumOf { Color.green(it) }.toDouble() / ink.size - own[1]
+                val bl = ink.sumOf { Color.blue(it) }.toDouble() / ink.size - own[2]
+                if (kotlin.math.sqrt(r * r + g * g + bl * bl) <= BADGE_COLOUR) return null
+                // An icon is wider than a panel's edge: a dialogue box's
+                // border, a column or two, is not one.
+                return if (inkedColumns(frame, (x - MIN_ICON_PX + 1).coerceAtLeast(0), box.top, x + 1, box.bottom) >= MIN_ICON_PX) x + 1 else null
+            }
+            x--
+        }
+        return null
+    }
+
+    /** How many columns of a box hold ink against their own middle value. */
+    private fun inkedColumns(frame: Bitmap, left: Int, top: Int, right: Int, bottom: Int): Int {
+        val h = bottom - top
+        if (right <= left || h <= 0) return 0
+        val column = IntArray(h)
+        return (left until right).count { x ->
+            frame.getPixels(column, 0, 1, x, top, 1, h)
+            val middle = column.map { luma(it) }.sorted()[h / 2]
+            column.count { abs(luma(it) - middle) >= INK_CONTRAST } >= 2
+        }
     }
 
     /** The mean colour (r, g, b) of the ink in a box, by each column's middle value; null without ink. */
@@ -1421,15 +1692,37 @@ class GameTextSource @Inject constructor(
         val sign = if (panel < MID_LUMA) 1.0 else -1.0
         val row = IntArray(tail)
         var ink = 0
+        var filled = 0
         for (y in box.top until box.bottom) {
             frame.getPixels(row, 0, tail, box.right - tail, y, tail, 1)
             val inked = BooleanArray(tail) { (luma(row[it]) - panel) * sign >= INK_CONTRAST }
+            filled += inked.count { it }
             // Not what runs in from the box's end: the page past the bubble.
             var end = tail
             while (end > 0 && inked[end - 1]) end--
             for (x in 0 until end) if (inked[x]) ink++
         }
         val share = ink.toDouble() / (tail * box.height)
+        // Filled: a help button, a dark square with a light 「?」 in it, read
+        // as the word's question. 「生徒?」 over the student list was taken
+        // for a sentence and translated 「学生?|」. The button is not the
+        // word's, so its place leaves the box.
+        if (filled.toDouble() / (tail * box.height) >= BUTTON_INK && last in "?？") {
+            val column = IntArray(box.height)
+            var x = box.right - 1
+            while (x > box.left + box.width / 2) {
+                frame.getPixels(column, 0, 1, x, box.top, 1, box.height)
+                if (column.count { (luma(it) - panel) * sign >= INK_CONTRAST } * 2 < box.height) break
+                x--
+            }
+            // Past the button's own edge, and the gap before it.
+            while (x > box.left + box.width / 2) {
+                frame.getPixels(column, 0, 1, x, box.top, 1, box.height)
+                if (column.any { (luma(it) - panel) * sign >= INK_CONTRAST }) break
+                x--
+            }
+            return trimmed.dropLast(1).trimEnd() to TextBounds(box.left, box.top, x + 1, box.bottom, box.space)
+        }
         if (share >= TAIL_MAX_INK) return text to box
         return trimmed.dropLast(1).trimEnd() to box
     }
@@ -1801,7 +2094,10 @@ class GameTextSource @Inject constructor(
         val row = beside.filter { sidePanel(frame, it, recognised) }
         // Every piece on the row bounds the patch, on this panel or another:
         // a centred pop-up line's patch grew over the dimmed list behind it.
-        val leftLimit = beside.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0
+        val leftLimit = maxOf(
+            beside.filter { it.bounds.right <= b.left }.maxOfOrNull { (it.bounds.right + b.left) / 2 } ?: 0,
+            iconBefore(frame, b, recognised.typeHeight) ?: 0,
+        )
         val rightLimit = beside.filter { it.bounds.left >= b.right }.minOfOrNull { (it.bounds.left + b.right) / 2 } ?: frame.width
         val extent = inkExtent(frame, b, recognised.typeHeight, leftLimit, rightLimit)
         // Centred on the screen — a choice, a banner — and set again centred,
@@ -2560,8 +2856,18 @@ class GameTextSource @Inject constructor(
         const val MIN_PIECE_PX = 24
         const val MIN_RECOGNISABLE_PX = 32
 
-        /** Ink colours (0–441) this far apart make a first glyph a badge: the heart against a white name measured 111. */
-        const val BADGE_COLOUR = 80.0
+        /** Labels whose type is at most this share of the frame's height are small; see [withRowGapsRead]. */
+        const val SMALL_LABEL_OF_HEIGHT = 0.024
+        const val LABEL_INK_DISTANCE = 60.0
+        const val MIN_ICON_PX = 6
+
+        /**
+         * Ink colours (0–441) this far apart make a first glyph a badge: the
+         * heart against a white name measured 64–175, a name's own first
+         * letter against the next 6–41. A kana is then confirmed by reading
+         * the badge's number.
+         */
+        const val BADGE_COLOUR = 55.0
 
         /** Where Japanese script starts in Unicode (CJK punctuation, kana, Han). */
         const val JAPANESE_FROM = 0x3000
@@ -2695,6 +3001,9 @@ class GameTextSource @Inject constructor(
         const val OTHER_PANEL_LUMA = 80.0
         const val SIDE_PANEL_LUMA = 40.0
 
+        /** The most backdrop error a label translated before may have and still be translated; see [readOne]. */
+        const val KNOWN_LABEL_MAX_BACKDROP = 28.0
+
         /** Ink against its panel at least this far apart (0..255) is in full view; dimmed, it measured 22–55, bright 150 and more. */
         const val ACTIVE_CONTRAST = 100.0
 
@@ -2727,6 +3036,9 @@ class GameTextSource @Inject constructor(
          * ended inside of 0.7–10%, and at 5% 「バグ？」 lost its question.
          */
         const val TAIL_MAX_INK = 0.01
+
+        /** More ink than this in the last mark's width is a filled button; a 「？」 glyph is mostly panel. */
+        const val BUTTON_INK = 0.5
 
         /** How far the panel under a painted-out line may change before it is painted again. */
         const val PANEL_CHANGED_LUMA = 10.0

@@ -165,7 +165,13 @@ class StableLines {
             } else {
                 // Same place, new words: the old line is over, whatever it was.
                 val published = before.publishedKey
-                if (published != null && !sceneChanged && heldStill(published)) {
+                // Only another reading of the same words: on a student's page
+                // 「ヒナ(ドレス)」 came in where 「ハナコ(水着)」 had been, the
+                // name's place looked near enough the same in the coarse look,
+                // and the last student's name stayed over the new one.
+                if (published != null && !sceneChanged && variant(before.line.text, line.text) &&
+                    heldStill(published)
+                ) {
                     next += before
                     continue
                 }
@@ -335,6 +341,9 @@ class StableLines {
      */
     private val knownLabels = LinkedHashSet<String>()
 
+    /** Whether [text] has been published before, as it reads now. */
+    fun knows(text: String): Boolean = text in knownLabels
+
     /**
      * A name read one character off a name already published, as that name:
      * 「チナッ」 for 「チナツ」 was translated as another person's name. Labels
@@ -412,6 +421,16 @@ class StableLines {
      * line in the same place shares far fewer: measured under 0.4, these 0.6
      * and over.
      */
+    /**
+     * Mostly the same characters, at any length: the recogniser's other
+     * reading of a still label (「サポーター」, 「あサポータ」), not other words.
+     */
+    private fun variant(a: String, b: String): Boolean {
+        if (a.isEmpty() || b.isEmpty()) return false
+        val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }
+        return shared * 2.0 / (a.length + b.length) >= AKIN_SHARE
+    }
+
     private fun akin(a: String, b: String): Boolean {
         if (a.length < MIN_AKIN_LENGTH || b.length < MIN_AKIN_LENGTH) return false
         val shared = a.groupingBy { it }.eachCount().entries.sumOf { (c, n) -> min(n, b.count { it == c }) }

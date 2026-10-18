@@ -410,4 +410,11 @@ class GameLayoutTest {
     fun `letters going back and forth between Latin and kana are not a label`() {
         assertFalse(GameLayout.unreadableLabel(line("フA/のA0", 1229, 21, 1460, 55)))
     }
+
+    @Test
+    fun `a divider read after a tab's word goes, with a space between or not`() {
+        assertEquals("レベルアップ", GameLayout.withoutStrayStroke("レベルアップ |"))
+        assertEquals("レベルアップ", GameLayout.withoutStrayStroke("レベルアップ|"))
+        assertEquals("BOX 1", GameLayout.withoutStrayStroke("BOX 1"))
+    }
 }

@@ -35,8 +35,20 @@ data class TranslationCacheKey(
          * 5 when answers still in Japanese began to be asked again: a chat's
          * short replies had been kept on disk corrected, not translated
          * (「ちょっと困って」), and as labels would have stayed so.
+         *
+         * 6 when a label with a bracketed part began to be translated as its
+         * two words ([BracketedLabel]): 「ウイ(水着)」 kept on disk as
+         * 「泳装小优」 would have been served before the parts were asked.
+         *
+         * 7 when the parts began to share their keys with the same words
+         * alone: entries from before kept a name two ways (「花子」 in a card,
+         * 「花」 on its page).
+         *
+         * 8 when a label with a trailing 「+」 began to be translated as its
+         * word and the mark: 「ノーマルスキル+」 kept whole on disk would
+         * still disagree with 「ノーマルスキル」.
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 5
+        const val CURRENT_SCHEMA_VERSION: Int = 8
 
         private val WHITESPACE = Regex("\\s+")
 

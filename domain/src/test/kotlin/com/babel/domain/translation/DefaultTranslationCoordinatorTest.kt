@@ -534,6 +534,43 @@ class DefaultTranslationCoordinatorTest {
     }
 
     @Test
+    fun `a game label with a bracketed part is translated as its two words`() = runTest {
+        val coordinator = start()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(TestElements.element(id = "card", text = "ハナコ(水着)", sourceType = TextSourceType.GAME)),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("ハナコ", "水着"), translator.requests.map { it.sourceText })
+        val shown = renderer.visibleText.single()
+        assertTrue(shown.startsWith("<ハナコ>") && shown.contains("<水着>"), shown)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `a name translated in a bracketed label is the same name on its own`() = runTest {
+        val coordinator = start()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(TestElements.element(id = "card", text = "ハナコ(水着)", sourceType = TextSourceType.GAME).copy(sourceLanguage = com.babel.core.model.LanguageTag("ja"))),
+            ),
+        )
+        advanceUntilIdle()
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(TestElements.element(id = "page", text = "ハナコ", sourceType = TextSourceType.GAME).copy(sourceLanguage = com.babel.core.model.LanguageTag("ja"))),
+            ),
+        )
+        advanceUntilIdle()
+
+        // Asked once: the page's name came from the card's part.
+        assertEquals(1, translator.requests.count { it.sourceText == "ハナコ" })
+        coordinator.stop()
+    }
+
+    @Test
     fun `a speaker's name loses a stop its original does not have`() {
         assertEquals("奥尔加玛丽", withoutAddedStop("オルガマリー", "奥尔加玛丽。"))
         assertEquals("先生！", withoutAddedStop("先生！", "先生！"))
