@@ -33,6 +33,9 @@ The decision runs in four stages.
   - Icons inside a line cut it there: 「(臨戦)★食★STRIKE」 is 「(臨戦)」.
 - **Pieces of one sentence cut apart** — touching on a row, one type size, one of them a sentence — are joined again, and a 「?」 straight before a particle is dropped as half a cut 「を」. A skill description's line 「…攻撃速度を30.6%増加…」 had come back as 「…攻撃速度?」 and 「を30.6%…」, translated apart, and the paragraph no longer joined line to line. A line with figures is never cut by a change of type either: its numbers are set larger and in blue.
 - **A coloured mark inside a line's box** before its ink — a pop-up title's pale accent bar — bounds the patch, and strokes read off it (「||」) are taken off the text.
+- **A skill's description** is said even when short and unpunctuated: a line with 「を」 or 「が」 between two words (「攻撃力を542増加/」) is a sentence. Pieces cut at a blue figure are joined again (a figure and its unit, words and the figure after them), and a line with figures is read again on its own — then at twice the size — when that gives back a digit (「1955」 had been read 「955」).
+- **A pop-up's title** over its skill label, on the same left edge (within two glyphs), is translated with it; a line with a percentage or ending in 「/」 is never a name.
+- **Bars before a line** (「||」, or 「一」 where a coloured accent bar stands) are taken off, sentence or not.
 - **A bracketed part** after a word on its row is joined to it (「ハナコ」「(水着)」 → 「ハナコ(水着)」), so the name and its outfit are one label.
 - **A filled 「?」 at a line's end** is a help button, not the word's question: 「生徒?」 is 「生徒」, and the button is not painted over.
 - **A row of small labels with a gap** where a label should be: what is in the gap is read again at twice the size. 「ノーマルスキル」 in a skill card was left out on three students of five.
@@ -121,7 +124,9 @@ Added 2026-10-18: the student list and thirteen students' status pages (Hanako, 
 
 Added 2026-10-17: two students' status screens (an affection badge before the name, 「ノーマルスキル」 read 「-マルスキル」) and a skill-growth pop-up (labels read together with the skill names beside them, the dimmed top bar behind).
 
-All 307 expectations pass (2026-10-18). Three are kept as notes rather than checks: labels the recogniser does not read at all on that one picture, or translucent tabs translated only once known from another page.
+Skill pop-ups: 49 pop-ups of 13 students, every line of each checked (`ba-pop*`). All 498 expectations pass (2026-10-18). Three are kept as notes rather than checks: labels the recogniser does not read at all on that one picture, or translucent tabs translated only once known from another page.
+
+A translation that lacks one of the original's figures is asked again without context: a skill's 「味方の攻撃力を17.3%増加」 came back as the previous pop-up's 「再增加26.6%的治疗力」 (`EchoGuard.losesFigures`). An answer with English words in it, for a Chinese reader, is asked again too (`SameLanguageGuard`).
 
 ## How a label is translated
 

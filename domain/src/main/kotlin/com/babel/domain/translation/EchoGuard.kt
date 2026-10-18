@@ -20,6 +20,22 @@ object EchoGuard {
         return others.any { similarity(mine, bigrams(it)) >= THRESHOLD }
     }
 
+    /**
+     * Whether a figure of the original is missing from the translation: a
+     * skill's 「味方の攻撃力を17.3%増加」 came back as the pop-up before it,
+     * 「再增加26.6%的治疗力」, though nothing in its words was alike enough to
+     * count as an echo. Figures are carried over as they are in every
+     * language this translates into.
+     */
+    fun losesFigures(original: String, translation: String): Boolean {
+        val figures = FIGURE.findAll(original).map { it.value }.toList()
+        if (figures.isEmpty()) return false
+        val answer = translation.replace(Regex("[,，\\s]"), "")
+        return figures.any { it !in answer }
+    }
+
+    private val FIGURE = Regex("[0-9]+(\\.[0-9]+)?")
+
     /** Dice coefficient over character bigrams, ignoring spacing and punctuation. */
     internal fun similarity(a: Map<String, Int>, b: Map<String, Int>): Double {
         val total = a.values.sum() + b.values.sum()

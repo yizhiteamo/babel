@@ -417,5 +417,14 @@ class GameLayoutTest {
         assertEquals("レベルアップ", GameLayout.withoutStrayStroke("レベルアップ|"))
         assertEquals("BOX 1", GameLayout.withoutStrayStroke("BOX 1"))
         assertEquals("大活躍のよて~", GameLayout.withoutStrayStroke("||大活躍のよて~"))
+        assertEquals("マジカルヒールTCCC!+", GameLayout.withoutStrayStroke("||マジカルヒールTCCC!+"))
+    }
+
+    @Test
+    fun `a skill's short description is a sentence, a label with a particle-like kana is not`() {
+        assertTrue(GameLayout.isSentence("攻撃力を542増加/"))
+        assertTrue(GameLayout.isSentence("治癒力を26.6%増加"))
+        assertFalse(GameLayout.isSentence("お気に入り"))
+        assertFalse(GameLayout.isSentence("バッシブスキル"))
     }
 }

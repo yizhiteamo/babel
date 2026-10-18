@@ -675,6 +675,18 @@ object GameLayout {
             line !in spoken && isLabel(line.text) && line.text.none { it.isDigit() } &&
                 spoken.any { d -> speaksAbove(line.bounds, d.bounds) || speaksOverGap(line, d, lines) }
         }
+        // And a title over a name, set on the same left edge: a skill pop-up's
+        // 「邪魔よ!」 over 「EXスキル / COST: 2」 over the skill's description.
+        // Too short and exclaimed to be a sentence, and too far above the
+        // description to be its name, it was the one line of the pop-up left
+        // in Japanese. One level only.
+        val heads = names + spoken.filter { h -> spoken.any { d -> d !== h && speaksAbove(h.bounds, d.bounds) } }
+        val titles = lines.filter { line ->
+            line !in spoken && line !in names && !isSentence(line.text) && line.text.none { it.isDigit() } &&
+                line.text.count { it.isLetter() } >= 2 &&
+                // Within two glyphs: a slanted label starts left of its title.
+                heads.any { n -> speaksAbove(line.bounds, n.bounds) && abs(line.bounds.left - n.bounds.left) <= n.typeHeight * 2 }
+        }
         // In a chat's column, a label is a message unless the same words stand
         // over another run of messages too: 「待ってください」, 「先生」 over the
         // next bubble were taken for names and set at a name's size.
@@ -689,10 +701,22 @@ object GameLayout {
             return if (same.size >= 2) same.count(::inColumn) >= 2 else line.text in repeated
         }
         val speakers = (spoken + names).filter { line ->
-            (line.text in repeated || (line !in aligned && line !in voiced)) && isLabel(line.text) && sender(line) &&
+            (line.text in repeated || (line !in aligned && line !in voiced)) && isLabel(line.text) && sender(line) && !describes(line.text) &&
                 spoken.any { d -> d !== line && speaksAbove(line.bounds, d.bounds) }
         }.toSet()
-        return (spoken + names) to speakers
+        return (spoken + names + titles) to (speakers + titles)
+    }
+
+    /**
+     * A piece of a description, not a name: a percentage (「治癒力の338%分の
+     * 回復」) or a line ending in the slash a skill's effects are listed with
+     * (「メージ/」, the end of a word cut by the line's wrap). Taken for names
+     * over the next line, they were translated alone and set at a name's
+     * size in the middle of the paragraph.
+     */
+    private fun describes(text: String): Boolean {
+        val t = text.trim()
+        return t.endsWith('/') || t.endsWith('／') || Regex("[0-9][%％]").containsMatchIn(t)
     }
 
     private fun inColumnWith(line: GameLine, d: GameLine, byRight: Boolean = false): Boolean {
@@ -779,15 +803,23 @@ object GameLayout {
      * Latin word keep everything.
      */
     fun withoutStrayStroke(text: String): String {
-        if (isSentence(text)) return text
         var t = text.trim()
         fun foreign(c: Char) = c.isLetter() && c.code >= 0x250
+        // Any number of bars before a word, sentence or not: a title's accent
+        // bar came back 「||」, and in 「||マジカルヒールTCCC!+」, a sentence by
+        // its 「!」, was translated and drawn as 「‖魔法治愈…」. No Japanese
+        // line begins with a vertical bar.
+        while (t.length >= 3 && t.first() in BARS && t.dropWhile { it in BARS || it == ' ' }.firstOrNull()?.let(::foreign) == true) t = t.drop(1).trimStart()
+        if (isSentence(t)) return t
         // With a space between or not: a tab's divider came back 「レベルアップ |」.
         if (t.length >= 3 && t.last() in STRAY_STROKES && t.dropLast(1).trimEnd().lastOrNull()?.let(::foreign) == true) t = t.dropLast(1).trimEnd()
-        // Any number of them before a word: a title's accent bar came back 「||」.
+        // Or a digit or letter read off a bar before a label.
         while (t.length >= 3 && t.first() in STRAY_STROKES && t.dropWhile { it in STRAY_STROKES || it == ' ' }.firstOrNull()?.let(::foreign) == true) t = t.drop(1).trimStart()
         return t
     }
+
+    private const val BARS = "|丨｜‖ǀ"
+
 
     private const val STRAY_STROKES = "1lI|丨｜"
 
@@ -843,7 +875,23 @@ object GameLayout {
             // Long, but without punctuation and with a space between words of
             // a script written without spaces: two labels side by side —
             // Blue Archive's tiles 「戦術対抗戦 制約解除決戦」 read as one line.
-            (text.count { it.isLetter() } > MAX_LABEL_LETTERS && !spacedLabels(text) && !fewLatinWords(text))
+            (text.count { it.isLetter() } > MAX_LABEL_LETTERS && !spacedLabels(text) && !fewLatinWords(text)) ||
+            // A clause: an object or subject particle between two words —
+            // 「攻撃力を542増加/」, 「治癒力を26.6%増加」. A skill's short
+            // description has no punctuation and a label's length, and was
+            // left untranslated while longer ones beside it were translated.
+            // No interface label is built with を or が.
+            clause(text)
+
+    private fun clause(text: String): Boolean {
+        if (text.count { it.isLetter() } < MIN_CLAUSE_LETTERS) return false
+        // Latin too on the left: 「HPを25.5%増加/」.
+        fun word(c: Char) = c in '一'..'鿿' || c in 'ァ'..'ヺ' || c == 'ー' || c.isDigit() || c == '%' || c == '％' || c in 'A'..'Z'
+        return text.indices.any { i -> text[i] in CLAUSE_PARTICLES && i > 0 && i < text.length - 1 && word(text[i - 1]) && word(text[i + 1]) }
+    }
+
+    private const val CLAUSE_PARTICLES = "をが"
+    private const val MIN_CLAUSE_LETTERS = 5
 
     /**
      * A sentence's punctuation. A quotation's bracket counts only with its

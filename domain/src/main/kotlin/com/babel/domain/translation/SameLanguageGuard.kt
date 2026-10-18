@@ -52,6 +52,15 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
                 val again = delegate.translate(request.copy(context = null))
                 if (again.status != TranslationStatus.Translated || !mostlyKana(again.translatedText)) return again
             }
+            // Or in a third language: a skill's 「HPを8251増加/さらに回復率を
+            // 26.6%増加」 came back 「HP增加8251/ furthermore, increase the
+            // recovery value by 26.6%」, half of it English. Asked once more.
+            if (chineseTarget && result.status == TranslationStatus.Translated && JapaneseScript.isPresentIn(text) &&
+                mostlyLatinWords(result.translatedText) > mostlyLatinWords(text)
+            ) {
+                val again = delegate.translate(request.copy(context = null))
+                if (again.status == TranslationStatus.Translated && mostlyLatinWords(again.translatedText) <= mostlyLatinWords(text)) return again
+            }
             return result
         }
         return TranslationResult(
@@ -65,6 +74,10 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
             status = TranslationStatus.Unchanged,
         )
     }
+
+    /** Latin words of three letters or more: 「furthermore」, not 「HP」 or 「EX」. */
+    private fun mostlyLatinWords(text: String): Int =
+        Regex("[A-Za-z]{3,}").findAll(text).count()
 
     /** Kana for a third or more of the letters: Japanese, not Chinese with a 「の」 in it. */
     private fun mostlyKana(text: String): Boolean {

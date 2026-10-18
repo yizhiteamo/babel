@@ -92,4 +92,25 @@ class SameLanguageGuardTest {
         assertEquals("有点困扰", result.translatedText)
         assertEquals(listOf("いま", null), contexts)
     }
+
+    @Test
+    fun `an answer half in english is asked again`() = runBlocking {
+        val answers = ArrayDeque(listOf("HP增加8251/ furthermore, increase the recovery value", "HP增加8251/并使回复值增加26.6%"))
+        val english = object : Translator {
+            override val id = ProviderId("fake")
+            override fun supports(source: LanguageTag?, target: LanguageTag) = true
+            override suspend fun translate(request: TranslationRequest): TranslationResult {
+                calls++
+                return TranslationResult(
+                    request.requestId, request.elementId, request.revision, request.sourceText, answers.removeFirst(),
+                    provider = id, status = TranslationStatus.Translated,
+                )
+            }
+        }
+
+        val result = SameLanguageGuard(english).translate(request("HPを8251増加/さらに回復率を26.6%増加", source = "ja"))
+
+        assertEquals(2, calls)
+        assertEquals("HP增加8251/并使回复值增加26.6%", result.translatedText)
+    }
 }

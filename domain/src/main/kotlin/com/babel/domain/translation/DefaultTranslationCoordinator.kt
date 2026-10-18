@@ -565,7 +565,7 @@ class DefaultTranslationCoordinator(
                     val result = if (
                         context != null &&
                         first.status == TranslationStatus.Translated &&
-                        EchoGuard.repeatsAnother(first.translatedText, others)
+                        (EchoGuard.repeatsAnother(first.translatedText, others) || EchoGuard.losesFigures(element.text, first.translatedText))
                     ) {
                         logger.debug(TAG, "answer echoed another line; asking again without context")
                         translateWithRetry(element, pair, context = null, known = known)

@@ -31,4 +31,11 @@ class EchoGuardTest {
     fun `nothing rendered yet is nothing to echo`() {
         assertFalse(EchoGuard.repeatsAnother(rendered, emptyList()))
     }
+
+    @Test
+    fun `a translation without the original's figures is another line's`() {
+        kotlin.test.assertTrue(EchoGuard.losesFigures("味方の攻撃力を17.3%増加", "再增加26.6%的治疗力"))
+        kotlin.test.assertFalse(EchoGuard.losesFigures("味方の攻撃力を17.3%増加", "我方攻击力增加17.3%"))
+        kotlin.test.assertFalse(EchoGuard.losesFigures("治癒力を1955増加/", "治愈力增加1,955/"))
+    }
 }

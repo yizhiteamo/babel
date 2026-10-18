@@ -1027,7 +1027,9 @@ class GameTextSource @Inject constructor(
                 ?: separated(line).map { (text, box) -> text to onFrame(box) }
         }.mapNotNull { (text, read) ->
             if (text.isBlank()) return@mapNotNull null
-            val (unmarked, unmarkedBox) = withoutLeadingIcon(frame, GameLayout.withoutStrayStroke(text), onItsPanel(frame, read))
+            // A title's accent bar read as 「一」 before a kanji: 「一技術革命+」.
+            val unbarred = if (text.length >= 3 && text[0] == '一' && colouredMarkInside(frame, read) != null) text.drop(1) else text
+            val (unmarked, unmarkedBox) = withoutLeadingIcon(frame, GameLayout.withoutStrayStroke(unbarred), onItsPanel(frame, read))
             val (kept, bounds) = withoutTail(frame, unmarked, unmarkedBox)
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
@@ -1051,7 +1053,7 @@ class GameTextSource @Inject constructor(
             // the first's letter, not the second.
             val whole = withLostStart(frame, line.text, line.bounds) ?: return@mapNotNull null
             if (whole == line.text) line else line.copy(text = whole)
-        }.let(::withBracketedParts).let(::withSentencePiecesJoined).let { withRowGapsRead(frame, it) }
+        }.let(::withBracketedParts).let { withSentencePiecesJoined(frame, it) }.map { withFiguresReadAgain(frame, it) }.let { withRowGapsRead(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {
@@ -1135,29 +1137,76 @@ class GameTextSource @Inject constructor(
      * into two tiny lines, and the paragraph was no longer joined line to
      * line.
      */
-    private fun withSentencePiecesJoined(lines: List<GameLine>): List<GameLine> {
+    private suspend fun withSentencePiecesJoined(frame: Bitmap, lines: List<GameLine>): List<GameLine> {
         val out = lines.toMutableList()
         var i = 0
         while (i < out.size) {
             val a = out[i]
+            // Figures are set larger than the words around them, and the gap
+            // before them can be a whole glyph's: 「攻撃力」 「を567増加/」.
             val b = out.firstOrNull { it !== a && sameRow(it.bounds, a.bounds) && it.bounds.left >= a.bounds.right - a.typeHeight / 4 &&
-                it.bounds.left - a.bounds.right <= a.typeHeight / 2 && abs(it.typeHeight - a.typeHeight) <= a.typeHeight / 6 }
-            if (b == null || !(GameLayout.isSentence(a.text) || GameLayout.isSentence(b.text) || a.text.any { it in GameLayout.SENTENCE_MARKS } || b.text.any { it in GameLayout.SENTENCE_MARKS })) {
+                it.bounds.left - a.bounds.right <= max(a.typeHeight, it.typeHeight) * 3 / 2 && abs(it.typeHeight - a.typeHeight) <= max(it.typeHeight, a.typeHeight) / 3 }
+            val whole = b?.let { a.text.trimEnd() + it.text.trimStart() }
+            // Touching, a sentence's pieces; further apart, only where a figure
+            // was cut: two labels in a row are both further apart and, read
+            // together, as long as a sentence.
+            val close = b != null && b.bounds.left - a.bounds.right <= max(a.typeHeight, b.typeHeight) / 2
+            if (b == null || whole == null || !((close && (GameLayout.isSentence(a.text) || GameLayout.isSentence(b.text) ||
+                    // A figure and its unit cut at the colour change: blue 「32秒」, grey 「間)/」.
+                    (a.text.any(Char::isDigit) && b.text.any { it.code >= JAPANESE_FROM }) ||
+                    // and words before a blue figure: 「さらに自身の回避値」 「年33.8%増加」.
+                    (b.text.any(Char::isDigit) && a.text.any { it.code >= JAPANESE_FROM }) || a.text.any { it in GameLayout.SENTENCE_MARKS } || b.text.any { it in GameLayout.SENTENCE_MARKS })) ||
+                    // Or cut where a figure begins: 「さらにHP2」 「6.6%増加」.
+                    // or one digit into it, the rest misread (「さらにHP2」 「年26.6%」).
+                    ((b.text.trimStart().firstOrNull()?.let { it.isDigit() || it in PARTICLES } == true || a.text.trimEnd().lastOrNull()?.isDigit() == true) &&
+                        a.text.any { it.code >= JAPANESE_FROM }))
+            ) {
                 i++
                 continue
             }
             // A question mark straight before a particle was a particle cut
             // in half: 「攻撃速度を」 read 「攻撃速度?」 + 「を…」.
             val head = a.text.trimEnd().let { t -> if (t.lastOrNull()?.let { c -> c in "?？" } == true && b.text.trimStart().firstOrNull()?.let { it in PARTICLES } == true) t.dropLast(1) else t }
+            val box = TextBounds(a.bounds.left, min(a.bounds.top, b.bounds.top), b.bounds.right, max(a.bounds.bottom, b.bounds.bottom), a.bounds.space)
+            // Read again whole, larger: cut at a colour change, the pieces'
+            // edges were misread — 「を」 as 「年」, 「増加」 as 「曽加」.
+            val key = "joined@${box.left / 8},${box.top / 8},${box.right / 8}"
+            val again = rereads[key]?.firstOrNull()?.text
+                ?: (reread(frame, box.left, box.top, box.right, box.bottom, scale = 2) ?: "").also { rereads[key] = listOf(GameLine(it, box, 0.0)) }
+            val text = again.takeIf { it.length >= (head.length + b.text.trim().length) * 3 / 4 && it.any { c -> c.code >= JAPANESE_FROM } } ?: (head + b.text.trimStart())
             val joined = a.copy(
-                text = head + b.text.trimStart(),
-                bounds = TextBounds(a.bounds.left, min(a.bounds.top, b.bounds.top), b.bounds.right, max(a.bounds.bottom, b.bounds.bottom), a.bounds.space),
+                text = text,
+                bounds = box,
                 backdropError = max(a.backdropError, b.backdropError),
+                typeHeight = min(a.typeHeight, b.typeHeight),
             )
             out[i] = joined
             out.remove(b)
         }
         return out
+    }
+
+    /**
+     * A sentence with figures, read again alone and larger: a skill's blue
+     * figures lose a narrow digit at the normal size — 「治癒力を1955増加」 was
+     * read 「…955…」 and translated so, 「MK-II」 「MK-I」. The second reading is
+     * taken when it holds every figure of the first and more.
+     */
+    private suspend fun withFiguresReadAgain(frame: Bitmap, line: GameLine): GameLine {
+        if (line.text.none(Char::isDigit) || !GameLayout.isSentence(line.text)) return line
+        val b = line.bounds
+        val key = "figures@${b.left / 8},${b.top / 8},${b.right / 8}:${line.text}"
+        val digits = line.text.count(Char::isDigit)
+        fun better(again: String) = again.count(Char::isDigit) > digits && abs(again.length - line.text.length) <= max(2, line.text.length / 8) &&
+            Regex("[0-9]+").findAll(line.text).all { m -> m.value in again }
+        // Alone on its own backdrop first, then larger: the 「1」 of 「1955」
+        // came back alone and not at twice the size.
+        val again = rereads[key]?.firstOrNull()?.text ?: run {
+            val alone = reread(frame, b.left, b.top, b.right, b.bottom) ?: ""
+            (if (better(alone)) alone else reread(frame, b.left, b.top, b.right, b.bottom, scale = 2) ?: "")
+                .also { rereads[key] = listOf(GameLine(it, b, 0.0)) }
+        }
+        return if (better(again)) line.copy(text = again) else line
     }
 
     /**
