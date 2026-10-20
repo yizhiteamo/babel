@@ -163,6 +163,7 @@ class GameTextSource @Inject constructor(
         val fresh = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
         val taking = launch {
             var before: Small? = null
+            var beforeAt = 0L
             var takenAt = 0L
             activeAt = SystemClock.elapsedRealtime()
             while (stillWanted()) {
@@ -193,8 +194,17 @@ class GameTextSource @Inject constructor(
                 val small = smallOf(frame)
                 duty.watchMs.addAndGet(SystemClock.elapsedRealtime() - watchFrom)
                 newest = small
-                latest.getAndSet(Shot(frame, small, before))?.frame?.recycle()
+                // A picture to compare with only if taken a moment before: paced
+                // slowly on a still screen, the last one was two seconds old, a
+                // tap moved to the next student, and a picture taken mid-slide
+                // matched the one from before the tap — the panel stands in the
+                // same place on every page — so its skill button's label was
+                // taken as still, published where it was mid-slide and drawn
+                // out of place.
+                val pair = before.takeIf { takenAt - beforeAt <= STILL_PAIR_MS }
+                latest.getAndSet(Shot(frame, small, pair))?.frame?.recycle()
                 before = small
+                beforeAt = takenAt
                 fresh.trySend(Unit)
             }
             fresh.close()
@@ -657,7 +667,7 @@ class GameTextSource @Inject constructor(
                     "settled ${element.id.value} ${Redact.text(settled.line.text)}@${settled.line.bounds.left},${settled.line.bounds.top}," +
                         "${settled.line.bounds.width}x${settled.line.bounds.height} type=${settled.line.typeHeight} " +
                         "${if (element.style.backdrop != null) "erased" else "boxed"} " +
-                        "outline=${element.style.outlineColor != null} centred=${element.style.centred} weight=${element.style.strokeWeight?.let { "%.2f".format(it) }} " +
+                        "outline=${element.style.outlineColor != null} accent=${element.style.accentColor?.let { "%06x".format(it and 0xFFFFFF) }} ink=${element.style.foregroundColor?.let { "%06x".format(it and 0xFFFFFF) }} centred=${element.style.centred} weight=${element.style.strokeWeight?.let { "%.2f".format(it) }} " +
                         "after ${settled.settledAfterMs}ms",
                 )
                 element
@@ -1197,8 +1207,21 @@ class GameTextSource @Inject constructor(
         val b = line.bounds
         val key = "figures@${b.left / 8},${b.top / 8},${b.right / 8}:${line.text}"
         val digits = line.text.count(Char::isDigit)
-        fun better(again: String) = again.count(Char::isDigit) > digits && abs(again.length - line.text.length) <= max(2, line.text.length / 8) &&
-            Regex("[0-9]+").findAll(line.text).all { m -> m.value in again }
+        // More digits, every figure kept; or one stray digit fewer, glued to
+        // a katakana, every real figure kept: 「49.4%加算」 was read 「49.4%カ0質算」,
+        // the blue 「加」 taken for 「カ0」, and its translation said 「质量算」.
+        fun figures(t: String) = Regex("""[0-9]+(?:\.[0-9]+)?""").findAll(t).map { it.value }.toList()
+        fun better(again: String): Boolean {
+            if (abs(again.length - line.text.length) > max(2, line.text.length / 8)) return false
+            val strayIn = { t: String -> Regex("(?<=[゠-ヿ])[0-9](?![0-9.%％])").findAll(t).count() }
+            // More digits, but not one glued to a katakana: read again,
+            // 「49.4%加算」 became 「49.4%カ0質算」 and was taken for the better.
+            if (again.count(Char::isDigit) > digits) return figures(line.text).all { it in again } && strayIn(again) <= strayIn(line.text)
+            val stray = strayIn(line.text)
+            val strong = figures(line.text).filter { it.length >= 2 }
+            return stray > 0 && again.count(Char::isDigit) == digits - stray && strong.all { it in again } &&
+                Regex("(?<=[゠-ヿ])[0-9](?![0-9.%％])").findAll(again).none()
+        }
         // Alone on its own backdrop first, then larger: the 「1」 of 「1955」
         // came back alone and not at twice the size.
         val again = rereads[key]?.firstOrNull()?.text ?: run {
@@ -2329,8 +2352,11 @@ class GameTextSource @Inject constructor(
         // measured, one cyan 風紀委員会 came back navy.
         val lighterInk = backdrop?.let { luma(it.colorAt(it.rows / 2, 0.5f)) < MID_LUMA }
         val strokes = strokesOf(frame, line.bounds, lighterInk ?: true)
+        val single = inkColour(frame, line.bounds, lighterInk)
+        val two = if (single != null && line.text.any(Char::isDigit)) twoInks(frame, line.bounds, lighterInk) else null
         return line to SourceStyle(
-            foregroundColor = inkColour(frame, line.bounds, lighterInk),
+            foregroundColor = two?.first ?: single,
+            accentColor = two?.second,
             orientation = TextOrientation.HORIZONTAL,
             glyphSizePx = steadySize(speaker, line.typeHeight, null),
             backdrop = backdrop,
@@ -2946,6 +2972,67 @@ class GameTextSource @Inject constructor(
         )
     }
 
+    /**
+     * The line's own ink and a second one, when a line with figures has two:
+     * a skill's description sets its figures in blue among grey words, and
+     * its translation was set in one bluish grey throughout. The ink pixels
+     * are split in two by colour; two inks far apart, the lesser a fair share
+     * of the ink, are the words' and the figures'. Null for one ink.
+     */
+    private fun twoInks(frame: Bitmap, box: TextBounds, lighterInk: Boolean?): Pair<Int, Int>? {
+        val w = box.width
+        val h = box.height
+        if (w <= 0 || h <= 0 || box.left < 0 || box.top < 0 || box.right > frame.width || box.bottom > frame.height) return null
+        val pixels = IntArray(w * h)
+        frame.getPixels(pixels, 0, w, box.left, box.top, w, h)
+        val column = DoubleArray(h)
+        val ink = mutableListOf<Int>()
+        for (x in 0 until w step 2) {
+            for (y in 0 until h) column[y] = luma(pixels[y * w + x])
+            val bg = column.sortedArray()[h / 2]
+            for (y in 0 until h) {
+                val d = column[y] - bg
+                if ((lighterInk == true && d >= INK_CONTRAST) || (lighterInk != true && -d >= INK_CONTRAST)) ink += pixels[y * w + x]
+            }
+        }
+        if (ink.size < MIN_TWO_INK_PIXELS) return null
+        fun chroma(p: Int) = maxOf(Color.red(p), Color.green(p), Color.blue(p)) - minOf(Color.red(p), Color.green(p), Color.blue(p))
+        // Two means, from the least and the most colourful pixel.
+        var a = ink.minByOrNull(::chroma)!!
+        var b = ink.maxByOrNull(::chroma)!!
+        var inA: List<Int> = ink
+        var inB = emptyList<Int>()
+        repeat(6) {
+            val (nearA, nearB) = ink.partition { colourDistance(it, a) <= colourDistance(it, b) }
+            if (nearA.isEmpty() || nearB.isEmpty()) return null
+            inA = nearA
+            inB = nearB
+            a = mean(nearA)
+            b = mean(nearB)
+        }
+        val (words, figures) = if (inA.size >= inB.size) inA to inB else inB to inA
+        if (figures.size * 100 < ink.size * MIN_ACCENT_PERCENT || colourDistance(mean(words), mean(figures)) <= ACCENT_DISTANCE) return null
+        // Each ink by its strongest pixels, as [inkColour] takes one: the
+        // mean of a glyph's anti-aliased edge is lighter than its stroke, and
+        // set in it the words came out pale and were given an outline.
+        fun core(pixels: List<Int>): Int {
+            val sorted = pixels.sortedBy { luma(it) }
+            val n = max(1, sorted.size * INK_CORE_PERCENT / 100)
+            return mean(if (lighterInk == true) sorted.takeLast(n) else sorted.take(n))
+        }
+        return core(words) to core(figures)
+    }
+
+    private fun mean(pixels: List<Int>): Int =
+        Color.rgb(pixels.sumOf { Color.red(it) } / pixels.size, pixels.sumOf { Color.green(it) } / pixels.size, pixels.sumOf { Color.blue(it) } / pixels.size)
+
+    private fun colourDistance(a: Int, b: Int): Double {
+        val dr = (Color.red(a) - Color.red(b)).toDouble()
+        val dg = (Color.green(a) - Color.green(b)).toDouble()
+        val db = (Color.blue(a) - Color.blue(b)).toDouble()
+        return kotlin.math.sqrt(dr * dr + dg * dg + db * db)
+    }
+
     private fun toElement(
         key: String,
         line: GameLine,
@@ -3008,6 +3095,16 @@ class GameTextSource @Inject constructor(
         const val LABEL_INK_DISTANCE = 60.0
         const val MIN_ICON_PX = 6
         const val BAR_GAP_PX = 4
+
+        /** Two pictures this close in time can say a line stood still; the platform takes one every ~350 ms. */
+        const val STILL_PAIR_MS = 800L
+
+        /** Ink this far (0–441) from the line's own is a second ink: blue figures against grey words measured over 150. */
+        const val ACCENT_DISTANCE = 110.0
+
+        /** And this share of the line's ink, so a glyph's anti-aliased edge is not one. */
+        const val MIN_ACCENT_PERCENT = 5
+        const val MIN_TWO_INK_PIXELS = 60
 
         /** Colour distance (0–441) from the panel that makes a column a coloured mark: the cyan bar on white measured 128. */
         const val MARK_COLOUR = 90.0

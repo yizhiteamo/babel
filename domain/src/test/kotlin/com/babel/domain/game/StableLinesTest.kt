@@ -416,4 +416,27 @@ class StableLinesTest {
 
         assertEquals("サブスキル", update.settled.single().line.text)
     }
+
+    @Test
+    fun `a plus read as na is the label already known`() {
+        val lines = StableLines()
+        lines.next(listOf(line("パッシブスキル+")), now = 0)
+        lines.next(listOf(line("パッシブスキル+")), now = 333)
+
+        val update = lines.next(listOf(line("パッシブスキル+"), line("パッシブスキルナ", top = 1300)), now = 666)
+
+        assertEquals("パッシブスキル+", update.settled.single().line.text)
+    }
+
+    @Test
+    fun `a label without the mark another card has keeps its own words`() {
+        val lines = StableLines()
+        lines.next(listOf(line("ノーマルスキル+")), now = 0)
+        lines.next(listOf(line("ノーマルスキル+")), now = 333)
+
+        lines.next(listOf(line("ノーマルスキル+"), line("ノーマルスキル", top = 1300)), now = 666)
+        val update = lines.next(listOf(line("ノーマルスキル+"), line("ノーマルスキル", top = 1300)), now = 999)
+
+        assertEquals("ノーマルスキル", update.settled.single().line.text)
+    }
 }

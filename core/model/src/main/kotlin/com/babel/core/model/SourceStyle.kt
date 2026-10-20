@@ -59,11 +59,17 @@ data class SourceStyle(
     val strokeWeight: Float? = null,
     /** The original was centred on its panel — a choice, a banner — not set from its left. */
     val centred: Boolean = false,
+    /**
+     * A second ink the original set its figures in — a skill's description
+     * has its numbers in blue among grey words. A renderer sets the same
+     * figures of the translation in it. Null where the original has one ink.
+     */
+    val accentColor: Int? = null,
 ) {
     val isEmpty: Boolean
         get() = backgroundColor == null && foregroundColor == null &&
             orientation == null && glyphSizePx == null && backdrop == null &&
-            outlineColor == null && strokeWeight == null
+            outlineColor == null && strokeWeight == null && accentColor == null
 
     companion object {
         val UNKNOWN = SourceStyle()

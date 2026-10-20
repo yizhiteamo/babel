@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -631,6 +632,21 @@ class DefaultTranslationCoordinator(
 
     /** A label translated from its words when it is made of them ([BracketedLabel]); null otherwise. */
     private suspend fun labelInParts(element: TextElement, pair: LanguagePair): TranslationResult? {
+        // A plain label goes the same way, so it and the same word with a
+        // mark or a bracketed part after it share one answer.
+        if (BracketedLabel.marked(element.text) == null && BracketedLabel.split(element.text) == null) {
+            val word = element.text.trim()
+            val rendered = translatedWord(element, pair, word) ?: return null
+            return TranslationResult(
+                requestId = RequestId("req-${requestIds.incrementAndGet()}"),
+                elementId = element.id,
+                revision = element.revision,
+                originalText = element.text,
+                translatedText = rendered,
+                provider = translator.id,
+                status = if (rendered == word) TranslationStatus.Unchanged else TranslationStatus.Translated,
+            )
+        }
         BracketedLabel.marked(element.text)?.let { (word, mark) ->
             val rendered = translatedWord(element, pair, word) ?: return null
             return TranslationResult(
@@ -650,6 +666,22 @@ class DefaultTranslationCoordinator(
     private suspend fun translatedWord(element: TextElement, pair: LanguagePair, text: String): String? {
         val key = TranslationCacheKey.of(text, pair.forElement(element), translator.id)
         cache.get(key)?.let { return it }
+        // One request for one word at a time: a skill label with its 「+」 and
+        // the same label without it on the next card asked for 「ノーマルスキル」
+        // together, and the two answers disagreed (「普通技能」, 「技能宝珠」).
+        val pending = wordsInFlight.computeIfAbsent(key) {
+            requireNotNull(scope).async { askWord(element, pair, text, key) }
+        }
+        return try {
+            pending.await()
+        } finally {
+            wordsInFlight.remove(key, pending)
+        }
+    }
+
+    private val wordsInFlight = java.util.concurrent.ConcurrentHashMap<TranslationCacheKey, kotlinx.coroutines.Deferred<String?>>()
+
+    private suspend fun askWord(element: TextElement, pair: LanguagePair, text: String, key: TranslationCacheKey): String? {
         val result = translateWithRetry(element.copy(text = text), pair, context = null)
         return when (result.status) {
             TranslationStatus.Translated -> result.translatedText.trim().also { cache.putDurable(key, it) }

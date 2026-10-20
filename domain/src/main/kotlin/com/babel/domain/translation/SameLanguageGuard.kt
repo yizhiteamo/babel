@@ -46,8 +46,10 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
             // 「ちょとこまって」 came back as 「ちょっと困って」 — corrected, not
             // translated — and was drawn as the translation. Asked once more
             // without the context, which is what it was matching.
+            // Or with hiragana left in it, which Chinese never uses: 「…49.4%
+            // 质量算/さらに攻击力提升26.6%」 kept the 「さ」 of a line's wrap.
             if (chineseTarget && result.status == TranslationStatus.Translated && JapaneseScript.isPresentIn(text) &&
-                mostlyKana(result.translatedText)
+                (mostlyKana(result.translatedText) || result.translatedText.any { it in 'ぁ'..'ゖ' })
             ) {
                 val again = delegate.translate(request.copy(context = null))
                 if (again.status != TranslationStatus.Translated || !mostlyKana(again.translatedText)) return again

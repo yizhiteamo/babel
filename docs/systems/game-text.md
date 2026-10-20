@@ -128,6 +128,12 @@ Skill pop-ups: 49 pop-ups of 13 students, every line of each checked (`ba-pop*`)
 
 A translation that lacks one of the original's figures is asked again without context: a skill's 「味方の攻撃力を17.3%増加」 came back as the previous pop-up's 「再增加26.6%的治疗力」 (`EchoGuard.losesFigures`). An answer with English words in it, for a Chinese reader, is asked again too (`SameLanguageGuard`).
 
+**Colour.** A line with figures in a second ink — a skill's numbers in blue among grey words — is measured as two inks (`SourceStyle.accentColor`), and its translation's figures are set in the second. Every figure of the translation takes it: where the original left one figure grey, the translation does not know which.
+
+**Still pictures are a moment apart.** Two pictures say a line stood still only when taken within 0.8 s: paced slowly on a still screen, a tap to the next student made a picture mid-slide match one from before the tap, and a skill button's label was published where it stood mid-slide, out of place.
+
 ## How a label is translated
+
+Every label is translated through its words, one request per word at a time: a label with its 「+」 and the same label without it, asked together, came back 「普通技能+」 and 「技能宝珠」. A known label read with 「ナ」 for its 「+」, or with the other voicing mark, is the known label; a label without the 「+」 another card has keeps its own words.
 
 A label made of a word and a bracketed part (「ハナコ(水着)」), or of a word and a trailing 「+」 (「ノーマルスキル+」), is translated as its words and put back together, with the target language's brackets (`BracketedLabel`). Each word is cached under the key the same word alone would have, so a student's name reads the same in her card and on her page, and a skill label the same with or without its 「+」. Sent whole, one screen's names had come back 「花子(泳装)」, 「星野（泳装）」 and 「泳装小优」. A kana word that comes back unchanged sends the label whole instead.

@@ -362,10 +362,19 @@ class StableLines {
                 val diff = k.indices.filter { k[it] != line.text[it] }
                 diff.size == 1 && confusable(k[diff[0]], line.text[diff[0]])
             } else {
-                min(k.length, line.text.length) >= MIN_SNAP_LENGTH + 2 && abs(k.length - line.text.length) == 1 && editDistance(k, line.text) == 1
+                // Not a mark at the end: 「ノーマルスキル」 on one card is not
+                // 「ノーマルスキル+」 on the next, and snapped it grew a 「+」.
+                min(k.length, line.text.length) >= MIN_SNAP_LENGTH + 2 && abs(k.length - line.text.length) == 1 && editDistance(k, line.text) == 1 &&
+                    !trailingMark(k, line.text)
             }
         } ?: return line
         return line.copy(text = known)
+    }
+
+    /** Whether one of two texts is the other with a mark (「+」) after it. */
+    private fun trailingMark(a: String, b: String): Boolean {
+        val (short, long) = if (a.length < b.length) a to b else b to a
+        return long.length == short.length + 1 && long.startsWith(short) && !long.last().isLetterOrDigit()
     }
 
     private fun confusable(a: Char, b: Char): Boolean = CONFUSABLE.any { (a in it) && (b in it) }
@@ -509,7 +518,10 @@ class StableLines {
             // Voiced and half-voiced marks: small italic type came back
             // 「サプスキル」 beside 「サブスキル」 on one screen, and the two were
             // translated apart (「辅助技能」, 「副技能」).
-            "ハバパ", "ヒビピ", "フブプ", "ヘベペ", "ホボポ")
+            "ハバパ", "ヒビピ", "フブプ", "ヘベペ", "ホボポ",
+            // A 「+」 after a label read as 「ナ」, the same cross: 「パッシブスキルナ」
+            // was translated 「被动技能名」.
+            "ナ+＋")
 
         /** Labels remembered for publishing at once; see [knownLabels]. */
         const val MAX_KNOWN_LABELS = 256

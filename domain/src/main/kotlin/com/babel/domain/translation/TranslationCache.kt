@@ -47,8 +47,11 @@ data class TranslationCacheKey(
          * 8 when a label with a trailing 「+」 began to be translated as its
          * word and the mark: 「ノーマルスキル+」 kept whole on disk would
          * still disagree with 「ノーマルスキル」.
+         *
+         * 9 when one word stopped being asked twice at once: entries from
+         * before kept 「ノーマルスキル」 as 「技能宝珠」 beside 「普通技能+」.
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 8
+        const val CURRENT_SCHEMA_VERSION: Int = 9
 
         private val WHITESPACE = Regex("\\s+")
 

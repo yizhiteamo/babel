@@ -113,4 +113,25 @@ class SameLanguageGuardTest {
         assertEquals(2, calls)
         assertEquals("HP增加8251/并使回复值增加26.6%", result.translatedText)
     }
+
+    @Test
+    fun `an answer with hiragana left in it is asked again`() = runBlocking {
+        val answers = ArrayDeque(listOf("贯通特攻增加49.4%/さ再使攻击力增加26.6%", "贯通特攻增加49.4%/再使攻击力增加26.6%"))
+        val kana = object : Translator {
+            override val id = ProviderId("fake")
+            override fun supports(source: LanguageTag?, target: LanguageTag) = true
+            override suspend fun translate(request: TranslationRequest): TranslationResult {
+                calls++
+                return TranslationResult(
+                    request.requestId, request.elementId, request.revision, request.sourceText, answers.removeFirst(),
+                    provider = id, status = TranslationStatus.Translated,
+                )
+            }
+        }
+
+        val result = SameLanguageGuard(kana).translate(request("貫通特効を49.4%加算/さらに攻撃力を26.6%増加", source = "ja"))
+
+        assertEquals(2, calls)
+        assertEquals("贯通特攻增加49.4%/再使攻击力增加26.6%", result.translatedText)
+    }
 }

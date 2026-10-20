@@ -166,7 +166,10 @@ object GameLayout {
             // not the line's last word — even with nothing kept under it: the
             // 「2」 under 「アナウンス」 was a number, left out, and the name was
             // read as the end of the line above (「……还有3，播报」).
-            val nameLike = isLabel(line.text)
+            // One letter is no name: 「ジ」, the end of 「ダメー|ジ」 cut by the
+            // wrap, measured a little smaller than its line and was left
+            // standing in Japanese under the translation.
+            val nameLike = isLabel(line.text) && line.text.count { it.isLetter() } >= 2
             val i = if (line in labels) -1 else out.indexOfLast { (_, last) ->
                 last !in labels && last.text !in repeated && wraps(last, line) && panels.joined(last, line) &&
                     !(nameLike && line.typeHeight.toDouble() / last.typeHeight.coerceAtLeast(1) < NAME_TYPE_RATIO) &&

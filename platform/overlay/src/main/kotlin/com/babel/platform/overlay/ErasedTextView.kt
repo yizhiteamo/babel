@@ -69,8 +69,26 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
         typeface = typefaceFor(style.strokeWeight)
 
         centred = style.centred
-        text = translation.text
+        // Figures in the original's second ink, as the game set them: a
+        // skill's numbers are blue among grey words.
+        val accent = style.accentColor
+        text = if (accent != null) withFigures(translation.text, accent) else translation.text
         configureSize(glyph, translation.bounds.height, translation.bounds.width - 2 * margin, translation.bounds.height - 2 * backdrop.rowMarginPx)
+    }
+
+    private fun withFigures(text: String, accent: Int): CharSequence {
+        val spannable = android.text.SpannableString(text)
+        for (match in FIGURE.findAll(text)) {
+            spannable.setSpan(FigureSpan(accent), match.range.first, match.range.last + 1, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return spannable
+    }
+
+    /** A figure's colour, except in the outline's pass, which is one colour round every glyph. */
+    private inner class FigureSpan(private val accent: Int) : android.text.style.CharacterStyle(), android.text.style.UpdateAppearance {
+        override fun updateDrawState(paint: android.text.TextPaint) {
+            if (!outlining) paint.color = accent
+        }
     }
 
     /**
@@ -259,6 +277,9 @@ internal class ErasedTextView(context: Context) : TextView(context), Translation
     }
 
     private companion object {
+        /** A figure: digits with a decimal part, a range (「1～2」), a percentage. */
+        val FIGURE = Regex("""[0-9]+(?:[.,][0-9]+)*(?:\s*[~〜～\-－]\s*[0-9]+(?:\.[0-9]+)?)?\s*[%％]?""")
+
         const val COLUMNS = 64
 
 
