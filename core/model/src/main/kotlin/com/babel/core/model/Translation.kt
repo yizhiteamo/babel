@@ -35,6 +35,13 @@ data class TranslationRequest(
 
         /** The game the text is from, by its package name. */
         const val GAME = "game"
+
+        /**
+         * The other labels on the label's row, one per line: what a word set
+         * beside other words is. Alone, 「ノーマルスキル」 came back
+         * 「技能宝珠」 and 「普通技能也」 on different cards.
+         */
+        const val ROW = "row"
     }
 }
 

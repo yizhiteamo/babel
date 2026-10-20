@@ -805,6 +805,28 @@ object GameLayout {
      * against a letter of another script is taken off — 「通行人A」 and a
      * Latin word keep everything.
      */
+    /**
+     * [text] with kanji the recogniser reads for a katakana between katakana
+     * given back as the katakana: 「ノ一マルスキル」 (with the kanji one) is
+     * 「ノーマルスキル」. Read the two ways on two cards, one word went to the
+     * translator as two and came back as two (「普通技能」, 「技能宝珠」).
+     */
+    fun withKatakanaRestored(text: String): String {
+        if (text.length < 3) return text
+        fun kata(c: Char?) = c != null && (c in 'ァ'..'ヺ' || c == 'ー')
+        val out = StringBuilder(text)
+        for (i in text.indices) {
+            val kana = KANA_FOR_HAN[text[i]] ?: continue
+            // Before the end, a katakana either side; at the end, two before.
+            val ok = (kata(text.getOrNull(i - 1)) && kata(text.getOrNull(i + 1))) ||
+                (i == text.lastIndex && kata(text.getOrNull(i - 1)) && kata(text.getOrNull(i - 2)) && text[i] != '一')
+            if (ok) out.setCharAt(i, kana)
+        }
+        return out.toString()
+    }
+
+    private val KANA_FOR_HAN = mapOf('一' to 'ー', '二' to 'ニ', '力' to 'カ', '口' to 'ロ', '工' to 'エ', '夕' to 'タ', '卜' to 'ト', '八' to 'ハ')
+
     fun withoutStrayStroke(text: String): String {
         var t = text.trim()
         fun foreign(c: Char) = c.isLetter() && c.code >= 0x250

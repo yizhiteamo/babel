@@ -682,7 +682,12 @@ class DefaultTranslationCoordinator(
     private val wordsInFlight = java.util.concurrent.ConcurrentHashMap<TranslationCacheKey, kotlinx.coroutines.Deferred<String?>>()
 
     private suspend fun askWord(element: TextElement, pair: LanguagePair, text: String, key: TranslationCacheKey): String? {
-        val result = translateWithRetry(element.copy(text = text), pair, context = null)
+        // With the labels beside it, as a list of what else is on the row:
+        // alone, a short game term came back as anything (「技能宝珠」 for
+        // 「ノーマルスキル」 between 「EXスキル」 and 「パッシブスキル」).
+        val row = element.metadata[com.babel.core.model.TranslationRequest.Hints.ROW]
+        val context = row?.takeIf { it.isNotBlank() }?.let { "Other labels shown on the same row, for reference only:\n$it" }
+        val result = translateWithRetry(element.copy(text = text), pair, context = context)
         return when (result.status) {
             TranslationStatus.Translated -> result.translatedText.trim().also { cache.putDurable(key, it) }
             // Already in the reader's language: 「(EX)」 stays as it is. Not a

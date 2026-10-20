@@ -36,8 +36,26 @@ object BracketedLabel {
     fun marked(text: String): Pair<String, String>? {
         val t = text.trim()
         val mark = t.takeLastWhile { it in MARKS }
-        val word = t.dropLast(mark.length).trimEnd()
+        var word = t.dropLast(mark.length).trimEnd()
+        // A stray glyph read between the word and its mark — the card's 「+」
+        // badge read twice, once as another letter — went to the translator
+        // with the word, and 「ノーマルスキル」 came back 「普通技能也」. One
+        // letter of another script than the word's before the mark is not
+        // the word's.
+        if (mark.isNotEmpty() && word.length >= 4 && script(word.last()) != script(word[word.length - 2]) &&
+            word.dropLast(1).all { script(it) == script(word[0]) }
+        ) word = word.dropLast(1)
+        // Or the 「+」 itself read once more as a letter — 「ナ」 and 「十」 are
+        // its cross: 「ノーマルスキルナ+」 came back 「普通技能也+」.
+        if (mark.isNotEmpty() && word.length >= 4 && word.last() in CROSS) word = word.dropLast(1)
         return if (mark.isEmpty() || word.length < 2 || word.any { it in MARKS || it in SENTENCE }) null else word to mark
+    }
+
+    private fun script(c: Char): Int = when (c) {
+        in '぀'..'ゟ' -> 1
+        in '゠'..'ヿ' -> 2
+        in '一'..'鿿' -> 3
+        else -> if (c.isLetterOrDigit()) 4 else 5
     }
 
     /** [word] and [part] as one label, in the brackets [target] is written with. */
@@ -45,6 +63,7 @@ object BracketedLabel {
         if (target.value.substringBefore('-') in FULL_WIDTH_LANGUAGES) "$word（$part）" else "$word ($part)"
 
     private const val MARKS = "+＋"
+    private const val CROSS = "ナ十"
     private const val OPENING = "(（"
     private const val CLOSING = ")）"
     private const val SENTENCE = "。、？！?!…「」『』"

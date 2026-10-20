@@ -50,8 +50,11 @@ data class TranslationCacheKey(
          *
          * 9 when one word stopped being asked twice at once: entries from
          * before kept 「ノーマルスキル」 as 「技能宝珠」 beside 「普通技能+」.
+         *
+         * 10 when a label's words began to be asked with the labels beside
+         * them: alone, 「ノーマルスキル」 was still kept as 「技能宝珠」.
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 9
+        const val CURRENT_SCHEMA_VERSION: Int = 10
 
         private val WHITESPACE = Regex("\\s+")
 

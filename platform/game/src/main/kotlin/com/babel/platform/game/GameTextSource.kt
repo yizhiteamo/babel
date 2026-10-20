@@ -312,6 +312,10 @@ class GameTextSource @Inject constructor(
         activeAt = SystemClock.elapsedRealtime()
     }
 
+    /** One row of labels' box and weight, as first set; see `elementOf` in [readOne]. */
+    private class RowStyle(val top: Int, val bottom: Int, val weight: Float?, val ink: Int?)
+    private val rowStyles = ArrayDeque<RowStyle>()
+
     /** Whether the recogniser is at work on a picture; see [read]. */
     @Volatile
     private var reading = false
@@ -546,8 +550,28 @@ class GameTextSource @Inject constructor(
         // in full contrast — a pop-up dims what is behind it, and the labels
         // there are not what the player is looking at
         // (`docs/systems/game-text.md`).
+        val minSide = minOf(frame.height, frame.width)
+        // Labels of one row of one size: a skill card's four labels. A row of
+        // three translated beside one over the selected card's glow (backdrop
+        // 16–17) left 「EXスキル」 alone in Japanese now and then.
+        fun rowMates(line: GameLine) = read.filter { o ->
+            o !== line && sameRow(o.bounds, line.bounds) && GameLayout.unreadableLabel(o) &&
+                min(o.typeHeight, line.typeHeight).toDouble() / max(o.typeHeight, line.typeHeight) >= SAME_TYPE_RATIO
+        }
+        // A button of two stacked words, one of them kanji: 「スキル」 over 「成長」.
+        // Only the kana half was a label to translate, and 「技能」 stood alone
+        // in the corner of a slanted button over the untranslated 「成長」. Such
+        // a button is the game's, like 「固有武器」 beside it: left whole.
+        fun halfOfButton(line: GameLine) = read.any { o ->
+            val stacked = (o.bounds.top - line.bounds.bottom) in -line.typeHeight / 4..line.typeHeight * 2 / 3 ||
+                (line.bounds.top - o.bounds.bottom) in -line.typeHeight / 4..line.typeHeight * 2 / 3
+            val centred = abs((o.bounds.left + o.bounds.right) / 2 - (line.bounds.left + line.bounds.right) / 2) <= line.typeHeight
+            o !== line && stacked && centred && o.text.none(Char::isDigit) &&
+                o.text.filter(Char::isLetter).let { l -> l.length >= 2 && l.all { it in '一'..'鿿' } } &&
+                min(o.typeHeight, line.typeHeight).toDouble() / max(o.typeHeight, line.typeHeight) >= SAME_TYPE_RATIO
+        }
         val labels = read.filter { line ->
-            kept.none { it.bounds == line.bounds && it in dialogue } && GameLayout.unreadableLabel(line) &&
+            kept.none { it.bounds == line.bounds && it in dialogue } && GameLayout.unreadableLabel(line) && !halfOfButton(line) &&
                 GameTextFilter.judge(line, minOf(frame.height, frame.width)).let {
                     it == GameTextFilter.Verdict.TRANSLATE || it == GameTextFilter.Verdict.TOO_SMALL ||
                         // A label already translated on a plain panel is
@@ -556,7 +580,10 @@ class GameTextSource @Inject constructor(
                         // her blurred art (backdrop 17–24), read as two kinds of
                         // screen. How busy a backdrop is still a panel (28)
                         // is a first guess from these tabs, not a measurement.
-                        (it == GameTextFilter.Verdict.ON_ARTWORK && line.backdropError <= KNOWN_LABEL_MAX_BACKDROP && lines.knows(line.text))
+                        (
+                            it == GameTextFilter.Verdict.ON_ARTWORK && line.backdropError <= KNOWN_LABEL_MAX_BACKDROP &&
+                                (lines.knows(line.text) || rowMates(line).count { m -> GameTextFilter.judge(m, minSide) == GameTextFilter.Verdict.TRANSLATE } >= 2)
+                            )
                 } &&
                 contrastOf(frame, line.bounds) >= ACTIVE_CONTRAST
         }.toSet()
@@ -603,6 +630,20 @@ class GameTextSource @Inject constructor(
             }
 
             val roles = HashMap<TextElementId, Boolean>()
+            // A row of labels of one size is set alike: one weight and one ink.
+            // Each measured alone, a skill card's 「普通技能」 came out bold
+            // beside three regular ones — strokes 0.18 against 0.15, either
+            // side of the renderer's step. Not one box: grown to the row's,
+            // a menu bar's label patch reached up over the icon above it.
+            val rowOf = HashMap<String, Pair<Int, Int>>()
+            for (line in shown) {
+                if (line in dialogue || !GameLayout.isLabel(line.text)) continue
+                val mates = shown.filter { o ->
+                    o !in dialogue && GameLayout.isLabel(o.text) && sameRow(o.bounds, line.bounds) &&
+                        min(o.typeHeight, line.typeHeight).toDouble() / max(o.typeHeight, line.typeHeight) >= SAME_TYPE_RATIO
+                }
+                if (mates.size >= 3) rowOf[line.text + "@" + line.bounds.left] = mates.minOf { it.bounds.top } to mates.maxOf { it.bounds.bottom }
+            }
             fun elementOf(key: String, read0: GameLine, conversational: Boolean, speaker: Boolean): TextElement {
                 // A message in a chat's column starts at the column, not where
                 // the recogniser's box did: 「んー」's box began on its bubble's
@@ -615,8 +656,34 @@ class GameTextSource @Inject constructor(
                 }
                 // Every line read, not only those kept: a name left untranslated
                 // still has ink an affiliation's patch must not grow into.
-                val (inked, look) = lookOf(frame, line, read, speaker)
-                val element = toElement(key, inked, look, conversational, windowBounds, packageName, speaker = speaker)
+                // Remembered per row, so a label settling later on the row, or
+                // on the next student's page, is set as the first ones were:
+                // measured each time, strokes of one font came out 0.15–0.20,
+                // either side of the renderer's step between weights.
+                val seen = rowOf[read0.text + "@" + read0.bounds.left]
+                // Found again by its place even when the row is not all read on
+                // this frame: a label settling alone, its mates held from the
+                // frames before, came out bold beside them.
+                val centre = seen?.let { (top, bottom) -> (top + bottom) / 2 } ?: ((read0.bounds.top + read0.bounds.bottom) / 2)
+                val row = if (seen == null && (conversational || speaker || !GameLayout.isLabel(read0.text))) null else
+                    rowStyles.firstOrNull { abs((it.top + it.bottom) / 2 - centre) <= read0.typeHeight / 2 }
+                val (inked, look0) = lookOf(frame, line, read, speaker)
+                if (seen != null && row == null) {
+                    // The box the ink took, not the recogniser's: the patch must
+                    // still cover the type.
+                    rowStyles.addFirst(RowStyle(inked.bounds.top, inked.bounds.bottom, look0.strokeWeight, look0.foregroundColor))
+                    while (rowStyles.size > MAX_ROW_STYLES) rowStyles.removeLast()
+                }
+                val style = row ?: rowStyles.firstOrNull().takeIf { seen != null }
+                // And one ink, where the row's inks are one colour measured
+                // twice: 「EXスキル」 on the selected card, under its glow, came
+                // out a deeper blue than the three beside it.
+                val ink = style?.ink?.takeIf { i -> look0.foregroundColor?.let { colourDistance(it, i) <= ROW_INK_DISTANCE } == true }
+                val look = if (style == null) look0 else look0.copy(strokeWeight = style.weight ?: look0.strokeWeight, foregroundColor = ink ?: look0.foregroundColor)
+                val siblings = if (conversational || speaker) emptyList() else shown.filter { o ->
+                    o !== read0 && o !in dialogue && GameLayout.isLabel(o.text) && sameRow(o.bounds, read0.bounds)
+                }.sortedBy { it.bounds.left }.map { it.text }
+                val element = toElement(key, inked, look, conversational, windowBounds, packageName, speaker = speaker, row = siblings)
                 roles[element.id] = speaker
                 lookOf(frame, line.bounds)?.let { publishedLooks[key] = line.bounds to it }
                 if (element.style.backdrop != null) {
@@ -989,6 +1056,7 @@ class GameTextSource @Inject constructor(
             artUntil.fill(0L)
             lastWholeAt = 0L
             offered.clear()
+            rowStyles.clear()
             otherScript = null
             latinVotes = 0.0
             kanaVotes = 0.0
@@ -1039,7 +1107,7 @@ class GameTextSource @Inject constructor(
             if (text.isBlank()) return@mapNotNull null
             // A title's accent bar read as 「一」 before a kanji: 「一技術革命+」.
             val unbarred = if (text.length >= 3 && text[0] == '一' && colouredMarkInside(frame, read) != null) text.drop(1) else text
-            val (unmarked, unmarkedBox) = withoutLeadingIcon(frame, GameLayout.withoutStrayStroke(unbarred), onItsPanel(frame, read))
+            val (unmarked, unmarkedBox) = withoutLeadingIcon(frame, GameLayout.withKatakanaRestored(GameLayout.withoutStrayStroke(unbarred)), onItsPanel(frame, read))
             val (kept, bounds) = withoutTail(frame, unmarked, unmarkedBox)
             if (kept.isBlank()) return@mapNotNull null
             GameLine(kept, bounds, backdropError(frame, width, height, bounds), typeHeight(frame, bounds))
@@ -1372,7 +1440,11 @@ class GameTextSource @Inject constructor(
         // words is two labels: 「ノーマルスキル+ パッシブスキル+」, two skill
         // cards, came back one line and was drawn as one across both.
         val latinSpace = line.text.indices.any { i -> line.text[i] == ' ' && (line.text.getOrNull(i - 1)?.code ?: 0) < 0x80 && (line.text.getOrNull(i + 1)?.code ?: 0) < 0x80 }
-        if (line.text.length < MIN_GAP_SPLIT_LETTERS || latinSpace || line.text.any { it in GameLayout.SENTENCE_MARKS }) return listOf(line)
+        // Two marked labels read as one, a stray 「!」 at the end: 「ノーマルスキル+
+        // パッシブスキル+!」 was taken for a sentence and translated as one,
+        // with a character's name in it. A 「!」 after a 「+」 is no sentence's.
+        val marks = line.text.trimEnd().let { t -> if (Regex("[+＋][!！]$").containsMatchIn(t)) t.dropLast(1) else t }
+        if (line.text.length < MIN_GAP_SPLIT_LETTERS || latinSpace || marks.any { it in GameLayout.SENTENCE_MARKS }) return listOf(line)
         val b = line.bounds
         if (b.left < 0 || b.right > frame.width || b.top < 0 || b.bottom > frame.height || b.width < 8) return listOf(line)
         val h = b.height
@@ -3041,6 +3113,7 @@ class GameTextSource @Inject constructor(
         window: TextBounds,
         packageName: String,
         speaker: Boolean = false,
+        row: List<String> = emptyList(),
     ): TextElement {
         val b = line.bounds
         val grow = style.backdrop?.marginPx ?: 0
@@ -3077,6 +3150,7 @@ class GameTextSource @Inject constructor(
             metadata = buildMap {
                 put(com.babel.core.model.TranslationRequest.Hints.GAME, packageName)
                 if (speaker) put(com.babel.core.model.TranslationRequest.Hints.SPEAKER, "true")
+                if (row.isNotEmpty()) put(com.babel.core.model.TranslationRequest.Hints.ROW, row.joinToString("\n"))
             },
         )
     }
@@ -3095,6 +3169,9 @@ class GameTextSource @Inject constructor(
         const val LABEL_INK_DISTANCE = 60.0
         const val MIN_ICON_PX = 6
         const val BAR_GAP_PX = 4
+        const val MAX_ROW_STYLES = 16
+        /** Inks of one row this close (0–441) are one ink: 466398 against 496f8f measured 22. */
+        const val ROW_INK_DISTANCE = 45.0
 
         /** Two pictures this close in time can say a line stood still; the platform takes one every ~350 ms. */
         const val STILL_PAIR_MS = 800L

@@ -132,8 +132,10 @@ A translation that lacks one of the original's figures is asked again without co
 
 **Still pictures are a moment apart.** Two pictures say a line stood still only when taken within 0.8 s: paced slowly on a still screen, a tap to the next student made a picture mid-slide match one from before the tap, and a skill button's label was published where it stood mid-slide, out of place.
 
+**A row of labels is set alike.** Labels of one size on one row share one weight and one ink, remembered for the row's place: measured alone, a skill card's labels came out bold and regular side by side (strokes 0.15–0.20 across the renderer's steps), and 「EXスキル」 under the selected card's glow a deeper blue. A label on art (backdrop up to 28) is translated when two of its row are. A button of two stacked words, one of them kanji (「スキル」 over 「成長」), is left whole, like 「固有武器」.
+
 ## How a label is translated
 
-Every label is translated through its words, one request per word at a time: a label with its 「+」 and the same label without it, asked together, came back 「普通技能+」 and 「技能宝珠」. A known label read with 「ナ」 for its 「+」, or with the other voicing mark, is the known label; a label without the 「+」 another card has keeps its own words.
+Every label is translated through its words, one request per word at a time, with the other labels of its row sent as reference (`Hints.ROW`) — alone, 「ノーマルスキル」 came back 「技能宝珠」 and 「普通技能也」: a label with its 「+」 and the same label without it, asked together, came back 「普通技能+」 and 「技能宝珠」. A known label read with 「ナ」 for its 「+」, or with the other voicing mark, is the known label; a label without the 「+」 another card has keeps its own words.
 
 A label made of a word and a bracketed part (「ハナコ(水着)」), or of a word and a trailing 「+」 (「ノーマルスキル+」), is translated as its words and put back together, with the target language's brackets (`BracketedLabel`). Each word is cached under the key the same word alone would have, so a student's name reads the same in her card and on her page, and a skill label the same with or without its 「+」. Sent whole, one screen's names had come back 「花子(泳装)」, 「星野（泳装）」 and 「泳装小优」. A kana word that comes back unchanged sends the label whole instead.

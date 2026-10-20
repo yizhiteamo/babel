@@ -32,5 +32,9 @@ class BracketedLabelTest {
         assertEquals("ノーマルスキル" to "+", BracketedLabel.marked("ノーマルスキル+"))
         assertNull(BracketedLabel.marked("ノーマルスキル"))
         assertNull(BracketedLabel.marked("+"))
+        assertEquals("ノーマルスキル" to "+", BracketedLabel.marked("ノーマルスキルも+"))
+        assertEquals("ノーマルスキル" to "+", BracketedLabel.marked("ノーマルスキルナ+"))
+        assertEquals("ノーマルスキル" to "+", BracketedLabel.marked("ノーマルスキル①+"))
+        assertEquals("EXスキル" to "+", BracketedLabel.marked("EXスキル+"))
     }
 }

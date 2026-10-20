@@ -427,4 +427,12 @@ class GameLayoutTest {
         assertFalse(GameLayout.isSentence("お気に入り"))
         assertFalse(GameLayout.isSentence("バッシブスキル"))
     }
+
+    @Test
+    fun `kanji read for katakana between katakana is the katakana`() {
+        assertEquals("ノーマルスキル", GameLayout.withKatakanaRestored("ノ一マルスキル"))
+        assertEquals("カフェ", GameLayout.withKatakanaRestored("カフェ"))
+        assertEquals("防御力", GameLayout.withKatakanaRestored("防御力"))
+        assertEquals("ハナコ一番", GameLayout.withKatakanaRestored("ハナコ一番"))
+    }
 }
