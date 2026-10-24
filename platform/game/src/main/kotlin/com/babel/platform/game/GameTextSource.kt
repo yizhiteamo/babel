@@ -375,7 +375,11 @@ class GameTextSource @Inject constructor(
         val wholeEvery = pace.wholeEveryMs(SystemClock.elapsedRealtime() - activeAt, heatLevel)
         val wholeDue = nowMs - lastWholeAt >= wholeEvery
         val seen = if (wholeDue) grid else lastGrid?.let { before -> IntArray(grid.size) { if (artUntil[it] > nowMs) before[it] else grid[it] } } ?: grid
-        val band = ChangedBand.of(lastGrid, seen, GRID_COLUMNS)
+        // A whole reading when one is due, changed or not: a reading taken
+        // while a screen slid in — the title's box taking in the back button,
+        // read as lettering on art — was otherwise offered again on every
+        // still frame after, and the page's title was never translated.
+        val band = if (wholeDue && lastGrid != null) ChangedBand.Rows(0, GRID_ROWS - 1) else ChangedBand.of(lastGrid, seen, GRID_COLUMNS)
         lastGridBefore = lastGrid
         linesBefore = lastLines
         // A cut or a fade moves the whole picture a long way; an animated
@@ -1342,12 +1346,22 @@ class GameTextSource @Inject constructor(
     private fun separated(line: com.google.mlkit.vision.text.Text.Line): List<Pair<String, android.graphics.Rect>> {
         val box = line.boundingBox ?: return emptyList()
         atIconSymbols(line)?.let { return it }
+        atSymbolGaps(line)?.let { return it }
         val elements = line.elements.filter { it.boundingBox != null }
         if (elements.size < 2) return listOf(line.text to box)
         val groups = mutableListOf(mutableListOf(elements.first()))
         for (e in elements.drop(1)) {
-            val gap = e.boundingBox!!.left - groups.last().last().boundingBox!!.right
-            if (gap > box.height()) groups += mutableListOf(e) else groups.last() += e
+            val last = groups.last().last().boundingBox!!
+            val now = e.boundingBox!!
+            val gap = now.left - last.right
+            // Apart, or on another baseline: a carousel's front title and the
+            // one of the card behind it, 「第2部メインストーリー」 and 「トリー」,
+            // came back as one line whose box spanned both cards, and the
+            // translation was set across both, the next card's word in it.
+            // Measured: 66 px between the two titles, glyphs of one word
+            // 10–25 apart, and the line's box 101 tall around both.
+            val h = min(last.height(), now.height())
+            if (gap > min(box.height(), (h * WORD_GAP_OF_HEIGHT).toInt()) || abs(now.centerY() - last.centerY()) > h / 3) groups += mutableListOf(e) else groups.last() += e
         }
         // A group with no letters — an opening bracket or quote set apart —
         // belongs to its neighbour, not on its own.
@@ -1366,6 +1380,34 @@ class GameTextSource @Inject constructor(
             val rect = android.graphics.Rect(group.first().boundingBox!!)
             group.forEach { rect.union(it.boundingBox!!) }
             group.joinToString(" ") { it.text } to rect
+        }
+    }
+
+    /**
+     * A line cut where its characters stand far apart, measured symbol by
+     * symbol; null when none do. The recogniser can put a carousel's front
+     * title and the end of the one behind it in a single element —
+     * 「第2部メインストーリートリー」 on one frame, two elements on another —
+     * and the element gap alone missed it. Glyphs of one word stand 10–25 px
+     * apart at 76 px; the two titles 66.
+     */
+    private fun atSymbolGaps(line: com.google.mlkit.vision.text.Text.Line): List<Pair<String, android.graphics.Rect>>? {
+        val symbols = line.elements.flatMap { it.symbols }.filter { it.boundingBox != null }
+        if (symbols.size < 4 || line.text.any { it in GameLayout.SENTENCE_MARKS }) return null
+        val pieces = mutableListOf(mutableListOf(symbols.first()))
+        for (sym in symbols.drop(1)) {
+            val last = pieces.last().last().boundingBox!!
+            val now = sym.boundingBox!!
+            val h = min(last.height(), now.height())
+            if (h > 0 && now.left - last.right > h * SYMBOL_GAP_OF_HEIGHT) pieces += mutableListOf(sym) else pieces.last() += sym
+        }
+        // Each piece a word of two letters or more: a label set wide —
+        // 「サポータ」 and its 「ー」 stretched to the box's end — is one word.
+        if (pieces.size < 2 || pieces.any { p -> p.sumOf { sym -> sym.text.count { it.isLetterOrDigit() && it != 'ー' } } < 2 }) return null
+        return pieces.map { p ->
+            val rect = android.graphics.Rect(p.first().boundingBox!!)
+            p.forEach { rect.union(it.boundingBox!!) }
+            p.joinToString("") { it.text } to rect
         }
     }
 
@@ -3169,6 +3211,10 @@ class GameTextSource @Inject constructor(
         const val LABEL_INK_DISTANCE = 60.0
         const val MIN_ICON_PX = 6
         const val BAR_GAP_PX = 4
+
+        /** Elements of one recognised line this far apart, against their height, are two pieces of text. */
+        const val WORD_GAP_OF_HEIGHT = 0.6
+        const val SYMBOL_GAP_OF_HEIGHT = 0.7
         const val MAX_ROW_STYLES = 16
         /** Inks of one row this close (0–441) are one ink: 466398 against 496f8f measured 22. */
         const val ROW_INK_DISTANCE = 45.0

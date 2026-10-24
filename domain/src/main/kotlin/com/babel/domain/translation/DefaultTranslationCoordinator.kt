@@ -686,8 +686,25 @@ class DefaultTranslationCoordinator(
         // alone, a short game term came back as anything (「技能宝珠」 for
         // 「ノーマルスキル」 between 「EXスキル」 and 「パッシブスキル」).
         val row = element.metadata[com.babel.core.model.TranslationRequest.Hints.ROW]
-        val context = row?.takeIf { it.isNotBlank() }?.let { "Other labels shown on the same row, for reference only:\n$it" }
-        val result = translateWithRetry(element.copy(text = text), pair, context = context)
+        // Only for a term, not a phrase: a phrase says what it means, and given
+        // 「生徒たちの違う一面」 beside it, 「生徒たちの日常」 came back as
+        // 「学生们不同的一面」, a paraphrase of its neighbour.
+        val term = text.none { it in 'ぁ'..'ゖ' }
+        // And only in a row of several, a set of terms like a skill card's
+        // four: beside one other title, 「第2部メインストーリー」 came back with
+        // a word of the card behind it added (「…剧情崔尼」).
+        val context = row?.takeIf { term && it.lines().count { l -> l.isNotBlank() } >= 2 }?.let { "Other labels shown on the same row, for reference only:\n$it" }
+        val first = translateWithRetry(element.copy(text = text), pair, context = context)
+        // Not one of the others' answers: given 「生徒たちの違う一面」 beside it,
+        // 「生徒たちの日常」 came back as the other's translation. Asked again
+        // alone.
+        val siblings = row?.lines()?.filter { it.isNotBlank() && it != text }.orEmpty()
+        val taken = siblings.mapNotNull { cache.get(TranslationCacheKey.of(it, pair.forElement(element), translator.id)) }
+        val result = if (first.status == TranslationStatus.Translated && first.translatedText.trim() in taken.map { it.trim() }) {
+            translateWithRetry(element.copy(text = text), pair, context = null)
+        } else {
+            first
+        }
         return when (result.status) {
             TranslationStatus.Translated -> result.translatedText.trim().also { cache.putDurable(key, it) }
             // Already in the reader's language: 「(EX)」 stays as it is. Not a

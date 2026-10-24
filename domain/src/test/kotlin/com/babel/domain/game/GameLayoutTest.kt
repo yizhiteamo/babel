@@ -435,4 +435,12 @@ class GameLayoutTest {
         assertEquals("防御力", GameLayout.withKatakanaRestored("防御力"))
         assertEquals("ハナコ一番", GameLayout.withKatakanaRestored("ハナコ一番"))
     }
+
+    @Test
+    fun `a phrase of kanji and hiragana is a label the reader cannot read`() {
+        assertTrue(GameLayout.unreadableLabel(line("生徒たちの日常", 2445, 1215, 2831, 1258)))
+        assertTrue(GameLayout.unreadableLabel(line("生徒たちの違う一面", 2000, 840, 2400, 880)))
+        assertFalse(GameLayout.unreadableLabel(line("装備強化", 2599, 1227, 2821, 1283)))
+        assertFalse(GameLayout.unreadableLabel(line("基本情報", 1769, 198, 1959, 245)))
+    }
 }

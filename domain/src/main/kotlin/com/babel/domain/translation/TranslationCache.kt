@@ -53,8 +53,17 @@ data class TranslationCacheKey(
          *
          * 10 when a label's words began to be asked with the labels beside
          * them: alone, 「ノーマルスキル」 was still kept as 「技能宝珠」.
+         *
+         * 11 when an answer repeating a row sibling's began to be asked
+         * again: 「生徒たちの日常」 was kept as its neighbour's 「…不同的一面」.
+         *
+         * 12 when phrases stopped being sent with their row, which had made
+         * that answer in the first place.
+         *
+         * 13 when a label beside one other stopped being sent with it
+         * (「第2部メインストーリー」 kept as 「…剧情崔尼」).
          */
-        const val CURRENT_SCHEMA_VERSION: Int = 10
+        const val CURRENT_SCHEMA_VERSION: Int = 13
 
         private val WHITESPACE = Regex("\\s+")
 

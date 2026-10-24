@@ -974,10 +974,16 @@ object GameLayout {
         if (scriptSwitches(line.text) >= MAX_LABEL_SCRIPT_SWITCHES) return false
         val letters = line.text.count { it.isLetter() }
         val kana = line.text.count { it in '぀'..'ヿ' }
-        return kana >= MIN_LABEL_KANA && kana * 2 >= letters
+        // Or a phrase: kanji held together by hiragana — 「生徒たちの日常」,
+        // 「生徒たちの違う一面」 under a story's title. Less than half kana, it
+        // passed for a kanji label, but its grammar is what a reader of Han
+        // cannot read; a kanji label (「装備強化」) has no hiragana at all.
+        val hiragana = line.text.count { it in 'ぁ'..'ゖ' }
+        return kana >= MIN_LABEL_KANA && (kana * 2 >= letters || hiragana >= MIN_PHRASE_HIRAGANA)
     }
 
     private const val MIN_LABEL_KANA = 2
+    private const val MIN_PHRASE_HIRAGANA = 2
 
     /**
      * How often a line's letters go from Latin to Japanese or back. A word

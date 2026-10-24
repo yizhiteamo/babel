@@ -31,6 +31,7 @@ The decision runs in four stages.
   - An icon of another colour just left of a line's box, unread, still bounds the patch: 「ユズ」's patch had grown over her badge and painted it out.
   - A role icon read as one hiragana before a katakana word (「あサポータ」, 「もサポーター」) is taken off.
   - Icons inside a line cut it there: 「(臨戦)★食★STRIKE」 is 「(臨戦)」.
+- **Two pieces of text in one recognised line** — a carousel's front title and the end of the title behind it (「第2部メインストーリー」, 「トリー」) — are cut apart where the characters stand more than 0.6–0.7 of their height apart, or sit on another baseline; each piece needs two letters, so a label set wide (「サポータ ー」) stays whole.
 - **Pieces of one sentence cut apart** — touching on a row, one type size, one of them a sentence — are joined again, and a 「?」 straight before a particle is dropped as half a cut 「を」. A skill description's line 「…攻撃速度を30.6%増加…」 had come back as 「…攻撃速度?」 and 「を30.6%…」, translated apart, and the paragraph no longer joined line to line. A line with figures is never cut by a change of type either: its numbers are set larger and in blue.
 - **A coloured mark inside a line's box** before its ink — a pop-up title's pale accent bar — bounds the patch, and strokes read off it (「||」) are taken off the text.
 - **A skill's description** is said even when short and unpunctuated: a line with 「を」 or 「が」 between two words (「攻撃力を542増加/」) is a sentence. Pieces cut at a blue figure are joined again (a figure and its unit, words and the figure after them), and a line with figures is read again on its own — then at twice the size — when that gives back a digit (「1955」 had been read 「955」).
@@ -72,6 +73,8 @@ From the seeds, dialogue spreads to:
 - **Speakers' names** over a spoken line, and a name further above one with nothing read in between (for a first line the recogniser dropped). Names spread no further.
 
 Afterwards these are removed: a line in a **menu bar** (four labels or more of one size on a row), and **figures**.
+
+A phrase of kanji held together by hiragana (「生徒たちの日常」) is a label the reader cannot read, even with less than half kana: its grammar is the unreadable part. A kanji label (「装備強化」) has no hiragana.
 
 A label already translated on a plain panel is translated on a translucent one too (backdrop error up to 28), so a tab over a student's blurred art reads as it does on the next student's page.
 
@@ -130,12 +133,14 @@ A translation that lacks one of the original's figures is asked again without co
 
 **Colour.** A line with figures in a second ink — a skill's numbers in blue among grey words — is measured as two inks (`SourceStyle.accentColor`), and its translation's figures are set in the second. Every figure of the translation takes it: where the original left one figure grey, the translation does not know which.
 
+**A whole reading is taken when due, changed or not.** A reading taken while a screen slid in (a title's box taking in the back button, read as lettering on art) had been offered again on every still frame after; the page's title was never translated.
+
 **Still pictures are a moment apart.** Two pictures say a line stood still only when taken within 0.8 s: paced slowly on a still screen, a tap to the next student made a picture mid-slide match one from before the tap, and a skill button's label was published where it stood mid-slide, out of place.
 
 **A row of labels is set alike.** Labels of one size on one row share one weight and one ink, remembered for the row's place: measured alone, a skill card's labels came out bold and regular side by side (strokes 0.15–0.20 across the renderer's steps), and 「EXスキル」 under the selected card's glow a deeper blue. A label on art (backdrop up to 28) is translated when two of its row are. A button of two stacked words, one of them kanji (「スキル」 over 「成長」), is left whole, like 「固有武器」.
 
 ## How a label is translated
 
-Every label is translated through its words, one request per word at a time, with the other labels of its row sent as reference (`Hints.ROW`) — alone, 「ノーマルスキル」 came back 「技能宝珠」 and 「普通技能也」: a label with its 「+」 and the same label without it, asked together, came back 「普通技能+」 and 「技能宝珠」. A known label read with 「ナ」 for its 「+」, or with the other voicing mark, is the known label; a label without the 「+」 another card has keeps its own words.
+Every label is translated through its words, one request per word at a time, with the other labels of its row sent as reference (`Hints.ROW`) when the row holds three or more and the label is a term without hiragana — a phrase given its neighbour came back as a paraphrase of it — alone, 「ノーマルスキル」 came back 「技能宝珠」 and 「普通技能也」: a label with its 「+」 and the same label without it, asked together, came back 「普通技能+」 and 「技能宝珠」. A known label read with 「ナ」 for its 「+」, or with the other voicing mark, is the known label; a label without the 「+」 another card has keeps its own words.
 
 A label made of a word and a bracketed part (「ハナコ(水着)」), or of a word and a trailing 「+」 (「ノーマルスキル+」), is translated as its words and put back together, with the target language's brackets (`BracketedLabel`). Each word is cached under the key the same word alone would have, so a student's name reads the same in her card and on her page, and a skill label the same with or without its 「+」. Sent whole, one screen's names had come back 「花子(泳装)」, 「星野（泳装）」 and 「泳装小优」. A kana word that comes back unchanged sends the label whole instead.
