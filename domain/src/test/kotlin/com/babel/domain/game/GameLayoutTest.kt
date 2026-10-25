@@ -28,6 +28,17 @@ class GameLayoutTest {
 
     /** A thin glyph's run reads lighter than its word; it is not a second piece. */
     @Test
+    fun `a name with a full stop under a speaker is dialogue`() {
+        val name = line("リン", 434, 978, 598, 1065).copy(typeHeight = 70)
+        val affiliation = line("連邦生徒会", 598, 978, 898, 1065).copy(typeHeight = 58)
+        val said = line("モモカ。", 435, 1116, 756, 1178).copy(typeHeight = 53)
+
+        assertTrue(said in GameLayout.dialogue(listOf(name, affiliation, said)))
+        // Without the stop it is a word under a heading, as on any menu.
+        assertTrue(said.copy(text = "モモカ") !in GameLayout.dialogue(listOf(name, affiliation, said.copy(text = "モモカ"))))
+    }
+
+    @Test
     fun `a pale thin glyph inside one word does not split it`() {
         val runs = listOf(
             InkRun(700, 745, 126, 197, 236, ink = 900),

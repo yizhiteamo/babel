@@ -36,6 +36,29 @@ class StableLinesTest {
         assertEquals(1000, done.settled.single().settledAfterMs)
     }
 
+    /** A piece read twice while the rest of the line types out beside it is not the line. */
+    @Test
+    fun `a line typing out is held however often it reads the same`() {
+        val lines = StableLines()
+        var typing = true
+
+        lines.next(listOf(line("リン行政官")), now = 0, typing = { typing })
+        assertTrue(lines.next(listOf(line("リン行政官")), now = 333, typing = { typing }).settled.isEmpty())
+        assertTrue(lines.next(listOf(line("リン行政官")), now = 666, typing = { typing }).settled.isEmpty())
+        typing = false
+        assertEquals(1, lines.next(listOf(line("リン行政官")), now = 1000, typing = { typing }).settled.size)
+    }
+
+    /** Art moving under a translucent box must not hold a line for ever. */
+    @Test
+    fun `a line held as typing is published after the longest hold`() {
+        val lines = StableLines()
+
+        lines.next(listOf(line("リン行政官")), now = 0, typing = { true })
+        assertTrue(lines.next(listOf(line("リン行政官")), now = 2000, typing = { true }).settled.isEmpty())
+        assertEquals(1, lines.next(listOf(line("リン行政官")), now = 4000, typing = { true }).settled.size)
+    }
+
     @Test
     fun `the next line in the same box withdraws the last one`() {
         val lines = StableLines()

@@ -54,6 +54,15 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
                 val again = delegate.translate(request.copy(context = null))
                 if (again.status != TranslationStatus.Translated || !mostlyKana(again.translatedText)) return again
             }
+            // Or handed back as it was, kana and all: 「……モモカ。」, a line
+            // of dialogue that is only a name, was echoed with the story as
+            // context, and the line stood untranslated. Kana is never the
+            // reader's language when the reader is not Japanese.
+            if (result.status == TranslationStatus.Unchanged && primary(languages.target) != "ja" &&
+                text.any { it in KANA } && request.context != null
+            ) {
+                return delegate.translate(request.copy(context = null))
+            }
             // Or in a third language: a skill's 「HPを8251増加/さらに回復率を
             // 26.6%増加」 came back 「HP增加8251/ furthermore, increase the
             // recovery value by 26.6%」, half of it English. Asked once more.
@@ -92,5 +101,6 @@ class SameLanguageGuard(private val delegate: Translator) : Translator {
 
     private companion object {
         val HAN = '一'..'鿿'
+        val KANA = '぀'..'ヿ'
     }
 }

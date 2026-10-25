@@ -75,6 +75,13 @@ class StableLines {
          */
         stillOnScreen: (GameLine) -> Boolean = { false },
         /**
+         * Whether a line is still typing out, as the caller saw: letters
+         * appeared beside or under it between two pictures. Such a line is not
+         * published however often it reads the same — a band read while it
+         * typed reads the same piece twice.
+         */
+        typing: (GameLine) -> Boolean = { false },
+        /**
          * Whether the place of the published line under this key looks as it
          * did when it was published, as the caller saw. Its words cannot have
          * changed if its pixels did not: a reading that differs there, or none
@@ -150,6 +157,14 @@ class StableLines {
             // 「接続中」 with its dots counting up is one line, not a new one
             // three times a second.
             val sameWords = core(before.line.text).let { it.isNotEmpty() && it == core(line.text) }
+            // Not for ever: under a box the art shows through, a breathing
+            // figure could keep it from ever standing still.
+            if (before.publishedKey == null && typing(line) && now - before.firstSeenAt < MAX_TYPING_HOLD_MS &&
+                (before.line.text == line.text || sameWords || growing || sameReading(before.line.text, line.text))
+            ) {
+                next += Seen(line, before.firstSeenAt, publishedKey = null)
+                continue
+            }
             if (before.line.text == line.text || sameWords || (!growing && sameReading(before.line.text, line.text))) {
                 // A published line keeps the reading it was published with: on
                 // moving art the recogniser reads one still line slightly
@@ -505,6 +520,10 @@ class StableLines {
          * translation down and put it back again and again.
          */
         const val GRACE_FRAMES = 4
+
+        /** The longest a line typing out is held back from publishing, from when it was first seen. */
+        const val MAX_TYPING_HOLD_MS = 4000L
+
 
         /**
          * A still line's box wobbles a few pixels up or down between frames

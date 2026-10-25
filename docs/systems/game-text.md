@@ -51,6 +51,7 @@ A line is dialogue on its own when any of these holds:
   - Punctuation with four letters or more counts. A badge does not: kanji alone with a `!` (「演習開始!」), or a word with only a stray `、` after it.
   - A question with two letters or more counts, with its mark against the word: in 「生徒 ?」 the mark is a help button.
   - An ellipsis after two letters or more counts.
+  - A full stop after two letters or more counts under a name set no smaller: 「……モモカ。」, read without its ellipsis, is a line that is only a name. No interface word is set with a full stop.
   - Length counts too: more than twelve letters, unless it is labels spaced apart, or fewer than five Latin words (「Enter the Dungeon」 is a button).
 - **It is in a place a conversation has been** in the last minute: a dialogue box and its name tab.
 - **It is under a name said twice or more on the screen**, such as a chat sender over each run of messages.
@@ -87,6 +88,7 @@ When the scene changes (most of the picture changes at once, such as a pop-up op
 `StableLines` publishes a line once two readings agree. A line known already is published at its first reading.
 
 - **Unchanged:** a line that stood still between two pictures is published at its first reading.
+- **Typing:** a line is not published while letters still appear after it, however often it reads the same; the comparison is piece by piece (two type heights wide), since a few letters are too little of a wide box to move its mean. For dialogue the room is the box's, from where its lines begin to the box's right and two lines down; for a phrase with hiragana not (yet) dialogue, the two type heights after it on its row. While a line types, readings are whole, never in parts, since a part can begin inside a word. Both stop after 4 s, so art moving under a translucent box cannot hold a line for ever. Without this, a line read in bands while typing settled as three pieces, each seen twice, with the original between them.
 - **Misread names:** a name read one character off a known one is snapped to it, but only where the two characters are ones the recogniser confuses (ツ/ッ, カ/力, ー/一, and so on). 「アカネ」 is not 「アカリ」.
 - **Withdrawn:** a published line is withdrawn when its place goes blank, when other words are read there, or when the picture shows its place changed.
 - **Held:** a published line whose place looks as it did when it was published is never withdrawn by a miss or by another reading of the same words (mostly the same characters): its words cannot have changed if its pixels did not. On a translucent panel over a waterfall, 「サポーター」 read 「あサポータ」 every few frames and went missing on others, and its translation went and came back every few seconds — 18 withdrawals a minute on a screen nobody touched, none after.

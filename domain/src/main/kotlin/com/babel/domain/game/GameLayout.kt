@@ -628,6 +628,7 @@ object GameLayout {
                 isSentence(line.text) -> "sentence"
                 places.any { inside(line.bounds, it) } -> "place"
                 line in voiced -> "voiced"
+                stoppedUnderName(line, lines) -> "stopped"
                 !isControlWord(line.text) && columns.any { it.holds(line) } -> "column"
                 playersReply(line, columns, panels) -> "reply"
                 else -> null
@@ -916,6 +917,21 @@ object GameLayout {
             // left untranslated while longer ones beside it were translated.
             // No interface label is built with を or が.
             clause(text)
+
+    /**
+     * A word with a full stop after it, under a name set no smaller: a line of
+     * dialogue that is only a name — 「……モモカ。」, read without its
+     * ellipsis. Three letters are a label's length, but no interface word is
+     * set with a full stop, and none stands under a speaker's name.
+     */
+    private fun stoppedUnderName(line: GameLine, lines: List<GameLine>): Boolean {
+        val text = line.text.trimEnd()
+        return text.endsWith('。') && text.count { it.isLetter() } >= 2 &&
+            lines.any { name ->
+                name !== line && isLabel(name.text) && !isControlWord(name.text) && name.text.none { it.isDigit() } &&
+                    name.typeHeight >= line.typeHeight && speaksAbove(name.bounds, line.bounds)
+            }
+    }
 
     private fun clause(text: String): Boolean {
         if (text.count { it.isLetter() } < MIN_CLAUSE_LETTERS) return false

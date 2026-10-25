@@ -94,6 +94,29 @@ class SameLanguageGuardTest {
     }
 
     @Test
+    fun `japanese handed back unchanged is asked again without context`() = runBlocking {
+        val contexts = mutableListOf<String?>()
+        val echoing = object : Translator {
+            override val id = ProviderId("fake")
+            override fun supports(source: LanguageTag?, target: LanguageTag) = true
+            override suspend fun translate(request: TranslationRequest): TranslationResult {
+                contexts += request.context
+                val echoed = request.context != null
+                return TranslationResult(
+                    request.requestId, request.elementId, request.revision, request.sourceText,
+                    if (echoed) request.sourceText else "……桃香。",
+                    provider = id, status = if (echoed) TranslationStatus.Unchanged else TranslationStatus.Translated,
+                )
+            }
+        }
+
+        val result = SameLanguageGuard(echoing).translate(request("……モモカ。", source = "ja").copy(context = "リン: 連邦生徒会長？"))
+
+        assertEquals("……桃香。", result.translatedText)
+        assertEquals(listOf("リン: 連邦生徒会長？", null), contexts)
+    }
+
+    @Test
     fun `an answer half in english is asked again`() = runBlocking {
         val answers = ArrayDeque(listOf("HP增加8251/ furthermore, increase the recovery value", "HP增加8251/并使回复值增加26.6%"))
         val english = object : Translator {

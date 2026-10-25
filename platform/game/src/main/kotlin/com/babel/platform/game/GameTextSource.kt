@@ -218,6 +218,7 @@ class GameTextSource @Inject constructor(
                 readOne(
                     shot.frame, windowBounds, packageName,
                     stillOnScreen = { line -> stillBetween(shot.before, shot.small, line.bounds) },
+                    stillInPieces = { box, piece -> shot.before?.let { stillPieceByPiece(it, shot.small, box, piece) } },
                     // Taken since: a conversation picked while this one was
                     // read showed the last one's bubbles translated over the
                     // new for a second, published from a picture already gone.
@@ -245,6 +246,10 @@ class GameTextSource @Inject constructor(
     /** Grid cells of moving art, until when; see [readOne]. */
     private val artUntil = LongArray(GRID_COLUMNS * GRID_ROWS)
     private var lastWholeAt = 0L
+
+    /** A line of dialogue was typing out on the last picture read; see [readOne]. */
+    private var typedLately = false
+    private var typingSince = 0L
     private var readParts: List<IntArray> = emptyList()
     private var lastGridBefore: IntArray? = null
     private var linesBefore: List<GameLine> = emptyList()
@@ -358,11 +363,29 @@ class GameTextSource @Inject constructor(
         return n > 0 && sum.toDouble() / n <= STILL_SMALL_LUMA
     }
 
+    /**
+     * Whether every piece of a box, [piece] px wide, stood still between two
+     * pictures. A few letters typed at the end of a wide box change too little
+     * of it to move the mean over the whole: a dialogue box 2500 px wide read
+     * as still while its line was typing out.
+     */
+    private fun stillPieceByPiece(before: Small, now: Small, box: TextBounds, piece: Int): Boolean {
+        val step = piece.coerceAtLeast(now.scale)
+        var left = box.left
+        while (left < box.right) {
+            val right = minOf(box.right, left + step)
+            if (!stillBetween(before, now, TextBounds(left, box.top, right, box.bottom, box.space))) return false
+            left = right
+        }
+        return true
+    }
+
     private suspend fun readOne(
         frame: Bitmap,
         windowBounds: TextBounds,
         packageName: String,
         stillOnScreen: (GameLine) -> Boolean = { false },
+        stillInPieces: (TextBounds, Int) -> Boolean? = { _, _ -> null },
         unchangedSince: (TextBounds) -> Boolean = { true },
     ) {
         val started = System.currentTimeMillis()
@@ -373,7 +396,12 @@ class GameTextSource @Inject constructor(
         // nothing — reading them took longer than reading the frame whole.
         val nowMs = System.currentTimeMillis()
         val wholeEvery = pace.wholeEveryMs(SystemClock.elapsedRealtime() - activeAt, heatLevel)
-        val wholeDue = nowMs - lastWholeAt >= wholeEvery
+        // Whole while a line of dialogue is typing out, too: read in parts, the
+        // typed end of 「今どきフィルムカメラ……それもモノクロフィルムは」
+        // came from a part that began inside 「モノクロ」, the rest from the
+        // reading before, and the line settled as three pieces with 「クロ」
+        // untranslated between them.
+        val wholeDue = nowMs - lastWholeAt >= wholeEvery || typedLately
         val seen = if (wholeDue) grid else lastGrid?.let { before -> IntArray(grid.size) { if (artUntil[it] > nowMs) before[it] else grid[it] } } ?: grid
         // A whole reading when one is due, changed or not: a reading taken
         // while a screen slid in — the title's box taking in the back button,
@@ -635,7 +663,53 @@ class GameTextSource @Inject constructor(
         shown.forEach { offered[it.text] = offeredAt }
         offered.values.removeAll { offeredAt - it > OFFERED_KEPT_MS }
         lock.withLock {
-            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged, stillOnScreen = stillOnScreen, stillInked = { gone ->
+            // A line of dialogue is still only if the rest of its box is: a
+            // typewriter line's typed part stands still while the letters
+            // after it, and the next row, are still appearing. Taken as still
+            // by its own box, 「連邦生徒会統括室の室長および、」 was published
+            // half typed, and its translation stood over the line as the rest
+            // typed out beside and under it.
+            // And piece by piece: the few letters typed between two pictures
+            // are too little of a box that wide to count. Read in bands while
+            // it typed, 「リン行政官……あなた、自分が連邦生徒会の顔だという」
+            // settled as three lines — each piece seen twice — and the later
+            // ones were read beside the patch of the first.
+            // The room is the box's, from where its lines begin: a piece read
+            // from the middle of a line has the rest of the line, and the
+            // next one, typing out to its left and under it.
+            val boxLeft = dialogue.filter { it !in speakers }.minOfOrNull { it.bounds.left }
+            fun typingRoom(line: GameLine): TextBounds {
+                val b = line.bounds
+                val left = minOf(b.left, boxLeft ?: b.left)
+                return TextBounds(left, b.top, maxOf(b.right, frame.width - left / 2), (b.bottom + line.typeHeight * 2).coerceAtMost(frame.height), b.space)
+            }
+            // And a piece of words with hiragana in it taken as a label: a
+            // narration's first line, no speaker over it and no dialogue on
+            // the screen before, typed out as 「活を送」 and 「いますが」, each
+            // a phrase a label may be, and each settled alone. Only letters
+            // appearing just after it on its row count, so a menu's label is
+            // not held for art moving beside it.
+            fun typingAfter(line: GameLine): TextBounds {
+                val b = line.bounds
+                return TextBounds(b.right, b.top, minOf(frame.width, b.right + line.typeHeight * TYPING_PIECE_OF_HEIGHT), b.bottom, b.space)
+            }
+            val typing: (GameLine) -> Boolean = { line ->
+                if (line in dialogue) {
+                    line !in speakers && stillInPieces(typingRoom(line), line.typeHeight * TYPING_PIECE_OF_HEIGHT) == false
+                } else {
+                    line.text.any { it in 'ぁ'..'ゖ' } && line.bounds.right < frame.width - line.typeHeight &&
+                        stillInPieces(typingAfter(line), line.typeHeight * TYPING_PIECE_OF_HEIGHT) == false
+                }
+            }
+            // For as long as typing is held back at most: art moving under
+            // a translucent box would otherwise keep every reading whole.
+            val typingNow = shown.any(typing)
+            if (!typingNow) typingSince = 0L else if (typingSince == 0L) typingSince = nowMs
+            typedLately = typingNow && nowMs - typingSince < TYPING_WHOLE_MS
+            val stillWhole: (GameLine) -> Boolean = { line ->
+                (if (line !in dialogue) stillOnScreen(line) else stillOnScreen(line.copy(bounds = typingRoom(line)))) && !typing(line)
+            }
+            val update = lines.next(shown, now = System.currentTimeMillis(), sceneChanged = sceneChanged, stillOnScreen = stillWhole, typing = typing, stillInked = { gone ->
                 // Still there only if its place still holds ink, and not other
                 // words: a new speaker's name read in the tab before it is
                 // kept left the last speaker's translation over it for four
@@ -1086,6 +1160,8 @@ class GameTextSource @Inject constructor(
             lastLooks = emptyMap()
             artUntil.fill(0L)
             lastWholeAt = 0L
+            typedLately = false
+            typingSince = 0L
             offered.clear()
             rowStyles.clear()
             otherScript = null
@@ -1162,7 +1238,7 @@ class GameTextSource @Inject constructor(
             // the first's letter, not the second.
             val whole = withLostStart(frame, line.text, line.bounds) ?: return@mapNotNull null
             if (whole == line.text) line else line.copy(text = whole)
-        }.let(::withBracketedParts).let { withSentencePiecesJoined(frame, it) }.map { withFiguresReadAgain(frame, it) }.let { withRowGapsRead(frame, it) }
+        }.let(::withBracketedParts).let { withSentencePiecesJoined(frame, it) }.let(::withWordPiecesJoined).map { withFiguresReadAgain(frame, it) }.let { withRowGapsRead(frame, it) }
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (failure: Throwable) {
@@ -1329,6 +1405,40 @@ class GameTextSource @Inject constructor(
                 .also { rereads[key] = listOf(GameLine(it, b, 0.0)) }
         }
         return if (better(again)) line.copy(text = again) else line
+    }
+
+    /**
+     * [lines] with two pieces of one word joined: on a row, of one size, no
+     * more than 0.4 of the type's height apart. The recogniser came back with
+     * 「エピソー」 and 「ド情報」 22 px apart on a 61 px tab, and the tab read
+     * 「插曲 ド情報」, half translated. Words set side by side as separate
+     * labels stand a glyph or more apart (a skill card's, two titles').
+     */
+    private fun withWordPiecesJoined(lines: List<GameLine>): List<GameLine> {
+        val out = lines.toMutableList()
+        var i = 0
+        while (i < out.size) {
+            val a = out[i]
+            val b = out.firstOrNull { o ->
+                o !== a && sameRow(o.bounds, a.bounds) && o.bounds.left >= a.bounds.right - a.typeHeight / 4 &&
+                    o.bounds.left - a.bounds.right <= max(a.typeHeight, o.typeHeight) * WORD_PIECE_GAP &&
+                    min(o.typeHeight, a.typeHeight).toDouble() / max(o.typeHeight, a.typeHeight) >= SAME_TYPE_RATIO &&
+                    GameLayout.isLabel(a.text) && GameLayout.isLabel(o.text) &&
+                    a.text.any { it.code >= JAPANESE_FROM } && o.text.any { it.code >= JAPANESE_FROM }
+            }
+            if (b == null) {
+                i++
+                continue
+            }
+            out[i] = a.copy(
+                text = a.text.trimEnd() + b.text.trimStart(),
+                bounds = TextBounds(a.bounds.left, min(a.bounds.top, b.bounds.top), b.bounds.right, max(a.bounds.bottom, b.bounds.bottom), a.bounds.space),
+                backdropError = max(a.backdropError, b.backdropError),
+                typeHeight = max(a.typeHeight, b.typeHeight),
+            )
+            out.remove(b)
+        }
+        return out
     }
 
     /**
@@ -3251,6 +3361,7 @@ class GameTextSource @Inject constructor(
         /** Elements of one recognised line this far apart, against their height, are two pieces of text. */
         const val WORD_GAP_OF_HEIGHT = 0.6
         const val SYMBOL_GAP_OF_HEIGHT = 0.7
+        const val WORD_PIECE_GAP = 0.4
         const val MAX_ROW_STYLES = 16
         /** Inks of one row this close (0–441) are one ink: 466398 against 496f8f measured 22. */
         const val ROW_INK_DISTANCE = 45.0
@@ -3528,6 +3639,12 @@ class GameTextSource @Inject constructor(
         const val BLANK_MIN_RUN = 4
         const val BLANK_MAX_CHANGES = 24
         const val STILL_SMALL_LUMA = 2.0
+
+        /** How wide each piece of a dialogue line's room is compared for typing, in its type's heights. */
+        const val TYPING_PIECE_OF_HEIGHT = 2
+
+        /** How long readings stay whole while dialogue types out: as long as `StableLines` holds a typing line back. */
+        const val TYPING_WHOLE_MS = 4000L
 
         /** How far before a chat column's edge a message's patch starts. */
         const val COLUMN_START_SLACK_PX = 2
