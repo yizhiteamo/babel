@@ -301,9 +301,18 @@ object GameLayout {
         // a hair under the threshold, and over it on the next frame.
         val controls = controls(lines, frameHeight, frameWidth, otherScript)
         val voiced = underRepeatedNames(lines)
+        // A line said under a speaker's name — 「？？？」 included — is the
+        // dialogue box's, however busy the art showing through it: a short
+        // line over a bright scene scored 12, a hair over the limit, and was
+        // left in Japanese for as long as it stood.
+        fun hiddenName(t: String) = t.trim().let { it.length in 2..4 && it.all { c -> c in "?？" } }
+        fun underName(line: GameLine) = isSentence(line.text) && lines.any { n ->
+            n !== line && (hiddenName(n.text) || isLabel(n.text)) && speaksAbove(n.bounds, line.bounds)
+        } || speakerSpots.any { spot -> speaksAbove(spot, line.bounds) }
         val kept = lines.filter { line -> line !in controls }.filter { line ->
             verdicts[line] == GameTextFilter.Verdict.TRANSLATE ||
-                (line.bounds.width >= frameWidth * LONG_LINE_FRACTION && onArtWithin(line, LONG_LINE_ALLOWANCE))
+                (line.bounds.width >= frameWidth * LONG_LINE_FRACTION && onArtWithin(line, LONG_LINE_ALLOWANCE)) ||
+                (onArtWithin(line, LONG_LINE_ALLOWANCE) && underName(line))
         }.toMutableSet()
         // A paragraph is kept or dropped whole. Its lines sit on the same
         // panel, but over a patterned one some score higher than others, and

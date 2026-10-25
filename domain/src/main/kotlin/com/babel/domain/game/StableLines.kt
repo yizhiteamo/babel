@@ -169,13 +169,17 @@ class StableLines {
                 // 「ヒナ(ドレス)」 came in where 「ハナコ(水着)」 had been, the
                 // name's place looked near enough the same in the coarse look,
                 // and the last student's name stayed over the new one.
-                if (published != null && !sceneChanged && variant(before.line.text, line.text) &&
+                // Nor a line still typing past it: 「最早、どれほど声を張り上げ」
+                // published mid-typewriter was held over the whole line, and
+                // the rest of it stood untranslated beside the translation.
+                val grows = line.text.length > before.line.text.length && line.text.startsWith(before.line.text.dropLast(1))
+                if (published != null && !sceneChanged && !grows && variant(before.line.text, line.text) &&
                     heldStill(published)
                 ) {
                     next += before
                     continue
                 }
-                if (published != null && (flips(before.line, line) || akin(before.line.text, line.text))) {
+                if (published != null && !grows && (flips(before.line, line) || akin(before.line.text, line.text))) {
                     // Two readings that have taken turns here before: one
                     // place read two ways, not a new line. Kept as a miss.
                     before.misses += 1
@@ -200,8 +204,16 @@ class StableLines {
         for (missing in unmatched) {
             val key = missing.publishedKey
             if (key == null) continue
-            if (!sceneChanged && heldStill(key)) {
+            // Not held when a longer reading of it stands on the frame: the
+            // whole line typed out, its box wider than the piece's.
+            val outgrown = lines.any { it.text.length > missing.line.text.length && it.text.startsWith(missing.line.text.dropLast(1)) }
+            if (!sceneChanged && !outgrown && heldStill(key)) {
                 next += missing
+                continue
+            }
+            if (outgrown) {
+                gone += key
+                why[key] = Why.NEW_WORDS
                 continue
             }
             val blank = !sceneChanged && !stillInked(missing.line)

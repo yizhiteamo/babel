@@ -439,4 +439,15 @@ class StableLinesTest {
 
         assertEquals("ノーマルスキル", update.settled.single().line.text)
     }
+
+    @Test
+    fun `a published line still typing is replaced by the whole line even where its place looks the same`() {
+        val lines = StableLines()
+        lines.next(listOf(line("最早、どれほど声を張り上げ")), now = 0)
+        val key = lines.next(listOf(line("最早、どれほど声を張り上げ")), now = 333).settled.single().key
+
+        val update = lines.next(listOf(line("最早、どれほど声を張り上げようとも振り返る者はいない。")), now = 666, heldStill = { true })
+
+        assertEquals(listOf(key), update.gone)
+    }
 }

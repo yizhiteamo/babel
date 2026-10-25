@@ -509,6 +509,16 @@ class GameTextSource @Inject constructor(
             conversation.removeAll { (old, _) -> covers(old, place) }
             conversation += place to now
         }
+        // A speaker the story keeps hidden — 「？？？」 — is a name too, though
+        // it has no letters and is left out as a figure: the line under it
+        // is said. 「……待て。」 under it was too short to be a sentence, and
+        // with the scene cut every few lines the box was never remembered.
+        for (name in read.filter { r -> r.text.trim().length in 2..4 && r.text.trim().all { it in "?？" } }) {
+            for (said in selected.filter { GameLayout.speaksAbove(name.bounds, it.bounds) && it.text.any(Char::isLetter) }) {
+                conversation.removeAll { (old, _) -> covers(old, said.bounds) }
+                conversation += said.bounds to now
+            }
+        }
         conversation.removeAll { (_, at) -> now - at > CONVERSATION_KEPT_MS }
         while (conversation.size > MAX_CONVERSATION_PLACES) conversation.removeAt(0)
         val places = conversation.map { it.first }
@@ -598,6 +608,23 @@ class GameTextSource @Inject constructor(
         // is bright: neither its ink nor its panel.
         val shown = (kept.filter { it in dialogue } + labels.filter { l -> kept.none { it.bounds == l.bounds && it in dialogue } })
             .filter { unchangedSince(it.bounds) && !dimmed(frame, it.bounds) }
+        // Why each kept line is not offered, as numbers: not said, moved
+        // since, or behind a dimmer.
+        val withheld = kept.filter { k -> shown.none { it === k } }
+        if (withheld.isNotEmpty()) {
+            logger.debug(
+                TAG,
+                "withheld " + withheld.joinToString { k ->
+                    val why = when {
+                        k !in dialogue && labels.none { it.bounds == k.bounds } -> "unsaid"
+                        !unchangedSince(k.bounds) -> "moving"
+                        dimmed(frame, k.bounds) -> "dimmed"
+                        else -> "?"
+                    }
+                    "$why@${k.bounds.left},${k.bounds.top} len=${k.text.length}"
+                },
+            )
+        }
         // Words to translate not offered lately: a line typing out, a new
         // one. Not every word read — over a student's waterfall the
         // recogniser read new nonsense off the art every frame — nor a word
@@ -1361,7 +1388,11 @@ class GameTextSource @Inject constructor(
             // Measured: 66 px between the two titles, glyphs of one word
             // 10–25 apart, and the line's box 101 tall around both.
             val h = min(last.height(), now.height())
-            if (gap > min(box.height(), (h * WORD_GAP_OF_HEIGHT).toInt()) || abs(now.centerY() - last.centerY()) > h / 3) groups += mutableListOf(e) else groups.last() += e
+            // The tighter gap only for titles: a sentence's elements stand
+            // apart at its commas and quotes, and cut there a story's line was
+            // translated in pieces with the original showing between them.
+            val limit = if (line.text.any { it in GameLayout.SENTENCE_MARKS }) box.height() else min(box.height(), (h * WORD_GAP_OF_HEIGHT).toInt())
+            if (gap > limit || abs(now.centerY() - last.centerY()) > h / 3) groups += mutableListOf(e) else groups.last() += e
         }
         // A group with no letters — an opening bracket or quote set apart —
         // belongs to its neighbour, not on its own.
@@ -2404,8 +2435,13 @@ class GameTextSource @Inject constructor(
             val far = (recognised.typeHeight * PANEL_CENTRE_LOOK).toInt()
             val l = plainAfter(frame, extent, leftLimitEdge, far, leftward = true)
             val r = plainAfter(frame, extent, rightLimitEdge, far)
+            // Both edges found: a button's panel ends either side. Plain as far
+            // as was looked on both sides is an open panel — a story's dialogue
+            // box, a short line in it — and a line there is set from the left:
+            // centred, 「虚像已无影无踪…」 stood in the middle of the box.
+            val reach = far - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS
             if (l >= recognised.typeHeight * PANEL_CENTRE_ROOM && r >= recognised.typeHeight * PANEL_CENTRE_ROOM &&
-                abs(l - r) <= recognised.typeHeight
+                abs(l - r) <= recognised.typeHeight && (l < reach || r < reach)
             ) {
                 (extent.left + extent.right) / 2
             } else {
