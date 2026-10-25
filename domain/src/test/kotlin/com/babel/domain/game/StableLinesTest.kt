@@ -49,6 +49,34 @@ class StableLinesTest {
         assertEquals(1, lines.next(listOf(line("リン行政官")), now = 1000, typing = { typing }).settled.size)
     }
 
+    /** Published during the typewriter's pause on its dash, a piece goes when the rest is read beside it. */
+    @Test
+    fun `a piece published at a pause goes when the rest of the line appears beside it`() {
+        val lines = StableLines()
+        val piece = line("「ですが一", left = 430, width = 300)
+
+        lines.next(listOf(piece), now = 0)
+        val key = lines.next(listOf(piece), now = 333).settled.single().key
+        val rest = line("一今は違います」", left = 760, width = 450)
+        val update = lines.next(listOf(piece, rest), now = 666)
+
+        assertEquals(listOf(key), update.gone)
+        assertTrue(update.settled.isEmpty())
+    }
+
+    /** A label ending in a long vowel is not a pause: 「サポーター」 stays when a tab appears beside it. */
+    @Test
+    fun `a finished word beside a new one stays`() {
+        val lines = StableLines()
+        val label = line("サポーター", left = 430, width = 300)
+
+        lines.next(listOf(label), now = 0)
+        lines.next(listOf(label), now = 333)
+        val update = lines.next(listOf(label, line("ストライカー", left = 760, width = 360)), now = 666)
+
+        assertTrue(update.gone.isEmpty())
+    }
+
     /** Art moving under a translucent box must not hold a line for ever. */
     @Test
     fun `a line held as typing is published after the longest hold`() {

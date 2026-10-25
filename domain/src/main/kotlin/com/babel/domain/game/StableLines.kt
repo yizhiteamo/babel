@@ -35,7 +35,13 @@ class StableLines {
     /** Why a published line was withdrawn, for the log: the numbers say which rule fires. */
     enum class Why { MOVED, CUT_SHORT, NEW_WORDS, MISSED, SCENE, BLANK }
 
-    data class Update(val settled: List<Settled>, val gone: List<String>, val why: Map<String, Why> = emptyMap())
+    data class Update(
+        val settled: List<Settled>,
+        val gone: List<String>,
+        val why: Map<String, Why> = emptyMap(),
+        /** Published lines kept though other words were read at their place, and by which rule: for the log. */
+        val keptOver: Map<String, String> = emptyMap(),
+    )
 
     private class Seen(
         val line: GameLine,
@@ -95,6 +101,7 @@ class StableLines {
         val settled = mutableListOf<Settled>()
         val gone = mutableListOf<String>()
         val why = mutableMapOf<String, Why>()
+        val keptOver = mutableMapOf<String, String>()
         val unmatched = seen.toMutableList()
         val next = mutableListOf<Seen>()
 
@@ -191,6 +198,7 @@ class StableLines {
                 if (published != null && !sceneChanged && !grows && variant(before.line.text, line.text) &&
                     heldStill(published)
                 ) {
+                    keptOver[published] = "variant"
                     next += before
                     continue
                 }
@@ -202,6 +210,7 @@ class StableLines {
                         gone += published
                         why[published] = Why.MISSED
                     } else {
+                        keptOver[published] = if (flips(before.line, line)) "flip" else "akin"
                         next += before
                     }
                     continue
@@ -216,6 +225,32 @@ class StableLines {
             }
         }
 
+        // A line published where the typewriter paused — on a dash, an
+        // ellipsis, a comma — goes when the rest of it is read beside it:
+        // 「「ですが一」 was translated during the pause on its 「——」, the rest
+        // came in as a line of its own beside the patch, and the two
+        // translations stood apart for good. Withdrawn, the whole line is read
+        // again where the patch was.
+        val paused = next.filter { it.publishedKey != null && it.line.text.trimEnd().lastOrNull()?.let { c -> c in PAUSE_MARKS } == true }
+        for (piece in paused) {
+            val p = piece.line
+            val continued = next.filter { o ->
+                o !== piece && o.firstSeenAt == now &&
+                    min(o.line.bounds.bottom, p.bounds.bottom) - max(o.line.bounds.top, p.bounds.top) >= min(o.line.bounds.height, p.bounds.height) / 2 &&
+                    o.line.bounds.left - p.bounds.right in -p.typeHeight / 2..p.typeHeight * 3 / 2 &&
+                    min(o.line.typeHeight, p.typeHeight) * 4 >= max(o.line.typeHeight, p.typeHeight) * 3
+            }
+            if (continued.isEmpty()) continue
+            // And the rest too, if it settled at once: one line, read again whole.
+            for (seen in continued + piece) {
+                next -= seen
+                val key = seen.publishedKey ?: continue
+                gone += key
+                why[key] = Why.NEW_WORDS
+                settled.removeAll { it.key == key }
+            }
+        }
+
         for (missing in unmatched) {
             val key = missing.publishedKey
             if (key == null) continue
@@ -223,6 +258,7 @@ class StableLines {
             // whole line typed out, its box wider than the piece's.
             val outgrown = lines.any { it.text.length > missing.line.text.length && it.text.startsWith(missing.line.text.dropLast(1)) }
             if (!sceneChanged && !outgrown && heldStill(key)) {
+                keptOver[key] = "unread"
                 next += missing
                 continue
             }
@@ -253,7 +289,7 @@ class StableLines {
         // a name on a list flashed to its original and back.
         val live = next.mapNotNullTo(HashSet()) { it.publishedKey }
         val stillGone = gone.filter { it !in live }
-        return Update(settled, stillGone, why.filterKeys { it in stillGone })
+        return Update(settled, stillGone, why.filterKeys { it in stillGone }, keptOver.filterKeys { it in live })
     }
 
     /**
@@ -520,6 +556,9 @@ class StableLines {
          * translation down and put it back again and again.
          */
         const val GRACE_FRAMES = 4
+
+        /** Where a typewriter pauses: a line ending in one may not be all of it. */
+        const val PAUSE_MARKS = "…‥—―一、，,-"
 
         /** The longest a line typing out is held back from publishing, from when it was first seen. */
         const val MAX_TYPING_HOLD_MS = 4000L

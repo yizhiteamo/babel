@@ -723,6 +723,9 @@ class GameTextSource @Inject constructor(
             }, heldStill = { key ->
                 publishedLooks[key]?.let { (box, then) -> lookOf(frame, box)?.let { now -> lookDifference(then, now) <= STILL_LOOK_LUMA } } == true
             })
+            if (update.keptOver.isNotEmpty()) {
+                logger.debug(TAG, "kept " + update.keptOver.entries.joinToString { (k, how) -> "${k.substringAfterLast('@')} $how" })
+            }
             update.gone.forEach { erased.remove(it) }
             update.gone.forEach { publishedLooks.remove(it); shownElements.remove(it) }
             val gone = update.gone.mapNotNull { published.remove(it) }
@@ -2541,7 +2544,14 @@ class GameTextSource @Inject constructor(
         // option above it.
         val rightLimitEdge = minOf(rightLimit - SIDE_MARGIN_PX - EDGE_SAMPLE_COLUMNS, frame.width)
         val leftLimitEdge = maxOf(leftLimit + SIDE_MARGIN_PX + EDGE_SAMPLE_COLUMNS, 0)
-        val panelMiddle = if (onScreenCentre || row.isNotEmpty()) null else {
+        // Nor a line starting where a name over it starts: dialogue under its
+        // speaker. Under 「？？？」, over a figure's coat that ended either side
+        // of it, 「お会いできて嬉しいです、先生。」 was taken for a button and
+        // its translation set in from the margin.
+        val underName = others.any { o ->
+            o.bounds != b && GameLayout.speaksAbove(o.bounds, b) && abs(o.bounds.left - b.left) <= recognised.typeHeight
+        }
+        val panelMiddle = if (onScreenCentre || row.isNotEmpty() || underName) null else {
             val far = (recognised.typeHeight * PANEL_CENTRE_LOOK).toInt()
             val l = plainAfter(frame, extent, leftLimitEdge, far, leftward = true)
             val r = plainAfter(frame, extent, rightLimitEdge, far)
@@ -2896,6 +2906,18 @@ class GameTextSource @Inject constructor(
         fun middle(x0: Int, x1: Int, row: Int): Double {
             val px = IntArray(x1 - x0).also { frame.getPixels(it, 0, it.size, x0, row, it.size, 1) }
             return px.map { luma(it) }.sorted()[px.size / 2]
+        }
+        // Over the columns both lines share: a narration's first line ran the
+        // box's width, its right end over the brighter floor showing through.
+        val from = maxOf(left, aLeft)
+        val to = minOf(right, aRight)
+        // And not only through its middle, which on a dense line of bold
+        // type is mostly ink (luma 240 against the panel's 40): its top and
+        // bottom rows show the panel too.
+        if (to - from >= above.typeHeight * 2) {
+            val gap = middle(from, to, y)
+            val rows = listOf(under, (above.bounds.top + 2).coerceIn(0, frame.height - 1), (above.bounds.bottom - 2).coerceIn(0, frame.height - 1))
+            return rows.any { row -> abs(gap - middle(from, to, row)) <= OTHER_PANEL_LUMA }
         }
         return abs(middle(left, right, y) - middle(aLeft, aRight, under)) <= OTHER_PANEL_LUMA
     }
