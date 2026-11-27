@@ -16,6 +16,7 @@ import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.settings.SwitchedOff
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -186,6 +187,9 @@ class BalloonContextExperimentTest {
         override suspend fun setTargetLanguageMode(mode: TargetLanguageMode) = Unit
         override suspend fun setProvider(provider: ProviderId?) = Unit
         override suspend fun setRemoteProvider(settings: RemoteProviderSettings) = Unit
-        override suspend fun setAutoStart(enabled: Boolean) = Unit
+        override suspend fun setTranslationPaused(paused: Boolean) = Unit
+        override suspend fun setMangaMode(enabled: Boolean) = Unit
+        override suspend fun setSwitchedOff(held: SwitchedOff?) = Unit
+        override suspend fun setGameMode(enabled: Boolean) = Unit
     }
 }

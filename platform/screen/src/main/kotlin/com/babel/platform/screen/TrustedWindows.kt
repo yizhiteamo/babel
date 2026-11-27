@@ -29,7 +29,7 @@ interface TrustedWindows {
  * player advances the story; a translation that kept the tap would stop the
  * game. Implemented by the accessibility service (`dispatchGesture`). Measured
  * on a phone: the game accepts the injected tap, ~20-30 ms after release
- * (`docs/milestones/v3.md`, spike 3).
+ * (`docs/notes/v3.md`, spike 3).
  */
 interface TapForwarder {
 

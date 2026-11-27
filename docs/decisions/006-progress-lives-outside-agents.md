@@ -9,7 +9,7 @@ Accepted
 Use:
 
 - `docs/roadmap.md` for version-level status
-- `docs/milestones/` for detailed current progress
+- GitHub Issues for detailed current progress (amended by ADR 012; it used to be `docs/milestones/`)
 - Git for implementation history
 
 ## Reason

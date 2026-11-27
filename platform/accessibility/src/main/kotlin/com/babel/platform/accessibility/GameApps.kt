@@ -15,7 +15,7 @@ import javax.inject.Singleton
  * `ApplicationInfo.category` is the general answer: a game's manifest says so,
  * whichever game it is. Reading another app's info needs package visibility
  * on Android 11+, which the manifest's `<queries>` grants for launcher apps
- * (`docs/milestones/v3.md`, spike 1). Games that do not declare themselves
+ * (`docs/notes/v3.md`, spike 1). Games that do not declare themselves
  * will need to be added by hand — not built yet.
  */
 @Singleton

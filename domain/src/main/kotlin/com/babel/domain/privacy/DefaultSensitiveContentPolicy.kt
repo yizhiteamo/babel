@@ -44,7 +44,7 @@ class DefaultSensitiveContentPolicy(
      * browser's address bar replied **to the reader** — "I can't access files
      * on your device. Please paste the text…" — and that sentence was drawn in
      * an opaque box over the address bar, on every page load
-     * (`docs/milestones/v2.md`). The provider's instruction was hardened to
+     * (`docs/notes/v2.md`). The provider's instruction was hardened to
      * echo such input instead, but an instruction is a request to somebody
      * else's model; this is the half that does not depend on it.
      *

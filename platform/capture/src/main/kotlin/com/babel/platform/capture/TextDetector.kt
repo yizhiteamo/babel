@@ -8,7 +8,7 @@ import com.babel.core.model.TextBounds
  *
  * This exists because grouping recognised lines into bubbles by their positions
  * does not work well enough, and two attempts to make it work were reverted
- * after measurement (`docs/milestones/v2.md`). A page is a picture of balloons;
+ * after measurement (`docs/notes/v2.md`). A page is a picture of balloons;
  * a model trained on comics finds them directly, and knowing where a balloon is
  * settles three separate problems at once:
  *

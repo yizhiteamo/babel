@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
  *
  * The holding is the part that costs something: a balloon kept back is a
  * balloon not yet on screen, and incremental publishing was measured and built
- * deliberately (`docs/milestones/v2.md`). So the cases that must **not** hold
+ * deliberately (`docs/notes/v2.md`). So the cases that must **not** hold
  * are guarded as carefully as the ones that must.
  */
 class UtteranceGrouperTest {

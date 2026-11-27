@@ -9,7 +9,7 @@ import com.babel.core.model.TextOrientation
  *
  * This is the unit that gets translated. An OCR text block is not: a recogniser
  * may split one bubble across several blocks, or merge two columns into one
- * block in the wrong order (both observed, see `docs/milestones/v2.md`).
+ * block in the wrong order (both observed, see `docs/notes/v2.md`).
  */
 data class TextRegion(
     /** In reading order, so joining them yields readable text. */
@@ -36,7 +36,7 @@ data class TextRegion(
      *
      * So this is the **limit** on that growth. It is what stops the growth
      * leaking out through a balloon's tail — the failure that had the flood-fill
-     * version reverted (`docs/milestones/v2.md`).
+     * version reverted (`docs/notes/v2.md`).
      */
     val enclosure: TextBounds? = null,
     /**

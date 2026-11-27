@@ -1,0 +1,39 @@
+name: 实测轮次
+description: 在真机上玩一段，把误判场景变成语料，再用通用规则修复（docs/systems/game-text.md）
+labels: [playtest, needs-device-test]
+body:
+  - type: textarea
+    id: target
+    attributes:
+      label: 游戏与场景
+      description: 这一轮玩哪个游戏、哪些界面或章节；设备与 Android 版本。
+    validations:
+      required: true
+  - type: textarea
+    id: findings
+    attributes:
+      label: 发现的误判
+      description: 每条一行：场景名、应该怎样、实际怎样。只用文字描述，不上传截图（版权）。可在实测后补充。
+      value: |
+        - [ ]
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件
+      value: |
+        - [ ] 每条误判都先成为语料场景（.expect），再修复
+        - [ ] 修复用的是每个游戏都有的通用信号，没有游戏名或场景名
+        - [ ] GameCorpusTest 全部通过（PR 中写明通过数 N/N，修改前后各一次）
+        - [ ] GameTextSourceReplayTest 的文字与布局没有意外变化
+        - [ ] ./gradlew build 通过
+    validations:
+      required: true
+  - type: textarea
+    id: out
+    attributes:
+      label: 不做
+      description: 这一轮明确不处理的内容（另开 Issue）。
+    validations:
+      required: false

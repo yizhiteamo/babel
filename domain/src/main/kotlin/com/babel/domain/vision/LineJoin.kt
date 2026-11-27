@@ -20,7 +20,7 @@ package com.babel.domain.vision
  * Three balloons, eighteen lines, and nearly every corrupted word in them was
  * made here rather than by the recogniser — which is what had a chat model
  * leaving `apparently` sitting untranslated in the middle of a Chinese sentence
- * (`docs/milestones/v2.md`). The translator was guessing at words that were
+ * (`docs/notes/v2.md`). The translator was guessing at words that were
  * never on the page.
  *
  * ## Why the test is on the script and not on the orientation
@@ -40,7 +40,7 @@ package com.babel.domain.vision
  * rule, not a style). So `선생님` and `줄게` were glued into `선생님줄게` and
  * handed to the translator as one unspaced run, which came back as the personal
  * name 徐世尼 — a title read as somebody's name because the words had been
- * welded together before anyone tried to read them (`docs/milestones/v2.md`).
+ * welded together before anyone tried to read them (`docs/notes/v2.md`).
  *
  * The recogniser was never the problem: it returns Korean already spaced —
  * measured, one of `kr-mag-01`'s own lines is `사주고 싶어`, space included.

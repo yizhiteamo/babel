@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Heat, CPU and memory over a game-mode session, for V3 acceptance criterion 6
-# (docs/milestones/v3.md, "Throttling when still").
+# (docs/notes/v3.md, "Throttling when still").
 #
 #   tools/game-soak/soak.sh <label> [minutes=30] [game package=com.YostarJP.BlueArchive]
 #

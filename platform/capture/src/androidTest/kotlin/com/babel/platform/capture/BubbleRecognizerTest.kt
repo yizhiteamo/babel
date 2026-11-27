@@ -20,7 +20,7 @@ import org.junit.runner.RunWith
  * fail on a language it was not built for — given the English balloons on
  * `jap-mag-08` it returned `WindrisntthatSamantha2Thebig.hatThettbooksting...`,
  * and that was translated and drawn in an opaque box over text the reader could
- * already read (`docs/milestones/v2.md`).
+ * already read (`docs/notes/v2.md`).
  *
  * An instrumentation test rather than a JVM one because `recognize` takes a
  * `Bitmap`, which a JVM test has no way to make. Nothing here loads a model:

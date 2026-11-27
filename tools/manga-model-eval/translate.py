@@ -27,7 +27,7 @@ Note on the Qwen export: `model_q4f16.onnx` will not load on the CPU provider
 with graph optimisations on — ONNX Runtime's layer-norm fusion fails on it. It
 is a GPU/WebGPU build. Optimisations are disabled for it here, which works, but
 the same wall is waiting on a phone's CPU provider and is recorded in
-`docs/milestones/v2.md` rather than discovered twice.
+`docs/notes/v2.md` rather than discovered twice.
 """
 import glob
 import json

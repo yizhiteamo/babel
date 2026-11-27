@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  * The strings are the ones `DetectorThresholdMeasurementTest` found in the
  * `text_free` class across eight pages of `comic-sample`, so a change that
  * breaks the measured split fails here rather than on a device
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  */
 class SoundEffectTest {
 

@@ -153,7 +153,7 @@ class BabelAccessibilityService : AccessibilityService() {
      * takes the scan lock for the second its settle loop runs, and the
      * event-driven scan that arrives meanwhile is turned away with
      * `a scan is already running`. Measured on a phone, that is where the
-     * second went (`docs/milestones/v2.md`).
+     * second went (`docs/notes/v2.md`).
      */
     @Volatile
     private var lastImageRequestAt = 0L
@@ -378,7 +378,7 @@ class BabelAccessibilityService : AccessibilityService() {
 
             // A game is game mode's, whether game mode is on or not. The comic
             // recogniser reads game UI badly — AUTO and MENU both came back as
-            // 菜单 and a loading line appeared from nowhere (`docs/milestones/v3.md`,
+            // 菜单 and a loading line appeared from nowhere (`docs/notes/v3.md`,
             // spike 1) — and two image paths on one screen would stack overlays.
             if (gameApps.isGame(front)) {
                 logger.debug(TAG, "image scan skipped: a game, which is game mode's")
@@ -506,7 +506,7 @@ class BabelAccessibilityService : AccessibilityService() {
         // Counted as a container only, that sheet had two labels, so manga
         // mode took it and put prose through the comic recogniser — nonsense
         // translations stacked over each other — while the text path, which
-        // reads it correctly, stood down (measured, `docs/milestones/v2.md`).
+        // reads it correctly, stood down (measured, `docs/notes/v2.md`).
         val hasProse = texts.any { !it.bounds.isLabelSized(screen) && it.text.isProse() }
 
         // The page, not its largest image (`ContentArea`). The parts of the
@@ -621,7 +621,7 @@ class BabelAccessibilityService : AccessibilityService() {
                 // And let go of the models. Switched off is the one moment we
                 // know image translation is finished with for now; anything
                 // shorter — a scroll, an app switch — comes back too soon to be
-                // worth a reload (`docs/milestones/v2.md`).
+                // worth a reload (`docs/notes/v2.md`).
                 imageScanner.release()
             }
         }

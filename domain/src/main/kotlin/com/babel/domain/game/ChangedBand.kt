@@ -7,7 +7,7 @@ import kotlin.math.abs
  *
  * A dialogue line changing touches the dialogue box and nothing else, yet the
  * whole frame was read every time: 160–360 ms of recognition, measured, most
- * of it on pixels that had not moved (`docs/milestones/v3.md`). Comparing a
+ * of it on pixels that had not moved (`docs/notes/v3.md`). Comparing a
  * small brightness grid finds the rows that did move, so only that band is
  * read again and the lines elsewhere are kept.
  *

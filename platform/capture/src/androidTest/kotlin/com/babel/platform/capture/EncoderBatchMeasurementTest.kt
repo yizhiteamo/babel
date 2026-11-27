@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
  *
  * The cost table says the encoder is ~150ms per balloon and constant — about
  * 1.2s of the 3.1s a page of eight takes, and the half a key/value cache would
- * not touch (`docs/milestones/v2.md`). The exported graph declares a dynamic
+ * not touch (`docs/notes/v2.md`). The exported graph declares a dynamic
  * `batch_size`, while `MangaOcrRecognizer` hard-codes `[1, 3, 224, 224]`, so
  * the batched call is available for nothing more than building a wider tensor.
  *

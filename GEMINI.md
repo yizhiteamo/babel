@@ -12,3 +12,4 @@ Hard rules on top of those:
 - Before any device test, read `docs/systems/testing.md`.
 - Never commit `material-sample/`, `models/`, `docs/testing/local-device-notes.md`, keystores or keys. Never upload game or manga screenshots, or unredacted screen text, to GitHub: the repository is public.
 - Issues, PRs and commit messages are written in Chinese, in the format given in `CLAUDE.md`.
+- Progress, measurements and experiment notes go in the PR description, never into a document. `docs/notes/` is history: never add to it.

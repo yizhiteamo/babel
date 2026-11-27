@@ -88,7 +88,7 @@ internal interface PageReader {
  * What V2 shipped with, and what runs when no detector model is present. Its
  * limits are measured and recorded: a bubble split across two regions, sound
  * effects offered for translation, and a box crossing a balloon's outline
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  */
 @Singleton
 internal class GroupingPageReader @Inject constructor(
@@ -128,7 +128,7 @@ internal class GroupingPageReader @Inject constructor(
  * position was attempted twice and reverted twice; a model trained on comics
  * answers the question directly, and one balloon then becomes one unit of
  * translation — which measurement showed is what a capable translator needs and
- * what splitting denies it (`docs/milestones/v2.md`).
+ * what splitting denies it (`docs/notes/v2.md`).
  *
  * Reading each balloon separately also spares the recogniser the rest of the
  * page: no sound effects, no cover lettering, no browser chrome.
@@ -431,7 +431,7 @@ internal class DetectingPageReader @Inject constructor(
             // left a stopped read holding one entry, and the re-read that
             // follows — same screen, moments later — then had nothing to vote
             // with and lost the page again: measured, 5 of the 6 misses left
-            // after the content-area fix were this chain (`docs/milestones/v2.md`).
+            // after the content-area fix were this chain (`docs/notes/v2.md`).
             //
             // Keeping the old entries a little longer cannot put them on the
             // wrong balloon. They are used only through a shift, and a shift
@@ -465,7 +465,7 @@ internal class DetectingPageReader @Inject constructor(
      * five times vertically and two and a quarter across. Unboxed lettering, a
      * chapter title or a caption on black, then scores 0.1 to 0.3 lower than
      * in a squarer input, which puts it on the 0.5 floor, and it comes and goes
-     * between frames. Measured on sixteen screens (`docs/milestones/v2.md`):
+     * between frames. Measured on sixteen screens (`docs/notes/v2.md`):
      * the halves find 8 pieces of real lettering the whole frame did not, and
      * nothing that is not lettering. Lowering the floor instead found two more
      * and also boxes with nothing in them, which manga-ocr, since it never

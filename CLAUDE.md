@@ -10,7 +10,7 @@ Its goal is to translate content displayed by other Android apps and render the 
 
 The project evolves through multiple product phases, but this file intentionally does not track the active version or milestone.
 
-See `docs/roadmap.md` and `docs/milestones/` for current development status.
+See `docs/roadmap.md` for version-level status; work in progress is tracked in GitHub Issues (`docs/workflow.md`).
 
 ---
 
@@ -92,13 +92,13 @@ See `docs/systems/language.md`.
 
 ## Scope Discipline
 
-Implement only the scope required by the active milestone.
+Implement only the scope of the GitHub Issue being worked on, within the active version.
 
 Before implementing functionality, consult:
 
 - `docs/roadmap.md`
 - the relevant file under `docs/features/`
-- the active milestone under `docs/milestones/`
+- the Issue, and the active version's tracking Issue (label `tracking`)
 - relevant system documentation under `docs/systems/`
 
 Do not implement functionality assigned to a future phase unless explicitly requested.
@@ -130,10 +130,12 @@ Use:
 
 - Product version definitions: `docs/features/`
 - Overall current state: `docs/roadmap.md`
-- Detailed active progress: `docs/milestones/`
-- What V1/V2 still owe: `docs/milestones/open-items.md` — a one-page index,
-  with a table of conclusions later disproven. Read it before re-deriving
-  anything about manga mode.
+- Work in progress, open defects, decisions waiting on the user: GitHub Issues
+  and Milestones — never a document (`docs/workflow.md`). What V1/V2 still owe
+  is the "V1/V2 遗留" milestone; search it before re-deriving anything about
+  manga mode.
+- Historical lab notes from building each version: `docs/notes/` — evidence
+  other documents link to, not maintained and not current truth. Never add to them.
 - Architecture: `docs/architecture.md`
 - Technical systems: `docs/systems/`
 - Architectural rationale: `docs/decisions/`
@@ -178,7 +180,7 @@ Do not store in this file:
 Use:
 
 - `docs/roadmap.md` for version-level current state
-- `docs/milestones/` for detailed current progress
+- GitHub Issues for tasks, progress and defects; a PR's description for the measurements behind a change
 - `docs/features/` for stable version scope and acceptance criteria
 - Git history for what changed at code level
 - ADR files for durable architectural decisions
@@ -238,7 +240,7 @@ When adding or changing functionality:
 4. Prefer extending project-owned models over leaking platform models downstream.
 5. Add or update tests around behavior and state transitions.
 6. Update documentation only when intended behavior or architecture changes.
-7. Update milestone state only when acceptance conditions are actually satisfied.
+7. Close an Issue, or mark an acceptance criterion met in the tracking Issue, only when its acceptance conditions are actually satisfied.
 8. Do not mark a roadmap phase complete unless its feature acceptance criteria are satisfied.
 
 When a requested change conflicts with an accepted ADR, do not silently bypass it. Update or supersede the ADR explicitly.
@@ -257,7 +259,10 @@ The system `java` on PATH is JDK 8, and `JAVA_HOME` points at it. Gradle is pinn
 ./gradlew :data:translation:testDebugUnitTest   # an Android module (plain `test` runs both variants)
 ./gradlew :domain:test --tests "com.babel.domain.translation.CoordinatorTest"        # one class
 ./gradlew :domain:test --tests "com.babel.domain.translation.CoordinatorTest.rejects*" # one method
-./gradlew connectedAndroidTest         # instrumentation tests (needs a device/emulator)
+./gradlew assembleDebugAndroidTest     # compile instrumentation tests (`build` does not)
+./gradlew :platform:game:connectedDebugAndroidTest   # one library module's instrumentation tests
+# never :app:connectedDebugAndroidTest or a bare connectedAndroidTest: it uninstalls
+# the app, settings and models with it — see docs/systems/testing.md
 ./gradlew installDebug                 # install on the connected device
 ```
 
@@ -275,10 +280,10 @@ The conceptual flow above is split so that each Module Boundaries rule is a comp
 |---|---|---|
 | `:core:model` | domain | `TextElement`, `TextBounds`, language modes, `TranslationRequest`/`Result`, `RenderedTranslation`, runtime state, capability state |
 | `:core:common` | domain | `DispatcherProvider`, `BabelLogger`, `Redact` |
-| `:domain` | domain | Pipeline contracts plus `DefaultLanguageResolver`, `DefaultSensitiveContentPolicy`, `DefaultTranslationScopePolicy`, `DefaultTranslationCoordinator` |
+| `:domain` | domain | Pipeline contracts plus `DefaultLanguageResolver`, `DefaultSensitiveContentPolicy`, `DefaultTranslationScopePolicy`, `DefaultTranslationCoordinator`; the pure rules of manga reading (`vision`) and game text (`game`) |
 | `:core:testing` | test | Shared fakes (`FakeTranslator`, `RecordingRenderer`, …). Consumed via `testImplementation` only |
 | `:data:settings` | data | `DataStoreSettingsRepository`, `AndroidSystemLocaleProvider` |
-| `:data:translation` | data | `MlKitTranslator` (on-device), `ChatTranslator` (remote, off by default — ADR 010), `InMemoryTranslationCache` |
+| `:data:translation` | data | `MlKitTranslator` (on-device), `ChatTranslator` and `DeepLTranslator` (remote, off by default — ADR 010), `InMemoryTranslationCache`, `DurableTranslationCache` (a game's interface labels, on disk) |
 | `:platform:screen` | platform | `ScreenFrameSource` — contract only, no implementation |
 | `:platform:accessibility` | platform | `AccessibilityService`, node → `TextElement` normalization, screen frames (ADR 009) |
 | `:platform:overlay` | platform | overlay windows, `TranslationRenderer`, coordinate mapping |
@@ -299,7 +304,7 @@ Adding a new acquisition method (OCR in V2, tracked OCR in V3) means a new `:pla
 
 ## Contracts already established
 
-Every stable contract in `docs/architecture.md` exists. Implement against them; change a contract only when the system doc that defines it changes too. What is built and what is not is `docs/roadmap.md` and `docs/milestones/`, never this file.
+Every stable contract in `docs/architecture.md` exists. Implement against them; change a contract only when the system doc that defines it changes too. What is built and what is not is `docs/roadmap.md` and the GitHub Issues, never this file.
 
 `DefaultTranslationCoordinator` mutates tracked state **only from its mailbox coroutine**. Translations run concurrently and report back as messages. Keep it that way: touching the tracked map from a translation coroutine reintroduces a race between the revision check and the events that bump revisions.
 
@@ -326,7 +331,7 @@ Behavioral invariants that must survive any change:
   it picks a shift one period off, at any tolerance — so the screenshots must
   also agree (`PageMotion`): the picture may veto a shift or pick the one
   candidate it fits, never guess. It reads no scroll events, which a
-  self-drawn reader may never send (`docs/milestones/v2.md`).
+  self-drawn reader may never send (`docs/notes/v2.md`).
 - The reader's memory is in **page** coordinates and every frame solves for its
   own absolute offset, so nothing drifts. When no offset can be recovered the
   whole memory is dropped — replaced once that screen has been read to the end,
@@ -354,9 +359,9 @@ Testing against a device, an emulator, or the pipeline has its own set of traps,
 
 ## 提交节奏
 
-所有改动经 PR 进入 `main`，不直接推送（发版只推 tag）。一个 GitHub Issue（对应 `docs/milestones/` 中的一个条目或其可独立验收的部分）= 一个 PR，squash 合并后在 `main` 上是一个提交。推送前必须 `./gradlew build` 通过，合并前 CI 必须通过。角色分工、分支命名、PR 内容与审查清单见 `docs/workflow.md`。
+所有改动经 PR 进入 `main`，不直接推送（发版只推 tag）。一个 GitHub Issue = 一个 PR，squash 合并后在 `main` 上是一个提交。工作项、进度、缺陷只记在 GitHub Issues 中，不写进文档。推送前必须 `./gradlew build` 通过，合并前 CI 必须通过。角色分工、分支命名、PR 内容与审查清单见 `docs/workflow.md`。
 
 格式（提交与 PR 标题相同）：`<type>(<scope>): <简述>`，如 `feat(domain): 实现 TranslationCoordinator`。
 type 取 feat / fix / refactor / test / docs / chore；scope 取模块名（domain、data、platform、app）。
 
-勾选里程碑条目与对应实现放在同一个 PR —— 条目只有在 `docs/features/` 的验收条件真正满足时才能勾选。
+PR 正文写 `Closes #<issue>`，合并即关闭 Issue —— 只有在 Issue 与 `docs/features/` 的验收条件真正满足时才能这样写；只完成一部分时用 `Refs #<issue>`。

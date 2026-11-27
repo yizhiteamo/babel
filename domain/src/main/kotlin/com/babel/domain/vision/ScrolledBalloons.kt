@@ -18,7 +18,7 @@ import kotlin.math.abs
  * scrolled screen is different input and the pixels it hands back are never the
  * same twice. Its closing line named the untried alternative, which is this one:
  * match on **where** the balloon is, not on what it looks like
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  *
  * ## It was measured before it was written
  *
@@ -34,7 +34,7 @@ import kotlin.math.abs
  * phone is not the emulator: the detector sees a 1440x3200 screen squashed to
  * 640x640, and a balloon's width and height come back 10 and 13px apart at the
  * 90th percentile. Measured against the true scroll position read over DevTools
- * (`docs/milestones/v2.md`):
+ * (`docs/notes/v2.md`):
  *
  * - on a real chapter, 16px recovered the offset 37 times against 8px's 27,
  *   with no pair and no offset wrong
@@ -79,7 +79,7 @@ object ScrolledBalloons {
      * The answer alone was not enough to act on. Measured on a phone, six of
      * ten flings came back null and the log could only say the page was lost —
      * not whether no box matched, too few agreed, or two answers tied, and
-     * each of those has a different fix (`docs/milestones/v2.md`).
+     * each of those has a different fix (`docs/notes/v2.md`).
      */
     data class Diagnosis(
         val shift: Int?,

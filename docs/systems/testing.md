@@ -206,7 +206,7 @@ Seen once while smoke-testing V1 on the emulator and **not reproduced in three
 replays of the same recipe**: after three rapid swipes, translations for list
 items stayed on screen in a viewport that no longer contained the list, and the
 body translations sat below their originals. It did not settle out — only a
-reload cleared it. Recorded in `docs/milestones/v1.md` rather than acted on,
+reload cleared it. Tracked as issue #10 rather than acted on,
 because changing rendering against a defect that appears one time in four is
 guessing.
 
@@ -215,3 +215,22 @@ rendering: the page carries both a heading and a list item reading "Letters from
 the mainland", so two overlays with the same words are two real elements. And it
 is not the coordinator dropping coordinates — on a matching key it assigns
 `existing.element = element` and re-emits `show` with the new bounds.
+
+## Conclusions that were disproven
+
+Kept because the *way* they were wrong is worth remembering; the text where
+they lived has been corrected in place. (Moved here from the former
+`docs/milestones/open-items.md`, whose open entries are now GitHub issues.)
+
+| Claim | What it actually was |
+|---|---|
+| OCR misread `선생님` | It read `선생님 \| 줄게` exactly. `LineJoin` glued the lines into an unspaced run — the corruption was **between** OCR and the translator |
+| Small balloons are a recall problem | Two of three are drawn faces, one is an ellipsis. Declining them is right |
+| `SoundEffect.isDrawnNoise` is not wired in | It is, in `PageReader.assemble`, under `bubble.onArt` |
+| `PageTextDumpTest` failed on a wiped directory | It could not compile; `./gradlew build` does not build `androidTest` (CI now compiles it separately) |
+| Manga mode's latency is a threshold being too small | Three thresholds checked, all adequate; a fallback timer was taking the lock |
+
+The shape they share: **an inference written down as a measurement.** Sizes were
+read as content, an output was read backwards to its input, a failure was
+attributed to the last thing that had gone wrong before. When a claim says
+"measured", it should link to the numbers.

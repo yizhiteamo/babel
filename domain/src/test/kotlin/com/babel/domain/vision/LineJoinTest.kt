@@ -9,7 +9,7 @@ import kotlin.test.assertEquals
  * The English cases are the real line sequences `PageTextDumpTest` read off
  * `jap-mag-08`; the Japanese ones are what must keep behaving exactly as they
  * did, because every page of the sample material depends on it
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  */
 class LineJoinTest {
 

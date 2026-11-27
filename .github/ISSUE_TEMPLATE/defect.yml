@@ -1,0 +1,36 @@
+name: 问题记录
+description: 见到的缺陷或测得的现象。先记录事实，是否修、怎么修另行决定。
+labels: [bug]
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: 现象
+      description: 看到了什么、应该是什么。只用文字描述，不上传游戏或漫画截图，不贴未脱敏的屏幕文本。
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现
+      description: 设备、Android 版本、模式、步骤；复现了几次中的几次。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据
+      description: 测得的数字、脱敏日志、相关文档或代码位置。推测请标明是推测，不要写成测量结果（docs/systems/testing.md「Conclusions that were disproven」）。
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: 涉及
+      options:
+        - 文字翻译（V1）
+        - 漫画模式（V2）
+        - 游戏模式（V3）
+        - 通用 / 不确定
+    validations:
+      required: true

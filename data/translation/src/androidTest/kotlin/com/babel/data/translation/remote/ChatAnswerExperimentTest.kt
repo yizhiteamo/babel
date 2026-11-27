@@ -17,6 +17,7 @@ import com.babel.domain.settings.BabelSettings
 import com.babel.domain.settings.RemoteProviderSettings
 import com.babel.domain.settings.RemoteService
 import com.babel.domain.settings.SettingsRepository
+import com.babel.domain.settings.SwitchedOff
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -34,7 +35,7 @@ import org.junit.runner.RunWith
  *
  * and that was drawn, in an opaque box, over the address bar — on every page
  * load. DeepL cannot do this, which is why it never showed until the chat route
- * was actually used (ADR 010, `docs/milestones/v2.md`).
+ * was actually used (ADR 010, `docs/notes/v2.md`).
  *
  * A guard has to separate "an answer that is a translation" from "an answer
  * addressed to the reader" **without** a keyword list, which would be
@@ -223,7 +224,10 @@ class ChatAnswerExperimentTest {
         override suspend fun setTargetLanguageMode(mode: TargetLanguageMode) = Unit
         override suspend fun setProvider(provider: ProviderId?) = Unit
         override suspend fun setRemoteProvider(settings: RemoteProviderSettings) = Unit
-        override suspend fun setAutoStart(enabled: Boolean) = Unit
+        override suspend fun setTranslationPaused(paused: Boolean) = Unit
+        override suspend fun setMangaMode(enabled: Boolean) = Unit
+        override suspend fun setSwitchedOff(held: SwitchedOff?) = Unit
+        override suspend fun setGameMode(enabled: Boolean) = Unit
     }
 
     private companion object {

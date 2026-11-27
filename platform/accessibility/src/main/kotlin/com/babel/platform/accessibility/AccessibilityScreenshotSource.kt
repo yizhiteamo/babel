@@ -190,7 +190,7 @@ class AccessibilityScreenshotSource @Inject constructor(
     /**
      * One window alone, paced by the same lock: the platform's interval is
      * shared with whole-display screenshots (measured: ~333ms either way,
-     * `docs/milestones/v3.md`, spike 1).
+     * `docs/notes/v3.md`, spike 1).
      */
     override suspend fun windowFrame(windowId: Int): Bitmap? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
@@ -314,7 +314,7 @@ class AccessibilityScreenshotSource @Inject constructor(
          * the process. Every tick afterwards finds the lock held and returns
          * silently; only a restart clears it, which is exactly the shape of a
          * failure seen on an emulator and not reproduced since
-         * (`docs/milestones/v2.md`).
+         * (`docs/notes/v2.md`).
          *
          * Timing out is a state the caller already handles: it is the same "no
          * frame this time" that `onFailure` produces, and the next scan tries

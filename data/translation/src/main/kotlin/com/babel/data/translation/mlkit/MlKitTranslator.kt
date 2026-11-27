@@ -86,7 +86,7 @@ class MlKitTranslator(
         // Language codes only — never the text. Which pair was chosen is the
         // one thing that cannot be worked out from the outside, and real pages
         // produced Chinese, English and romaji from a single page with the
-        // target set to zh (`docs/milestones/v2.md`).
+        // target set to zh (`docs/notes/v2.md`).
         logger.debug(TAG, "translating $sourceCode>$targetCode detected=${declaredSource == null}")
 
         val client = clientFor(sourceCode, targetCode)

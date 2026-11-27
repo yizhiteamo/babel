@@ -49,7 +49,7 @@ dependencies {
     // before, on the same principle that kept Android plumbing out of the way
     // until the models proved themselves on the desktop.
     // Real dependency now, not just a test one. Stage 2 kept it out of the app
-    // until the numbers justified it; they do (`docs/milestones/v2.md`).
+    // until the numbers justified it; they do (`docs/notes/v2.md`).
     implementation(libs.onnxruntime.android)
     // Fetching manga-ocr on demand (ADR 011). Already in the package via
     // :data:translation, so this costs nothing in size and saves writing

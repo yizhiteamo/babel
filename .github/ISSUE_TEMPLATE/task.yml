@@ -1,11 +1,11 @@
 name: 开发任务
-description: 一个可以单独实现、单独验收的任务（通常对应 docs/milestones/ 中的一个条目）
+description: 一个可以单独实现、单独验收的改动（依据 docs/features/ 的验收条件）
 body:
   - type: textarea
     id: background
     attributes:
       label: 背景
-      description: 为什么要做；对应哪个里程碑条目。引用文档，不要复制文档内容。
+      description: 为什么要做；对应 docs/features/ 的哪条验收条件或哪个 Issue。引用文档，不要复制文档内容。
     validations:
       required: true
   - type: textarea

@@ -15,7 +15,7 @@ every other part of the app continues to work without a network.
 
 On-device translation was measured and it tops out well short of what users
 expect. Three engines on the same thirteen hand-transcribed balloons
-(`docs/milestones/v2.md`):
+(`docs/notes/v2.md`):
 
 | | Quality | Size |
 |---|---|---|
@@ -58,7 +58,7 @@ guaranteed rather than incidental (ADR 005).
   instruction-following model stops following instructions. Measured on this
   project's own pages, a chat model answered `…あ` with `哈哈` and replied to
   `…あんまりわかんないケドッ` with 「我不会翻译日语，也不会参与翻译」
-  (`docs/milestones/v2.md`). That same finding is what chose opus-mt over a local
+  (`docs/notes/v2.md`). That same finding is what chose opus-mt over a local
   LLM, in its own words: a narrow translator "cannot refuse or ramble".
 
   DeepL is that reasoning reaching the network. It is not a vendor of the same

@@ -961,7 +961,7 @@ private fun TileRequestResult.messageRes(): Int = when (this) {
  * The switch that lets recognised text leave the device.
  *
  * On-device translation tops out around half the distance of a hosted model
- * (`docs/milestones/v2.md`), so the offer is real — but it costs the app's
+ * (`docs/notes/v2.md`), so the offer is real — but it costs the app's
  * privacy posture, and the row says so in the same breath while it applies,
  * rather than in a screen nobody opens (ADR 010). Switching on opens the setup,
  * because a remote route with no endpoint would send nothing.

@@ -191,7 +191,7 @@ The options serve two different situations — an app that is all comics, and
 a comic appearing inside some other app — and a real product probably wants one
 of each. Untouched for now by the user's decision, until there is use to say
 which matters more: the risk is recorded, the code is not changed, and it must
-be settled before any release (`docs/milestones/open-items.md` #14).
+be settled before any release (issue #17).
 
 ## Visibility of screen reading
 

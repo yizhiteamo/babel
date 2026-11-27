@@ -6,13 +6,11 @@ copy-paste chore.
 
 ## Status
 
-V1 in progress. The translation pipeline works end to end in tests: language resolution, privacy
-exclusion, coordination with stale-result rejection, caching, and on-device translation via ML Kit.
+V1 (text translation) and V2 (manga translation) are complete; `0.2.0` is published as a
+pre-release under GitHub Releases. V3 (game translation) is being built.
 
-Not yet built: accessibility text acquisition and overlay rendering — the two pieces that need a
-real device.
-
-See `docs/roadmap.md` for version-level state and `docs/milestones/` for detail.
+See `docs/roadmap.md` for version-level state, and the repository's Issues and Milestones for
+work in progress. How changes are made is in `docs/workflow.md`.
 
 ## Phases
 
@@ -30,7 +28,7 @@ Requires JDK 17 and the Android SDK (`compileSdk` 35, `minSdk` 26).
 
 ```bash
 ./gradlew assembleDebug
-./gradlew test
+./gradlew build      # lint and all unit tests, as CI runs it
 ```
 
 Create `local.properties` with `sdk.dir=` pointing at your Android SDK.
@@ -48,12 +46,16 @@ app/                      Compose UI, DI wiring
 core/model/               project-owned models (pure Kotlin)
 core/common/              dispatchers, logging, redaction (pure Kotlin)
 core/testing/             shared test doubles
-domain/                   pipeline contracts and coordinator (pure Kotlin)
+domain/                   pipeline contracts, coordinator, manga and game rules (pure Kotlin)
 data/settings/            DataStore-backed settings
-data/translation/         ML Kit on-device translator, in-memory cache
-platform/accessibility/   accessibility text acquisition
+data/translation/         on-device and remote translators, caches
+platform/screen/          screen-frame contracts
+platform/accessibility/   accessibility text acquisition, screenshots
+platform/capture/         manga OCR and balloon detection
+platform/game/            game text from the game's window
 platform/overlay/         overlay rendering
-docs/                     architecture, features, systems, decisions
+tools/                    soak test and model evaluation scripts
+docs/                     architecture, features, systems, decisions, workflow; notes (history)
 ```
 
 The domain modules deliberately do not use the Android Gradle plugin, so platform types cannot

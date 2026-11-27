@@ -556,7 +556,7 @@ class CaptureTextSource @Inject internal constructor(
         // How the source was set travels with how it looked: a renderer given
         // vertical dialogue can set the translation vertically too, which is
         // both how lettering looks and how a translation comes to cover the
-        // text it replaces (`docs/milestones/v2.md`).
+        // text it replaces (`docs/notes/v2.md`).
         val style = FrameSampler.sample(frame, text).copy(orientation = set)
         val background = style.backgroundColor ?: return Placement(text, style)
 

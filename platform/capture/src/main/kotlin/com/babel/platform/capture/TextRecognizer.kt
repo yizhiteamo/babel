@@ -9,7 +9,7 @@ import com.babel.domain.vision.RecognizedLine
  *
  * Engine types stay behind this interface for the same reason translation
  * providers do (ADR 005): the pipeline must not change shape when the
- * recogniser is replaced. That matters here — `docs/milestones/v2.md` records
+ * recogniser is replaced. That matters here — `docs/notes/v2.md` records
  * that OCR accuracy is V2's known quality ceiling, so swapping engines is a
  * foreseeable change, not a hypothetical one.
  */
@@ -20,7 +20,7 @@ internal interface TextRecognizer {
      * null to leave the question to detection.
      *
      * Knowing beats detecting — language identification run on OCR output
-     * attributed Japanese manga to Finnish (`docs/milestones/v2.md`) — but the
+     * attributed Japanese manga to Finnish (`docs/notes/v2.md`) — but the
      * engine can only vouch for what it actually read, not for what it is built
      * to read. ML Kit's Japanese recogniser also reads Latin, and stamping `ja`
      * on an English page had manga mode translating it ja→zh.

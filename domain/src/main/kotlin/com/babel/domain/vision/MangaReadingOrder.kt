@@ -9,7 +9,7 @@ import com.babel.core.model.TextBounds
  * order the model emitted them, which is invisible while each balloon is its own
  * sentence and is exactly what breaks when one sentence spans several: joining a
  * balloon to "the next one" means nothing without an order
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  *
  * Rows come first in either direction — a balloon slightly lower but far to the
  * side is still read first — so positions are banded before they are compared.

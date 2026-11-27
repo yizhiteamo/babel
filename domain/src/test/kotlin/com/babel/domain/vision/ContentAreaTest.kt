@@ -9,7 +9,7 @@ import kotlin.test.assertNull
 
 /**
  * The boxes below are the ones Edge reported on a phone, 1440 wide, for a
- * chapter served as a column of images (`docs/milestones/v2.md`).
+ * chapter served as a column of images (`docs/notes/v2.md`).
  */
 class ContentAreaTest {
 

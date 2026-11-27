@@ -6,7 +6,7 @@ package com.babel.domain.vision
  * Manga cuts one sentence across several balloons, and translating each half on
  * its own destroys it: `わたしの` / `めを見て` came back as 我的 and
  * 看着我的眼睛, so the first balloon said nothing at all. Joined, DeepL returns
- * 看着我的眼睛 — the whole line (`docs/milestones/v2.md`).
+ * 看着我的眼睛 — the whole line (`docs/notes/v2.md`).
  *
  * But joining cannot be done on adjacency. Two *separate* utterances joined
  * lose one of themselves, measured on the same run: `はい` +

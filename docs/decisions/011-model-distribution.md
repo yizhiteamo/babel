@@ -16,7 +16,7 @@ open, in its own words:
 
 > How the file reaches a user's device — bundled or fetched — is a separate
 > question, and one worth answering after these numbers rather than before them.
-> (`docs/milestones/v2.md`)
+> (`docs/notes/v2.md`)
 
 The numbers arrived. What they did not change is that **nobody could run any of
 it**: the weights are read from `getExternalFilesDir(null)/models/`, a directory
@@ -76,7 +76,7 @@ uses manga mode should pay it.
 
 `ogkalu/comic-text-and-bubble-detector` is Apache-2.0. That was checked when the
 model was chosen, and a GPL-3.0 alternative several desktop tools use was
-rejected on exactly this ground (`docs/milestones/v2.md`) — a decision taken
+rejected on exactly this ground (`docs/notes/v2.md`) — a decision taken
 before it was needed, and needed now.
 
 Redistribution triggers section 4 of that licence: the licence text and the

@@ -71,7 +71,7 @@ data class TextElement(
      * it returns is Japanese. Detecting the language from that text instead is
      * measurably unreliable — on one real page, four translations were
      * attributed to Japanese once, English twice and Finnish once
-     * (`docs/milestones/v2.md`). Accessibility leaves this null: a node carries
+     * (`docs/notes/v2.md`). Accessibility leaves this null: a node carries
      * no such claim.
      *
      * A manual override by the user still wins; this only replaces guessing.
@@ -101,7 +101,7 @@ data class TextElement(
      * blocks lettered on the art: with the page as context the model
      * translated other blocks' text into each of them, sometimes several
      * blocks run together; with none, all four were right. Context was
-     * justified on dialogue (`docs/milestones/v2.md`), and descriptions,
+     * justified on dialogue (`docs/notes/v2.md`), and descriptions,
      * captions and labels are not dialogue.
      */
     val conversational: Boolean = false,

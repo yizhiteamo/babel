@@ -30,7 +30,7 @@ import org.junit.runner.RunWith
  * lands a few pixels differently every time. Its closing line names the one
  * thing not tried — *"matching balloons between consecutive frames by position
  * and scroll delta, rather than on the pixels it hands over"*
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  *
  * That idea rests on a premise this measures: **after shifting by the scroll,
  * do the boxes line up?** If the same balloon comes back within a few pixels of

@@ -1,8 +1,8 @@
 # V3 — Immersive Game Translation
 
-> **Draft for review (2026-10-07).** The decisions below were agreed in
-> discussion; the numbers marked *estimate* are not measured yet, and the three
-> spikes in `docs/milestones/v3.md` decide whether the design stands.
+> **Agreed (2026-10-07).** The three spikes held (`docs/notes/v3.md`), so the
+> design stands. The numbers marked *estimate* are still unmeasured; the
+> acceptance status is tracked in GitHub issue #28.
 
 ## Goal
 
@@ -33,7 +33,7 @@ one).
 | Question | Decision |
 |---|---|
 | Lowest Android version | **14 (API 34).** Game mode needs a screenshot of the game's window alone (`takeScreenshotOfWindow`), so that once a translation covers the original, the next line is still visible to Babel. V1 stays at 8, manga mode at 11. |
-| Where it runs | **Only in games.** Recognised by the system's game category, with a manual add for games that do not declare it. Never in other apps — the same concern as `open-items.md` #14, settled here for this mode. |
+| Where it runs | **Only in games.** Recognised by the system's game category, with a manual add for games that do not declare it. Never in other apps — the same concern as issue #17, settled here for this mode. |
 | Same language as the target | **Not translated.** Already the pipeline's behaviour (`Unchanged`); game mode additionally remembers a game's language once it is settled, so it stops asking. |
 | Look | **Fit the game's UI.** Where the text sits on a plain or smoothly graded panel, the original is erased and the translation drawn in its place. Elsewhere it is not translated, or falls back to the existing box. |
 | What is translated | **The story, and the interface the reader cannot read** (2026-10-14; `docs/systems/game-text.md`). Kana labels on plain panels are translated, kanji labels are left, and nothing behind a pop-up's dimmer is translated. Before this: **the story, not the interface** (2026-10-11). Dialogue, narration, choices, a pop-up's sentences and the speaker's name over them; anything in the place a conversation has been in the last minute. Menus, tiles, buttons and battle labels are left as they are: measured on Blue Archive's mission menu and Fate/Grand Order's battles, they are short words a player learns in an hour (most of them kanji a Chinese reader reads anyway), drawn on art the patch cannot paint back cleanly, and translated they came out half-covered, came and went as the art moved, and stood between the player and the buttons. |
@@ -47,7 +47,7 @@ one).
 - **region change detection**: watching only the areas that hold text, and reading a region again only when it changed
 - **text stability**: waiting until a typewriter-style line has finished appearing before reading it
 - **horizontal OCR** on the on-device general engine; the manga recogniser is not used
-- **what not to translate**, by general rules: numbers, levels, currency and times; text on complex artwork; readings that differ between frames (stylised lettering — measured in `open-items.md` #21); very short Latin labels
+- **what not to translate**, by general rules: numbers, levels, currency and times; text on complex artwork; readings that differ between frames (stylised lettering — measured in issue #13); very short Latin labels
 - **erase and redraw**: filling the original line from its own backdrop (row-wise interpolation from the pixels either side), then drawing the translation with the original's colour, alignment and line height, scaled to fit
 - **long press for the original, short tap passed through** to the game (`dispatchGesture`)
 - **caching** of interface text, which repeats constantly in a game

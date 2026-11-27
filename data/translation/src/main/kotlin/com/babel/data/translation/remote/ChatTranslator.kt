@@ -36,7 +36,7 @@ import okhttp3.Response
  *
  * On-device translation was measured against a hosted model on the same fifteen
  * balloons and tops out around half the distance, at 579MB
- * (`docs/milestones/v2.md`). Closing the rest means sending the text somewhere,
+ * (`docs/notes/v2.md`). Closing the rest means sending the text somewhere,
  * which is a decision the user makes rather than one this code assumes — see
  * ADR 010 and `docs/systems/privacy.md`.
  *
@@ -211,7 +211,7 @@ class ChatTranslator(
      * Measured rather than assumed: a plain `https://…` and a `host:port`
      * already came back verbatim, so the model does this by itself for inputs
      * it recognises as addresses. The instruction extends that to the ones it
-     * would otherwise want to discuss (`docs/milestones/v2.md`).
+     * would otherwise want to discuss (`docs/notes/v2.md`).
      *
      * The fourth is a separate defect: `apparently` was left sitting in the
      * middle of a Chinese sentence. Nothing had ever asked for the whole output
@@ -277,7 +277,7 @@ class ChatTranslator(
         append(" in the translation, never left out or replaced by a description.")
         // Two things a user reported on real pages: misread characters carried
         // straight into the translation (嶺幻 read as 積幻, 真実 as 基実 —
-        // `docs/milestones/v2.md` measured both), and translations that follow
+        // `docs/notes/v2.md` measured both), and translations that follow
         // the source's word order into stilted Chinese. The recogniser's text
         // is a reading, not the original; the model can often see what was
         // meant, if it is told it may.
@@ -300,7 +300,7 @@ class ChatTranslator(
      * sentence correctly. `zh` is ambiguous — Chinese, script and region
      * unsaid — and the user reaches it by picking Chinese by hand, while
      * following the system gives the fuller tag. So the defect appeared only
-     * for people who chose their language deliberately (`docs/milestones/v2.md`).
+     * for people who chose their language deliberately (`docs/notes/v2.md`).
      *
      * Falls back to the tag itself for anything `Locale` cannot name, which is
      * no worse than what this did before.

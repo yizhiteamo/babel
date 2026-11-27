@@ -17,7 +17,7 @@ local.properties
 
 # Real material to test against — manga pages (comic/), game screenshots
 # (game/), the icon's source art (icon/). Supplied locally, never committed:
-# most of it is somebody else's copyrighted work (docs/milestones/v2.md).
+# most of it is somebody else's copyrighted work (docs/notes/v2.md).
 /material-sample/
 # Where the manga pages used to live, kept so an old checkout cannot leak them.
 /comic-sample/

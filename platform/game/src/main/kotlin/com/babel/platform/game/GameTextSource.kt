@@ -50,7 +50,7 @@ import kotlinx.coroutines.tasks.await
 /**
  * Game text: one window screenshot per call, read whole, settled line by line.
  *
- * Every step is one of the spikes' findings (`docs/milestones/v3.md`):
+ * Every step is one of the spikes' findings (`docs/notes/v3.md`):
  *
  * - the picture is of the game's **window**, so Babel's own translations are
  *   not in it and the next line can be read while the last is still covered;
@@ -256,7 +256,7 @@ class GameTextSource @Inject constructor(
 
     /**
      * What game mode spent in the last minute, logged once a minute: the
-     * measure for heat and battery (`docs/milestones/v3.md`, criterion 6).
+     * measure for heat and battery (`docs/notes/v3.md`, criterion 6).
      * Counts and times only.
      */
     private inner class Duty {

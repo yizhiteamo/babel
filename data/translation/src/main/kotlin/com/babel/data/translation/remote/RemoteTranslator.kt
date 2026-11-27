@@ -31,7 +31,7 @@ import kotlinx.coroutines.flow.onEach
  * ADR 010 chose an OpenAI-compatible chat endpoint precisely so one shape would
  * cover every provider, and that reasoning held until the measurements did not:
  * a chat model breaks down on short input, which is what a comic balloon is
- * (`docs/milestones/v2.md`). A translation API has no instruction to disobey.
+ * (`docs/notes/v2.md`). A translation API has no instruction to disobey.
  * The two are different protocols, not two vendors of one, so they are two
  * implementations.
  */

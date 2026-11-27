@@ -18,7 +18,7 @@ enum class ThermalLevel {
  * How long game mode waits between pictures of a game's window.
  *
  * A still screen costs as much as a busy one when every picture is taken:
- * measured on Blue Archive's student list (`docs/milestones/v3.md`, "Throttling
+ * measured on Blue Archive's student list (`docs/notes/v3.md`, "Throttling
  * when still"), 171 pictures a minute, not one of them read by the recogniser,
  * and still about 37% of one core — the screenshot's copy, the look for
  * replaced lines, and the reading that finds nothing new. So the pace follows

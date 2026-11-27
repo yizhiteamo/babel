@@ -70,7 +70,7 @@ screen is small enough to pass for a label. The column is followed from the
 largest container — same left and right edges, each node carrying it further up
 or down — and every node in it is page, whatever its size. Taking the single
 image instead left every balloon on its neighbours unread and broke scroll
-reuse (`docs/milestones/v2.md`).
+reuse (`docs/notes/v2.md`).
 
 ### Scrolling takes the image path down
 
@@ -86,7 +86,7 @@ them explicitly; clearing resets the last recognised frame, so the next settled
 frame is rescanned and they return in the right places.
 
 Measured before this existed: a single swipe left three translations at their old
-positions for 3.6 seconds (`docs/milestones/v2.md`).
+positions for 3.6 seconds (`docs/notes/v2.md`).
 
 ### Standing down means clearing
 

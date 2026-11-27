@@ -22,7 +22,7 @@ data class SourceStyle(
      * A renderer that knows the original ran in vertical columns can set the
      * translation the same way, which is both how manga lettering looks and how
      * a translation comes to cover the text it replaces rather than sitting
-     * beside it (`docs/milestones/v2.md`).
+     * beside it (`docs/notes/v2.md`).
      */
     val orientation: TextOrientation? = null,
     /**

@@ -4,17 +4,17 @@ This file records version-level product state.
 
 It should remain concise.
 
-Detailed task progress belongs in `docs/milestones/`.
+Work, progress and open defects are GitHub Issues, grouped by GitHub Milestone, never a document (`docs/workflow.md`).
 Stable version definitions belong in `docs/features/`.
-Git records implementation history.
+Git records implementation history; `docs/notes/` keeps each version's lab notes as history.
 
 ---
 
 | Version | Status | Definition | Progress |
 |---|---|---|---|
-| V1 — Immersive Text Translation | Complete | `features/v1-text-translation.md` | `milestones/v1.md` |
-| V2 — Immersive Manga Translation | Complete | `features/v2-manga-translation.md` | `milestones/v2.md` |
-| V3 — Immersive Game Translation | Active | `features/v3-game-translation.md` | `milestones/v3.md` |
+| V1 — Immersive Text Translation | Complete | `features/v1-text-translation.md` | Milestone "V1/V2 遗留" (what is still owed) |
+| V2 — Immersive Manga Translation | Complete | `features/v2-manga-translation.md` | Milestone "V1/V2 遗留" (what is still owed) |
+| V3 — Immersive Game Translation | Active | `features/v3-game-translation.md` | Milestone "V3 — 沉浸式游戏翻译"; acceptance status in issue #28 |
 
 ---
 
