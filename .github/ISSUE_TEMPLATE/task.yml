@@ -1,0 +1,55 @@
+name: 开发任务
+description: 一个可以单独实现、单独验收的任务（通常对应 docs/milestones/ 中的一个条目）
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: 为什么要做；对应哪个里程碑条目。引用文档，不要复制文档内容。
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 要做什么，以及明确不做什么。
+      value: |
+        做：
+        -
+
+        不做：
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收条件
+      description: 每条都应能被测试或观察判定。PR 中会逐条对照。
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: docs
+    attributes:
+      label: 要读的文档与涉及的模块
+      description: 如 docs/features/v3-game-translation.md 第 6 条、docs/systems/game-text.md；:platform:game
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: 测试要求
+      description: 需要新增或必须保持通过的测试；需要真机时写清设备、场景和要观察什么。
+    validations:
+      required: true
+  - type: dropdown
+    id: device
+    attributes:
+      label: 是否需要真机验证
+      options:
+        - 否（./gradlew build 足够）
+        - 是（PR 必须附真机证据，并加 needs-device-test 标签）
+    validations:
+      required: true

@@ -1,7 +1,7 @@
 # ADR 007 — Single Agent Instruction File
 
 ## Status
-Accepted
+Superseded by ADR 012 — `AGENTS.md` and `GEMINI.md` return as pointers to `CLAUDE.md`, never copies.
 
 ## Decision
 The project constitution and the agent operating guide are merged into `CLAUDE.md`. `AGENTS.md` is deleted.

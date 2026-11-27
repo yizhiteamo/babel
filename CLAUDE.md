@@ -154,6 +154,7 @@ Common system documents:
 - Game text (what game mode translates, and the scene corpus): `docs/systems/game-text.md`
 - Releases (when to publish, what each needs): `docs/systems/release.md`
 - Testing: `docs/systems/testing.md` (traps and principles); `docs/testing/` (the pages and images to test against)
+- Development process (roles, Issues, PRs, review): `docs/workflow.md`
 
 Do not load all documentation unless the task genuinely spans all systems.
 
@@ -353,9 +354,9 @@ Testing against a device, an emulator, or the pipeline has its own set of traps,
 
 ## 提交节奏
 
-以 `docs/milestones/v1.md` 中的单个条目为提交单位。提交前必须 `./gradlew build` 通过。
+所有改动经 PR 进入 `main`，不直接推送（发版只推 tag）。一个 GitHub Issue（对应 `docs/milestones/` 中的一个条目或其可独立验收的部分）= 一个 PR，squash 合并后在 `main` 上是一个提交。推送前必须 `./gradlew build` 通过，合并前 CI 必须通过。角色分工、分支命名、PR 内容与审查清单见 `docs/workflow.md`。
 
-格式：`<type>(<scope>): <简述>`，如 `feat(domain): 实现 TranslationCoordinator`。
+格式（提交与 PR 标题相同）：`<type>(<scope>): <简述>`，如 `feat(domain): 实现 TranslationCoordinator`。
 type 取 feat / fix / refactor / test / docs / chore；scope 取模块名（domain、data、platform、app）。
 
-勾选里程碑条目与对应实现放在同一个 commit —— 条目只有在 `docs/features/` 的验收条件真正满足时才能勾选。
+勾选里程碑条目与对应实现放在同一个 PR —— 条目只有在 `docs/features/` 的验收条件真正满足时才能勾选。
