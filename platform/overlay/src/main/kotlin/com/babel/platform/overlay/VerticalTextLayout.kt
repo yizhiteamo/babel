@@ -10,7 +10,7 @@ package com.babel.platform.overlay
  * the translation comes to *cover* the text it replaces: the original occupies
  * three or four upright columns, so a translation set the same way lands on top
  * of them instead of beside them. On real pages that was the difference between
- * one readable text and two overlapping ones (`docs/milestones/v2.md`).
+ * one readable text and two overlapping ones (`docs/notes/v2.md`).
  *
  * Pure arithmetic, for the same reason [TextFitting] is: this is where the
  * layout bugs will be, and a `Canvas` cannot be had in a JVM unit test.

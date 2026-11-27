@@ -129,7 +129,7 @@ cards are ignored:
   renamed app was not until it was locked again.
 - **A foreground service would not.** A bound accessibility service already
   runs at importance 125, the same as a foreground service, and the kills above
-  were at 125. #11 in `docs/milestones/open-items.md` is closed on this.
+  were at 125.
 
 ### What Babel does about it
 

@@ -9,7 +9,7 @@ import kotlin.math.abs
  * The largest container used to be the whole answer, and on a page that is one
  * image it still is. But a webtoon site serves a chapter as a column of images,
  * and there the largest container is only whichever image shows the most of
- * itself. Measured in Edge on twelve stacked pages (`docs/milestones/v2.md`):
+ * itself. Measured in Edge on twelve stacked pages (`docs/notes/v2.md`):
  *
  * - about 62 untranslated balloons on sixteen settled screens, every one of
  *   them on an image beside the chosen one

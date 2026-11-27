@@ -242,7 +242,7 @@ class DefaultTranslationCoordinator(
             // is what a Chinese fan translation of a Japanese comic looked
             // like with manga mode on. Only checked when the source is known:
             // null means "detect it", and the provider's guess is not something
-            // to act on here (`docs/milestones/v2.md`).
+            // to act on here (`docs/notes/v2.md`).
             if (languages.source != null && languages.source == languages.target) {
                 logger.debug(TAG, "already in the target language: ${element.id.value}")
                 if (tracked.remove(element.id)?.also { it.job?.cancel() } != null) {

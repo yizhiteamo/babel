@@ -25,8 +25,8 @@ pushed or uploaded**, whichever of the two reasons applies.
 
 `0.MINOR.PATCH` until the app is ready to be called 1.0. `versionCode` goes up
 by one with every release, whatever the version name does. Releases stay
-**pre-releases** until `docs/milestones/open-items.md` section C (wanted before
-any release) is empty.
+**pre-releases** until no open GitHub issue carries the `before-release` label
+(today: #17).
 
 ## What every release needs
 
@@ -43,5 +43,25 @@ any release) is empty.
   quick-settings tile, recovery after a force stop.
 - Release notes in Chinese: what changed, which file to download, system
   requirements, known problems.
-- Only the tag is pushed for the release itself; pushing `main` is a separate
-  decision.
+- Only the tag is pushed for the release itself. `main` only ever changes
+  through pull requests (`docs/workflow.md`).
+
+## Branches
+
+The tag is the record of a release; there is no standing release branch.
+
+- **Minor release** (`0.3.0`): tag the commit on `main` that completes the
+  milestone, then build from that tag in a separate worktree.
+- **Patch release** (`0.2.1`) when `main` has moved past what should ship:
+  1. the fix is merged into `main` first, through its own PR;
+  2. `release/0.2` is created from `v0.2.0` (or the last `v0.2.x`) and pushed,
+     if it does not exist yet;
+  3. the fix is cherry-picked onto a branch from `release/0.2` and merged into
+     it by a PR, so CI runs on exactly what ships;
+  4. `v0.2.1` is tagged on `release/0.2` and built from there.
+
+  When `main` has not moved past the release, a patch is tagged on `main`
+  instead and no branch is needed.
+
+A release branch is never merged back into `main` — every fix already came
+from there.

@@ -6,7 +6,7 @@ import com.babel.domain.game.GameTextFilter.Verdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The cases are lines measured on real screenshots (`docs/milestones/v3.md`, spike 2). */
+/** The cases are lines measured on real screenshots (`docs/notes/v3.md`, spike 2). */
 class GameTextFilterTest {
 
     private fun judge(text: String, error: Double, height: Int = 56) =

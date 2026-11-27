@@ -44,7 +44,7 @@ interface ScreenFrameSource {
      *
      * Game mode reads this rather than [latestFrame]: a picture of the game's
      * window does not contain Babel's own translations, so the next line is
-     * still visible once the last one is covered (`docs/milestones/v3.md`,
+     * still visible once the last one is covered (`docs/notes/v3.md`,
      * spike 1). Android 14 and up; null everywhere else. Same ownership rule
      * as [latestFrame].
      */

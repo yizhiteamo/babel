@@ -116,7 +116,7 @@ interface ImageTextScanner : TextSource {
      * every scroll, while this happens when image translation is finished with
      * for now. A scanner backed by models measured at **589MB** with them
      * loaded, and holding that while the mode is off buys nothing
-     * (`docs/milestones/v2.md`).
+     * (`docs/notes/v2.md`).
      *
      * Reading again afterwards must still work — this is a cost to pay again,
      * not a shutdown.

@@ -66,7 +66,7 @@ The routes are not wrapped identically, and that is deliberate.
 `FragmentingTranslator` splits a line at its ellipses, which measurably recovers
 sentences ML Kit would otherwise drop; measured against a stronger model the
 same splitting *hurts*, because that model can use the context a whole balloon
-gives it (`docs/milestones/v2.md`). So the wrapper belongs to the engine it
+gives it (`docs/notes/v2.md`). So the wrapper belongs to the engine it
 compensates for, not to the pipeline.
 
 ### Which remote

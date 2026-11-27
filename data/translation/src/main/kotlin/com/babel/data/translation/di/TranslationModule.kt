@@ -42,7 +42,7 @@ object TranslationModule {
      * [FragmentingTranslator] cuts a line at its ellipses, which measurably
      * recovers sentences ML Kit would otherwise drop — but it is a compensation
      * for a weak engine. A stronger one does better on whole balloons and worse
-     * on fragments (`docs/milestones/v2.md`), so the remote route is left
+     * on fragments (`docs/notes/v2.md`), so the remote route is left
      * unwrapped.
      *
      * The remote arm is itself a choice of service — a chat endpoint or DeepL —

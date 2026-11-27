@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  *
  * Joining is right for a fragment and destructive for a complete utterance —
  * `はい` joined to its neighbour came back with the `はい` gone
- * (`docs/milestones/v2.md`). This is the rule that decides which is which, so
+ * (`docs/notes/v2.md`). This is the rule that decides which is which, so
  * the measured cases are guarded rather than merely documented.
  */
 class JapaneseClauseTest {

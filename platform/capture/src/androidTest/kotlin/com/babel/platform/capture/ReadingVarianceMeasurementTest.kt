@@ -32,7 +32,7 @@ import org.junit.runner.RunWith
  * Recognised text is printed, as `PageTextDumpTest` does and for the same
  * reason: the strings are the measurement, the material is local and never
  * committed, and this is a test rather than the app (`docs/systems/privacy.md`).
- * Results: `docs/milestones/v2.md`, *同一气泡每次读得不一样*.
+ * Results: `docs/notes/v2.md`, *同一气泡每次读得不一样*.
  *
  * Prints; asserts nothing.
  *
@@ -90,7 +90,7 @@ class ReadingVarianceMeasurementTest {
      *   stretches every crop to 224x224, so a box 126 or 209px tall gives the
      *   same title two different shapes
      *
-     * None of them won (`docs/milestones/v2.md`, *同一气泡每次读得不一样*):
+     * None of them won (`docs/notes/v2.md`, *同一气泡每次读得不一样*):
      * `trim` steadied the stylised titles of pages 14–16 and unsettled the
      * clean dialogue of pages 10–12; `reach` pulled in neighbouring balloons;
      * `square` made manga-ocr invent sentences.

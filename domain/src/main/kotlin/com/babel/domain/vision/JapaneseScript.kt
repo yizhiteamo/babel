@@ -5,7 +5,7 @@ package com.babel.domain.vision
  *
  * A recogniser is built for one language, and telling the pipeline which beats
  * letting it guess — language identification run on OCR output attributed
- * Japanese manga to Finnish (`docs/milestones/v2.md`). But "the engine reads
+ * Japanese manga to Finnish (`docs/notes/v2.md`). But "the engine reads
  * Japanese" and "this line is Japanese" are different claims, and only the
  * first one is certain in advance.
  *
@@ -48,7 +48,7 @@ object JapaneseScript {
      * Given English balloons it returns fluent-looking nonsense —
      * `WindrisntthatSamantha2Thebig.hatThettbooksting...` off a real page — and
      * that nonsense was translated and drawn over readable English
-     * (`docs/milestones/v2.md`). Empty output already had a fallback; wrong
+     * (`docs/notes/v2.md`). Empty output already had a fallback; wrong
      * output did not, because nothing was asking this question.
      */
     fun couldBeJapanese(text: String): Boolean =

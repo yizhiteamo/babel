@@ -10,7 +10,7 @@ import com.babel.core.model.TextBounds
  * (`BubbleBounds`), bounded by its balloon — and each did so alone. Two
  * balloons drawn touching, or one balloon the detector reports as two
  * overlapping outlines, then gave two boxes that lie over each other. Measured
- * on fourteen screens (`docs/milestones/v2.md`): 18 overlapping pairs out of
+ * on fourteen screens (`docs/notes/v2.md`): 18 overlapping pairs out of
  * 144 translations, 12 of them in intersecting outlines and 6 on lettering
  * with no outline at all, the worst covering 15% of the neighbour's text.
  *

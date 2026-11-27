@@ -23,7 +23,7 @@ import kotlinx.coroutines.flow.onEach
  * whole sentences the engine otherwise drops — but it is a compensation for a
  * weak engine, not an improvement in itself. Measured against a stronger model,
  * feeding it *whole* balloons is what helps and splitting is what hurts
- * (`docs/milestones/v2.md`). So the remote route gets the text as it stands.
+ * (`docs/notes/v2.md`). So the remote route gets the text as it stands.
  *
  * ## Why [id] moves
  *

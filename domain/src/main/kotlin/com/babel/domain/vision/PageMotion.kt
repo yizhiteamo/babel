@@ -9,7 +9,7 @@ import kotlin.math.abs
  * is blind to a page that repeats: identical balloons at a fixed pitch vote
  * just as strongly for a shift one period off. Measured on a built page whose
  * balloons repeat in size and position over different artwork
- * (`docs/milestones/v2.md`), 4 of 32 flings were placed wrong that way — once
+ * (`docs/notes/v2.md`), 4 of 32 flings were placed wrong that way — once
  * by 4875px — which reuses one balloon's reading for another.
  *
  * The artwork around the balloons does not repeat, so the screens themselves

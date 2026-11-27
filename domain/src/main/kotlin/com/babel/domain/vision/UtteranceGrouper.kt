@@ -5,7 +5,7 @@ package com.babel.domain.vision
  *
  * Manga cuts a sentence across balloons, and translating the halves separately
  * destroys it — `わたしの` / `めを見て` came back as 我的 and 看着我的眼睛, so
- * the first balloon said nothing (`docs/milestones/v2.md`). Joined, it is one
+ * the first balloon said nothing (`docs/notes/v2.md`). Joined, it is one
  * line. Joining the *wrong* pair is equally destructive: two separate
  * utterances run together lose one of themselves, measured on the same day.
  *

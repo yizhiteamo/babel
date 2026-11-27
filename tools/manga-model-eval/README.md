@@ -38,7 +38,7 @@ python tools/manga-model-eval/endtoend.py models material-sample/comic/jap-mag-0
 `detect.py` checks the detector alone against hand-measured bubble rectangles.
 `endtoend.py` runs detector and recogniser together and scores the text with the
 same measure as `BubbleScoring` on the Android side, so the figures line up with
-everything else recorded in `docs/milestones/v2.md`.
+everything else recorded in `docs/notes/v2.md`.
 
 ## One trap worth knowing
 
@@ -97,14 +97,14 @@ PYTHONIOENCODING=utf-8 <short-path>/Scripts/python translate.py opus ../../model
 ship. `--fp32` reads the export as it came and `--mm8` the one with only its
 matrix multiplies quantised; both exist because quantisation turned out to cost
 real quality, and the three have to be read side by side. The numbers are in
-`docs/milestones/v2.md`.
+`docs/notes/v2.md`.
 
 CPU-only torch is about 200MB rather than the 2.5GB of the default wheel, and
 nothing from this toolchain ships — it exists to produce one `.onnx`, which is
 not committed either.
 
 Qwen2.5-0.5B-Instruct is Apache-2.0 upstream. The result was **negative**, and
-the numbers are in `docs/milestones/v2.md`: 3.5s per bubble against a whole-page
+the numbers are in `docs/notes/v2.md`: 3.5s per bubble against a whole-page
 budget of 1.9s, 483MB, and an instruction-following collapse on short bubbles.
 
 One trap worth repeating here: `model_q4f16.onnx` does not load on the CPU

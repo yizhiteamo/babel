@@ -27,7 +27,7 @@ import com.babel.domain.vision.OcrPunctuation
  *
  * Wrapping the provider rather than living inside one: this is about what any
  * engine can digest, and the engine is expected to change
- * (`docs/milestones/v2.md`). It applies to every source, and is inert for text
+ * (`docs/notes/v2.md`). It applies to every source, and is inert for text
  * without ellipses — which is nearly all accessibility text.
  */
 class FragmentingTranslator(private val delegate: Translator) : Translator {

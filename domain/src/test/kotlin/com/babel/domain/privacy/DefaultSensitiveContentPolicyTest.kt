@@ -79,7 +79,7 @@ class DefaultSensitiveContentPolicyTest {
      * The case that provoked the rule: the browser's address bar reached a chat
      * model, which answered the reader — "I can't access files on your device.
      * Please paste the text…" — and that sentence was drawn over the address
-     * bar (`docs/milestones/v2.md`).
+     * bar (`docs/notes/v2.md`).
      */
     @Test
     fun `addresses are excluded`() {

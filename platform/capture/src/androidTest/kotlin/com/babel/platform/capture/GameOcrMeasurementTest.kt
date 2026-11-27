@@ -12,7 +12,7 @@ import org.junit.runner.RunWith
 
 /**
  * What the on-device general recogniser makes of game screenshots, and how
- * long it takes — V3's second spike (`docs/milestones/v3.md`).
+ * long it takes — V3's second spike (`docs/notes/v3.md`).
  *
  * Game text is horizontal print on panels, not hand-lettered vertical columns,
  * so the manga recogniser is not the candidate; ML Kit's Japanese model reads

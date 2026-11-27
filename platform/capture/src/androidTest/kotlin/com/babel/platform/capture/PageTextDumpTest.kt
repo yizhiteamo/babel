@@ -170,7 +170,7 @@ class PageTextDumpTest {
      * the callback — so the very balloons the recall question is about are the
      * ones that tool cannot see. Measured on `kr-mag-01`: nine detected, six
      * delivered, and the three missing were known only by their sizes from a
-     * log line (`docs/milestones/v2.md`).
+     * log line (`docs/notes/v2.md`).
      *
      * So this asks the detector and the recogniser directly and prints a row
      * per balloon, empty or not, making the page's arithmetic add up: detected

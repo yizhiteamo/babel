@@ -148,7 +148,7 @@ internal class OverlayWindow(
      * both seen here; only the tap handed on afterwards falls through. The
      * change takes ~80 ms to reach the input system, and a tap injected
      * sooner landed on this window again and was handed on twice - the game
-     * skipped a line (`docs/milestones/v3.md`, spike 3). So the tap waits until
+     * skipped a line (`docs/notes/v3.md`, spike 3). So the tap waits until
      * [UNTOUCHABLE_SETTLE_MS] after touch-down, which an ordinary finger tap
      * already lasts.
      */
@@ -317,7 +317,7 @@ internal class OverlayWindow(
 
             // Vertical dialogue gets a vertical translation, which is how
             // lettering looks and how the translation lands on the columns it
-            // replaces instead of beside them (`docs/milestones/v2.md`).
+            // replaces instead of beside them (`docs/notes/v2.md`).
             // Accessibility reports no orientation, so V1 stays horizontal.
             //
             // **Unless it will not fit.** Vertical setting runs out of room

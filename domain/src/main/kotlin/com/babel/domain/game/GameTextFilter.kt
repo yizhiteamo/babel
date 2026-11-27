@@ -5,7 +5,7 @@ package com.babel.domain.game
  *
  * General rules, not tuned to a title: what decides is what every game shares —
  * whether a line is a number, whether it sits on a plain panel, how big it is.
- * Measured on five screenshots of one game (`docs/milestones/v3.md`, spike 2):
+ * Measured on five screenshots of one game (`docs/notes/v3.md`, spike 2):
  * with these rules every line landed in the right group — dialogue, choices,
  * pop-ups and plain labels kept; logos, stylised lettering, labels drawn on
  * icons and numbers left alone. Five screens prove the signal, not the

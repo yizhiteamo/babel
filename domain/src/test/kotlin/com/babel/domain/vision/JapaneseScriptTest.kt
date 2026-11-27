@@ -51,7 +51,7 @@ class JapaneseScriptTest {
      * The three real strings manga-ocr produced from `jap-mag-08`, an English
      * page. It does not fail on a language it was not built for — it invents
      * one — and those inventions were translated and drawn over the English
-     * (`docs/milestones/v2.md`). Recognition falls back to ML Kit when this
+     * (`docs/notes/v2.md`). Recognition falls back to ML Kit when this
      * says no, so these are what decides it.
      */
     @Test

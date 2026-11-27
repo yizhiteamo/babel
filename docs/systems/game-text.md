@@ -119,6 +119,15 @@ To change a rule:
 1. **Add the scene.** Every misjudgment met in play becomes a scene in the corpus, with its expectation, before it is fixed.
 2. **Fix by a general signal.** Find the rule that took the line in (or left it out), and change that rule using a signal every game shows. A game's or a scene's name is never the signal.
 3. **Keep every scene passing.** All scenes must pass, not only the new one.
+4. **Check story frames too.** `GameTextSourceReplayTest` replays the story frames in `material-sample/game/`; text and layout must not change unless the change meant them to.
+
+On the phone:
+
+- Take corpus screenshots with game mode **off**, so no translation is in the picture.
+- A Blue Archive tap from adb needs a press of about 150 ms (`adb shell input swipe x y x y 150`).
+- Compare speed only back to back on the same screen: the phone throttles when hot.
+
+Work found in play is filed as a GitHub issue from the playtest template (`docs/workflow.md`), one round per issue.
 
 Scenes so far (2026-10-13):
 

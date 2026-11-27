@@ -10,7 +10,7 @@ import kotlin.math.sqrt
 /**
  * Turning the recogniser's lines into what a game actually says: a speaker
  * apart from their affiliation, and one utterance however many lines it wraps
- * over. Measured on Blue Archive (`docs/milestones/v3.md`):
+ * over. Measured on Blue Archive (`docs/notes/v3.md`):
  *
  * - 「ツムギ」 and 「ワイルドハント芸術学院」 come back as one line; the name is
  *   white, the affiliation cyan, 34 px apart.

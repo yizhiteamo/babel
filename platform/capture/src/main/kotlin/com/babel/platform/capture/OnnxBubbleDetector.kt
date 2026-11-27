@@ -28,7 +28,7 @@ import kotlinx.coroutines.withContext
  * 10.6MB quantised. Measured on the desktop across six pages it found every
  * balloon and correctly reported **none** on the character-sheet page that has
  * no dialogue, and end to end with a comic recogniser it read one transcribed
- * page exactly where the shipped pipeline manages 87% (`docs/milestones/v2.md`).
+ * page exactly where the shipped pipeline manages 87% (`docs/notes/v2.md`).
  *
  * ## Where the model comes from
  *
@@ -88,7 +88,7 @@ internal class OnnxBubbleDetector @Inject constructor(
      * `SCORE_FLOOR` and the choice to ignore free text were both set from a
      * six-page desktop run, and a later eight-page run on the device found a
      * dark page where the detector boxes rain and panel edges as balloons
-     * (`docs/milestones/v2.md`). Choosing between a higher floor and demanding
+     * (`docs/notes/v2.md`). Choosing between a higher floor and demanding
      * an enclosing balloon needs the raw scores of the boxes each would drop.
      *
      * A harness could not reimplement this: the input tensor is channel-first,
@@ -109,7 +109,7 @@ internal class OnnxBubbleDetector @Inject constructor(
         // `SIGSEGV, fault addr 0x0, in tid (DefaultDispatch), libonnxruntime.so`
         // — because native code was reading a session that had just been freed.
         // Switching manga mode off is what closes it, and a page being read at
-        // that moment is all it took (`docs/milestones/v2.md`).
+        // that moment is all it took (`docs/notes/v2.md`).
         //
         // A native crash is not catchable: the `try` below never sees it, and
         // the process is gone, which also takes the accessibility service down

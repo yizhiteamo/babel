@@ -76,7 +76,7 @@ Inpainting would improve exactly one thing here: blending the overlay's edges
 into a complex background — screentones, gradients, sound effects painted across
 artwork. That benefit is real but secondary, and does not justify 30–200MB of
 model, inference latency and heat, unless real material shows a high proportion
-of non-flat bubble backgrounds. `docs/milestones/v2.md` records what to measure.
+of non-flat bubble backgrounds. `docs/notes/v2.md` records what to measure.
 
 ## Not a like-for-like comparison
 

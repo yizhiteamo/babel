@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 /**
  * How ML Kit structures a game screenshot — blocks, lines and the elements in
  * each line, with boxes — for designing how speaker lines are split and
- * wrapped dialogue joined (`docs/milestones/v3.md`).
+ * wrapped dialogue joined (`docs/notes/v3.md`).
  *
  * Text is printed: the strings are the measurement, the material is local and
  * never committed, and this is a test (`docs/systems/privacy.md`).

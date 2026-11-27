@@ -32,7 +32,7 @@ import kotlin.coroutines.coroutineContext
  * `kha-white/manga-ocr` via `ogkalu/manga-ocr-onnx` — a vision transformer
  * feeding a text decoder, Apache-2.0. Measured on the desktop it read a whole
  * transcribed page **exactly**, where the shipped ML Kit pipeline manages 87%
- * (`docs/milestones/v2.md`). It is the reason the detector came first: this
+ * (`docs/notes/v2.md`). It is the reason the detector came first: this
  * model expects a cropped balloon, not a screen.
  *
  * ## What it returns

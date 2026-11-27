@@ -297,7 +297,7 @@ class HomeViewModel @Inject constructor(
      *
      * The escape hatch for when detection is wrong, which it can be: a page of
      * English read by the Japanese recogniser came back as nonsense and was
-     * translated as nonsense (`docs/milestones/v2.md`). Everything under this
+     * translated as nonsense (`docs/notes/v2.md`). Everything under this
      * — the setting, the resolver, the provider request — has worked all
      * along; until now there was simply no way to reach it.
      */

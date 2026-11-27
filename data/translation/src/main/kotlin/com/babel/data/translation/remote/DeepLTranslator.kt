@@ -37,7 +37,7 @@ import okhttp3.Response
  * instruction-following model stops following instructions. Measured on this
  * project's own pages, a chat model answered a two-character balloon with
  * laughter and replied to another with "I do not translate Japanese"
- * (`docs/milestones/v2.md`). That finding is what chose opus-mt over a local
+ * (`docs/notes/v2.md`). That finding is what chose opus-mt over a local
  * LLM, on the grounds that a narrow translator "cannot refuse or ramble".
  *
  * This is that same reasoning reaching the network: a translation API has no
@@ -98,7 +98,7 @@ class DeepLTranslator(
             val translated = send(settings, request, target)
             // How long the remote leg takes is the one figure that moves when
             // the engine changes, and the page-latency budget is tracked to the
-            // hundred milliseconds (`docs/milestones/v2.md`). Timing only: no
+            // hundred milliseconds (`docs/notes/v2.md`). Timing only: no
             // source text, no translation, no response body.
             logger.debug(TAG, "translated in ${System.currentTimeMillis() - started}ms")
             when {

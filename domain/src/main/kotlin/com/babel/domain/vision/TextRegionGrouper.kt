@@ -42,7 +42,7 @@ data class GroupingConfig(
  * This exists because a recogniser's own grouping cannot be trusted. Measured on
  * ML Kit: one bubble came back as two separate blocks, while another block held
  * two columns concatenated in the wrong order. Both are geometry problems and
- * are fixed here rather than downstream — see `docs/milestones/v2.md`.
+ * are fixed here rather than downstream — see `docs/notes/v2.md`.
  *
  * Orientation is resolved per line, not per page. Comics mix vertical dialogue
  * with horizontal captions, and the two must never be grouped together: what

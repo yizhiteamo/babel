@@ -18,7 +18,7 @@ import org.junit.runner.RunWith
  * Measures V2 against real manga, which is the one thing its acceptance record
  * admits it never did.
  *
- * `docs/milestones/v2.md` sets three criteria and one rule: a result is only a
+ * `docs/notes/v2.md` sets three criteria and one rule: a result is only a
  * reason to change course if it names which of them failed. So this prints
  * numbers and asserts almost nothing — it is an instrument, not a gate.
  *

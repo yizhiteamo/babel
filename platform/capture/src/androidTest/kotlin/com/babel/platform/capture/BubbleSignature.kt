@@ -10,7 +10,7 @@ import com.babel.domain.vision.ColorAnalysis
  * Identifies a balloon by what it looks like, so the same one is not read twice.
  *
  * Every scroll clears the image path and the next settled frame is read from
- * scratch — eight balloons, 3.1s, every time (`docs/milestones/v2.md`). Most of
+ * scratch — eight balloons, 3.1s, every time (`docs/notes/v2.md`). Most of
  * those balloons were on screen a moment ago and have not changed; only their
  * position has. So the key is the **picture**, never the position.
  *

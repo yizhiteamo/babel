@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
  *
  * The case that drove it is page 07: `わたしの` / `めを見て` joined and
  * translated as 看着我的眼睛, to be shown in two balloons
- * (`docs/milestones/v2.md`).
+ * (`docs/notes/v2.md`).
  */
 class SharedTranslationTest {
 

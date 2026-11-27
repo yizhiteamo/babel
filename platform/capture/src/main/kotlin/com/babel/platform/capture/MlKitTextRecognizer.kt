@@ -22,7 +22,7 @@ import kotlinx.coroutines.tasks.await
  *
  * Reads at **line** granularity, not block: a block can hold two columns
  * concatenated in the wrong order, while its lines keep them apart. That is the
- * only reason reading order is recoverable at all — see `docs/milestones/v2.md`.
+ * only reason reading order is recoverable at all — see `docs/notes/v2.md`.
  *
  * Recognition is on-device, so frames never leave the machine.
  */

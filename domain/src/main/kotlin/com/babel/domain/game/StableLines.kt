@@ -17,7 +17,7 @@ import kotlin.math.min
  *   does not hold a line back the way a whole-frame "has the picture
  *   stopped?" test would;
  * - a misread usually differs between two readings (a dropped character, a
- *   lost `……`; `docs/milestones/v3.md`, spike 2), so agreeing twice is also a
+ *   lost `……`; `docs/notes/v3.md`, spike 2), so agreeing twice is also a
  *   cheap check on the reading itself.
  *
  * Settled lines are published once. A published line that stops being read
@@ -176,7 +176,7 @@ class StableLines {
                 // A published line keeps the reading it was published with: on
                 // moving art the recogniser reads one still line slightly
                 // differently every frame, and each variant used to withdraw
-                // the translation and draw it again (`docs/milestones/v3.md`).
+                // the translation and draw it again (`docs/notes/v3.md`).
                 val shown = if (before.publishedKey != null) before.line else line
                 val key = before.publishedKey ?: keyOf(line).also {
                     settled += Settled(it, line, now - before.firstSeenAt)

@@ -9,7 +9,7 @@ package com.babel.domain.vision
  * more than it gives. Counting it on the eight sample pages showed the opposite:
  * **seven of nine were real text** — a page laid out entirely without balloons,
  * and a character sheet whose title and profile block are its only content
- * (`docs/milestones/v2.md`). Dropping the class dropped those pages whole.
+ * (`docs/notes/v2.md`). Dropping the class dropped those pages whole.
  *
  * So the class is read, and the two sound effects are separated here instead.
  *

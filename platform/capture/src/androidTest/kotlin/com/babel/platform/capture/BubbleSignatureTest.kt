@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 
 /**
  * **Why there is no recognition cache.** This is the experiment that ruled one
- * out; the numbers it produces are recorded in `docs/milestones/v2.md`.
+ * out; the numbers it produces are recorded in `docs/notes/v2.md`.
  *
  * A cache keyed on what a balloon looks like has two failure modes, and they
  * pull in opposite directions:
