@@ -353,6 +353,7 @@ Testing against a device, an emulator, or the pipeline has its own set of traps,
 
 - Kotlin sources live under `src/main/kotlin/`.
 - Kotlin package root is `com.babel`; `applicationId` is **`com.yizhiteamo.babel`**. They differ on purpose and neither follows from the other, so the accessibility component reads `com.yizhiteamo.babel/com.babel.platform.accessibility.BabelAccessibilityService` — two different halves, not a typo.
+- 文档用中文（`docs/notes/` 是历史记录，保持原样）；代码、标识符和代码注释保持英文。
 - DI is Hilt + KSP. Pure-Kotlin modules use `javax.inject` annotations only; the Hilt plugin is applied in Android modules.
 
 ---

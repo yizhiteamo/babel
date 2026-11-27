@@ -1,5 +1,5 @@
 # AGENTS.md
 
-This project's rules live in `CLAUDE.md`, and the development process in `docs/workflow.md`. Read both before any change; this file deliberately does not copy them (ADR 012).
+本项目的规则在 `CLAUDE.md`，开发流程在 `docs/workflow.md`。做任何改动前先读这两个文件；本文件有意不复制它们的内容（ADR 012）。
 
-If you are the implementing agent (Gemini), also read `GEMINI.md`.
+如果你是编码方（Gemini），还要读 `GEMINI.md`。
