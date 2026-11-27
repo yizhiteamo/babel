@@ -9,14 +9,12 @@ import com.babel.core.model.RequestId
 import com.babel.core.model.StyleHints
 import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
-import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationError
 import com.babel.core.model.TranslationRequest
 import com.babel.core.model.TranslationResult
 import com.babel.core.model.TranslationRuntimeState
 import com.babel.core.model.TranslationStatus
 import com.babel.domain.acquisition.TextSourceEvent
-import com.babel.domain.game.GameLayout
 import com.babel.domain.language.LanguageResolver
 import com.babel.domain.privacy.SensitiveContentPolicy
 import com.babel.domain.render.RenderUpdate
@@ -174,8 +172,8 @@ class DefaultTranslationCoordinator(
             // must not keep an overlay alive.
             when (event) {
                 is TextSourceEvent.Removed -> onRemoved(event.ids)
-                is TextSourceEvent.Cleared -> onCleared(event.sourceType)
-                is TextSourceEvent.Upserted -> onUpserted(event.elements.filterNot(::isPausedSource))
+                is TextSourceEvent.Cleared -> onCleared(event)
+                is TextSourceEvent.Upserted -> onUpserted(event.elements.filterNot(TextElement::pausable))
             }
             return
         }
@@ -183,24 +181,10 @@ class DefaultTranslationCoordinator(
         when (event) {
             is TextSourceEvent.Upserted -> onUpserted(event.elements)
             is TextSourceEvent.Removed -> onRemoved(event.ids)
-            is TextSourceEvent.Cleared -> onCleared(event.sourceType)
+            is TextSourceEvent.Cleared -> onCleared(event)
         }
     }
 
-    /**
-     * Whether pausing applies to where this text came from.
-     *
-     * Pause is the text path's switch — that is what the control offering it
-     * says, and what a user pressing it means. Manga mode is a separate switch,
-     * and turning it on is an explicit request to translate images: a paused
-     * text path must not silently swallow it. Reported from a device, where
-     * pausing text translation left manga mode recognising 18 lines and
-     * rendering none of them.
-     *
-     * Decided per element rather than per batch. A batch mixing both sources
-     * does not arise today, but dropping half of one silently is the kind of
-     * bug that takes a day to find.
-     */
     /**
      * What the page being read has already said, offered to the provider so a
      * balloon is not translated in a vacuum ([PageContext]).
@@ -210,9 +194,6 @@ class DefaultTranslationCoordinator(
      * rather than the translation coroutine reaching back into this.
      */
     private val pageContext = PageContext()
-
-    private fun isPausedSource(element: TextElement): Boolean =
-        element.sourceType == TextSourceType.ACCESSIBILITY
 
     private suspend fun onUpserted(elements: List<TextElement>) {
         if (elements.isEmpty()) return
@@ -316,7 +297,7 @@ class DefaultTranslationCoordinator(
         // to a dialog's translation as "context" would be noise; lettering
         // on a comic's art was measured to be worse than noise
         // (`TextElement.conversational`).
-        val context = if (element.conversational && element.sourceType.carriesContext()) {
+        val context = if (element.conversational && element.carriesContext) {
             pageContext.note(element.revision, element.text)
             withNames(pageContext.forLine(element.text), element.text)
         } else {
@@ -347,12 +328,12 @@ class DefaultTranslationCoordinator(
      * read — so a clear is now a routine event rather than a session ending.
      * `ClearAll` stays for [stop], which really does end everything.
      */
-    private suspend fun onCleared(sourceType: TextSourceType) {
+    private suspend fun onCleared(event: TextSourceEvent.Cleared) {
         val removed = mutableListOf<TextElementId>()
         val iterator = tracked.entries.iterator()
         while (iterator.hasNext()) {
             val (id, entry) = iterator.next()
-            if (entry.element.sourceType != sourceType) continue
+            if (entry.element.sourceType != event.sourceType) continue
             entry.job?.cancel()
             iterator.remove()
             removed += id
@@ -398,7 +379,7 @@ class DefaultTranslationCoordinator(
             while (names.size > MAX_NAMES) names.remove(names.keys.first())
             releaseWaiting()
         }
-        if (entry.element.sourceType.carriesContext()) {
+        if (entry.element.carriesContext) {
             pageContext.agree(entry.element.text, message.translatedText)
         }
         clearFailures()
@@ -557,7 +538,7 @@ class DefaultTranslationCoordinator(
 
                 permits.withPermit {
                     val waitedMs = System.currentTimeMillis() - started
-                    val first = (if (isDurableLabel(element)) labelInParts(element, pair) else null)
+                    val first = (if (element.durableLabel) labelInParts(element, pair) else null)
                         ?: translateWithRetry(element, pair, context, known)
                     // The page's context can make the model translate the wrong
                     // line: measured on a character sheet, three of four
@@ -584,7 +565,7 @@ class DefaultTranslationCoordinator(
                             // A name comes back as a name: 「オルガマリー」 was
                             // answered 「奥尔加玛丽。」, a sentence's stop on a tab.
                             val text = if (isSpeaker(element)) withoutAddedStop(element.text, result.translatedText) else result.translatedText
-                            if (isDurableLabel(element)) {
+                            if (element.durableLabel) {
                                 cache.putDurable(key, text)
                             } else {
                                 cache.put(key, text)
@@ -784,7 +765,8 @@ class DefaultTranslationCoordinator(
                 sourceText = marked.text,
                 languages = pair.forElement(element),
                 context = context,
-                recognised = element.sourceType != TextSourceType.ACCESSIBILITY,
+                recognised = element.recognised,
+                keepsLatinWords = element.keepsLatinWords,
                 sourceType = element.sourceType,
                 metadata = element.metadata,
             )
@@ -856,14 +838,6 @@ class DefaultTranslationCoordinator(
         )
     }
 
-    /**
-     * A game's name or interface word, worth remembering across restarts: a
-     * label by its words — no sentence punctuation, a label's length — so a
-     * line of dialogue is never written to disk.
-     */
-    private fun isDurableLabel(element: TextElement): Boolean =
-        element.sourceType == TextSourceType.GAME && GameLayout.isLabel(element.text)
-
     private sealed interface Message {
         data class Source(val event: TextSourceEvent) : Message
 
@@ -908,9 +882,6 @@ class DefaultTranslationCoordinator(
         const val FAILURES_BEFORE_REPORTING = 3
     }
 }
-
-private fun TextSourceType.carriesContext(): Boolean =
-    this == TextSourceType.OCR || this == TextSourceType.GAME
 
 /** [translated] without a stop at its end that [source] does not end with. */
 internal fun withoutAddedStop(source: String, translated: String): String {

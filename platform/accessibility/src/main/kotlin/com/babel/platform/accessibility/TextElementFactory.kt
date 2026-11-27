@@ -49,6 +49,7 @@ object TextElementFactory {
                 source = SourceIdentity(packageName = packageName, windowId = windowId),
                 revision = revision,
                 isProtected = raw.isPassword,
+                pausable = true,
             )
         }
     }

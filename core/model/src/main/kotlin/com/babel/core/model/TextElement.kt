@@ -105,6 +105,36 @@ data class TextElement(
      * captions and labels are not dialogue.
      */
     val conversational: Boolean = false,
+    /**
+     * Whether [text] was read from pixels by character recognition rather than
+     * taken verbatim from a view node, and so may contain misread characters.
+     */
+    val recognised: Boolean = false,
+    /**
+     * Whether elements from this source share a page or scene context
+     * (`PageContext`): [conversational] lines send earlier lines with their
+     * request, and settled translations are recorded for the lines after them.
+     */
+    val carriesContext: Boolean = false,
+    /**
+     * Whether this is a short interface word or character name whose
+     * translation can be split into reusable word/bracket parts and kept across
+     * restarts (`TranslationCache.putDurable`).
+     */
+    val durableLabel: Boolean = false,
+    /**
+     * Whether Latin-alphabet tokens inside non-Latin text — such as a player's
+     * handle — should be masked before calling the provider and restored into
+     * the translation (`KeptWordsTranslator`).
+     */
+    val keepsLatinWords: Boolean = false,
+    /**
+     * Whether `TranslationCoordinator.pause` holds back new elements from this
+     * source. Accessibility text is governed by that pause switch; modes with
+     * their own switches (manga OCR, game mode) set this to false so a paused
+     * text path does not swallow them.
+     */
+    val pausable: Boolean = false,
     val metadata: Map<String, String> = emptyMap(),
 )
 

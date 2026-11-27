@@ -280,6 +280,44 @@ class DefaultTranslationCoordinatorTest {
     }
 
     @Test
+    fun `removing non-game elements while their translations are in flight cancels the requests and renders nothing`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "node",
+                        text = "Accessibility line",
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                    ),
+                    TestElements.element(
+                        id = "balloon",
+                        text = "漫画のセリフ",
+                        sourceType = TextSourceType.OCR,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(setOf("Accessibility line", "漫画のセリフ"), translator.active.map { it.sourceText }.toSet())
+
+        coordinator.submit(
+            TextSourceEvent.Removed(listOf(TextElementId("node"), TextElementId("balloon"))),
+        )
+        advanceUntilIdle()
+
+        assertEquals(setOf("Accessibility line", "漫画のセリフ"), translator.cancelled.map { it.sourceText }.toSet())
+        assertTrue(translator.completed.isEmpty())
+        assertTrue(translator.active.isEmpty())
+        assertTrue(cache.writes.isEmpty())
+        assertTrue(renderer.visible.isEmpty())
+        assertTrue(renderer.updates.none { it is RenderUpdate.Show })
+        coordinator.stop()
+    }
+
+    @Test
     fun `clearing a source while translations are in flight cancels its requests and renders nothing`() = runTest {
         translator.holdRequests = true
         val coordinator = start()
@@ -1082,6 +1120,180 @@ class DefaultTranslationCoordinatorTest {
 
         assertFalse(logger.entries.isEmpty(), "expected a diagnostic for the failure")
         assertTrue(logger.neverLogged("confidential memo"))
+        coordinator.stop()
+    }
+
+    // --- source traits ---------------------------------------------------
+
+    @Test
+    fun `recognised is forwarded from the element regardless of source type`() = runTest {
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "exact",
+                        text = "Exact",
+                        sourceType = TextSourceType.OCR,
+                        recognised = false,
+                    ),
+                    TestElements.element(
+                        id = "pixels",
+                        text = "Pixels",
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                        recognised = true,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        val byText = translator.requests.associateBy { it.sourceText }
+        assertFalse(byText.getValue("Exact").recognised)
+        assertTrue(byText.getValue("Pixels").recognised)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `carriesContext controls page context independently of source type`() = runTest {
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "c1",
+                        text = "最初の行。",
+                        revision = 1,
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                        carriesContext = true,
+                    ).copy(conversational = true),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "c2",
+                        text = "次の行。",
+                        revision = 1,
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                        carriesContext = true,
+                    ).copy(conversational = true),
+                    TestElements.element(
+                        id = "no-ctx",
+                        text = "孤立した行。",
+                        revision = 1,
+                        sourceType = TextSourceType.OCR,
+                        carriesContext = false,
+                    ).copy(conversational = true),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        val byText = translator.requests.associateBy { it.sourceText }
+        assertTrue(byText.getValue("次の行。").context?.contains("最初の行。") == true)
+        assertEquals(null, byText.getValue("孤立した行。").context)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `durableLabel splits bracketed words and writes to durable cache regardless of source type`() = runTest {
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "durable",
+                        text = "ハナコ(水着)",
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                        durableLabel = true,
+                    ),
+                    TestElements.element(
+                        id = "volatile",
+                        text = "アリス(臨戦)",
+                        sourceType = TextSourceType.GAME,
+                        durableLabel = false,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            setOf("ハナコ", "水着", "アリス(臨戦)"),
+            translator.requests.map { it.sourceText }.toSet(),
+        )
+        val durableTexts = cache.durableWrites.map { it.normalizedText }.toSet()
+        assertTrue("ハナコ" in durableTexts && "水着" in durableTexts && "ハナコ(水着)" in durableTexts)
+        assertFalse("アリス(臨戦)" in durableTexts)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `keepsLatinWords is forwarded from the element to the translation request`() = runTest {
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "keep",
+                        text = "yizhiteamoちゃん。",
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                        keepsLatinWords = true,
+                    ),
+                    TestElements.element(
+                        id = "leave",
+                        text = "senseiちゃん。",
+                        sourceType = TextSourceType.GAME,
+                        keepsLatinWords = false,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        val byText = translator.requests.associateBy { it.sourceText }
+        assertTrue(byText.getValue("yizhiteamoちゃん。").keepsLatinWords)
+        assertFalse(byText.getValue("senseiちゃん。").keepsLatinWords)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `pausable decides whether an element is held back while paused regardless of source type`() = runTest {
+        val coordinator = start()
+        coordinator.pause()
+        advanceUntilIdle()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "paused-ocr",
+                        text = "Held back",
+                        sourceType = TextSourceType.OCR,
+                        pausable = true,
+                    ),
+                    TestElements.element(
+                        id = "unpaused-node",
+                        text = "Translated anyway",
+                        sourceType = TextSourceType.ACCESSIBILITY,
+                        pausable = false,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("<Translated anyway>"), renderer.visibleText)
+        assertEquals(listOf("Translated anyway"), translator.requests.map { it.sourceText })
         coordinator.stop()
     }
 }

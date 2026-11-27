@@ -4,6 +4,7 @@ import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.Revision
 import com.babel.core.model.TextBounds
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 import org.junit.Test
@@ -103,5 +104,16 @@ class TextElementFactoryTest {
         val element = create(RawText("Hello", bounds(0)), revision = 7).single()
 
         assertEquals(Revision(7), element.revision)
+    }
+
+    @Test
+    fun `accessibility elements pause with text and carry no recognition or game traits`() {
+        val element = create(RawText("Hello", bounds(0))).single()
+
+        assertTrue(element.pausable)
+        assertFalse(element.recognised)
+        assertFalse(element.carriesContext)
+        assertFalse(element.durableLabel)
+        assertFalse(element.keepsLatinWords)
     }
 }

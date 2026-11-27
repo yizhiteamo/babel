@@ -3345,6 +3345,13 @@ class GameTextSource @Inject constructor(
             // not. A menu's 「エピソードリスト」, given the story's lines as
             // context, came back as the chapter's title.
             conversational = conversational,
+            recognised = true,
+            carriesContext = true,
+            // A game's name or interface word, worth remembering across restarts:
+            // a label by its words — no sentence punctuation, a label's length —
+            // so a line of dialogue is never written to disk.
+            durableLabel = GameLayout.isLabel(line.text),
+            keepsLatinWords = true,
             source = SourceIdentity(packageName = packageName),
             revision = Revision(session),
             sourceLanguage = JAPANESE.takeIf {

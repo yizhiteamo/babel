@@ -2,7 +2,6 @@ package com.babel.domain.translation
 
 import com.babel.core.model.LanguageTag
 import com.babel.core.model.ProviderId
-import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationRequest
 import com.babel.core.model.TranslationResult
 import com.babel.core.model.TranslationStatus
@@ -17,8 +16,8 @@ import com.babel.core.model.TranslationStatus
  * reason to translate, and put back into the answer. Where a mark does not
  * come back the answer is used as it is — the same as before.
  *
- * Only for game text with another script in it: in an English line every
- * word is Latin and is the line.
+ * Only for requests marked [TranslationRequest.keepsLatinWords] with another
+ * script in them: in an English line every word is Latin and is the line.
  */
 class KeptWordsTranslator(private val delegate: Translator) : Translator {
 
@@ -28,7 +27,7 @@ class KeptWordsTranslator(private val delegate: Translator) : Translator {
 
     override suspend fun translate(request: TranslationRequest): TranslationResult {
         val text = request.sourceText
-        if (request.sourceType != TextSourceType.GAME) return delegate.translate(request)
+        if (!request.keepsLatinWords) return delegate.translate(request)
         val words = WORD.findAll(text).map { it.value }.distinct().toList()
         val otherLetters = text.count { it.isLetter() && it.code >= 0x250 }
         if (words.isEmpty() || otherLetters < MIN_OTHER_LETTERS) return delegate.translate(request)
