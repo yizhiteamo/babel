@@ -114,6 +114,249 @@ class DefaultTranslationCoordinatorTest {
     }
 
     @Test
+    fun `replacing an in-flight line cancels the old request before it finishes and renders only the new revision`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "dialogue",
+                        text = "最初の台詞です。",
+                        revision = 0,
+                        sourceType = TextSourceType.GAME,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("最初の台詞です。"), translator.active.map { it.sourceText })
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "dialogue",
+                        text = "次の台詞に進んだ。",
+                        revision = 1,
+                        sourceType = TextSourceType.GAME,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        // Never released, yet already gone from `active` and recorded in `cancelled`:
+        // proves coroutine cancellation rather than finishing and failing a key check.
+        assertEquals(listOf("最初の台詞です。"), translator.cancelled.map { it.sourceText })
+        assertTrue(translator.completed.isEmpty())
+        assertEquals(listOf("次の台詞に進んだ。"), translator.active.map { it.sourceText })
+        assertTrue(renderer.updates.none { it is RenderUpdate.Show })
+
+        translator.releaseAll()
+        advanceUntilIdle()
+
+        assertTrue(translator.active.isEmpty())
+        assertEquals(listOf("次の台詞に進んだ。"), translator.completed.map { it.sourceText })
+        assertEquals(listOf("次の台詞に進んだ。"), cache.writes.map { it.normalizedText })
+        assertEquals(listOf("<次の台詞に進んだ。>"), renderer.visibleText)
+        assertEquals(
+            listOf("<次の台詞に進んだ。>"),
+            renderer.updates.filterIsInstance<RenderUpdate.Show>()
+                .flatMap { it.translations }
+                .map { it.text },
+        )
+        coordinator.stop()
+    }
+
+    @Test
+    fun `replacing an in-flight game label cancels its word translation and renders only the new label`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "choice",
+                        text = "ノーマルスキル",
+                        revision = 0,
+                        sourceType = TextSourceType.GAME,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("ノーマルスキル"), translator.active.map { it.sourceText })
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "choice",
+                        text = "パッシブスキル",
+                        revision = 1,
+                        sourceType = TextSourceType.GAME,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("ノーマルスキル"), translator.cancelled.map { it.sourceText })
+        assertTrue(translator.completed.isEmpty())
+        assertEquals(listOf("パッシブスキル"), translator.active.map { it.sourceText })
+
+        translator.releaseAll()
+        advanceUntilIdle()
+
+        assertTrue(translator.active.isEmpty())
+        assertEquals(listOf("パッシブスキル"), translator.completed.map { it.sourceText })
+        assertEquals(listOf("<パッシブスキル>"), renderer.visibleText)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `cancelling one of two game labels sharing a word keeps the shared request alive for the survivor`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(id = "plain", text = "ノーマルスキル", sourceType = TextSourceType.GAME),
+                    TestElements.element(id = "marked", text = "ノーマルスキル+", sourceType = TextSourceType.GAME),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("ノーマルスキル"), translator.active.map { it.sourceText })
+
+        coordinator.submit(TextSourceEvent.Removed(listOf(TextElementId("plain"))))
+        advanceUntilIdle()
+
+        assertTrue(translator.cancelled.isEmpty())
+        assertEquals(listOf("ノーマルスキル"), translator.active.map { it.sourceText })
+
+        translator.releaseAll()
+        advanceUntilIdle()
+
+        assertTrue(translator.active.isEmpty())
+        assertEquals(1, translator.callCount)
+        assertEquals(listOf("<ノーマルスキル>+"), renderer.visibleText)
+        coordinator.stop()
+    }
+
+    @Test
+    fun `removing an element while its translation is in flight cancels the request and renders nothing`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "dialogue",
+                        text = "最初の台詞です。",
+                        sourceType = TextSourceType.GAME,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(listOf("最初の台詞です。"), translator.active.map { it.sourceText })
+
+        coordinator.submit(TextSourceEvent.Removed(listOf(TextElementId("dialogue"))))
+        advanceUntilIdle()
+
+        assertEquals(listOf("最初の台詞です。"), translator.cancelled.map { it.sourceText })
+        assertTrue(translator.completed.isEmpty())
+        assertTrue(translator.active.isEmpty())
+        assertTrue(cache.writes.isEmpty())
+        assertTrue(renderer.visible.isEmpty())
+        assertTrue(renderer.updates.none { it is RenderUpdate.Show })
+        coordinator.stop()
+    }
+
+    @Test
+    fun `clearing a source while translations are in flight cancels its requests and renders nothing`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        coordinator.submit(
+            TextSourceEvent.Upserted(
+                listOf(
+                    TestElements.element(
+                        id = "dialogue",
+                        text = "最初の台詞です。",
+                        sourceType = TextSourceType.GAME,
+                    ),
+                    TestElements.element(
+                        id = "label",
+                        text = "ノーマルスキル",
+                        sourceType = TextSourceType.GAME,
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(setOf("最初の台詞です。", "ノーマルスキル"), translator.active.map { it.sourceText }.toSet())
+
+        coordinator.submit(TextSourceEvent.Cleared(TextSourceType.GAME))
+        advanceUntilIdle()
+
+        assertEquals(setOf("最初の台詞です。", "ノーマルスキル"), translator.cancelled.map { it.sourceText }.toSet())
+        assertTrue(translator.completed.isEmpty())
+        assertTrue(translator.active.isEmpty())
+        assertTrue(cache.writes.isEmpty())
+        assertTrue(renderer.visible.isEmpty())
+        assertTrue(renderer.updates.none { it is RenderUpdate.Show })
+        coordinator.stop()
+    }
+
+    @Test
+    fun `five rapid replacements cancel every superseded request and render only the last revision`() = runTest {
+        translator.holdRequests = true
+        val coordinator = start()
+
+        for (revision in 0..5) {
+            coordinator.submit(
+                TextSourceEvent.Upserted(
+                    listOf(
+                        TestElements.element(
+                            id = "dialogue",
+                            text = "台詞 $revision。",
+                            revision = revision.toLong(),
+                            sourceType = TextSourceType.GAME,
+                        ),
+                    ),
+                ),
+            )
+            advanceUntilIdle()
+        }
+
+        assertEquals((0..4).map { "台詞 $it。" }, translator.cancelled.map { it.sourceText })
+        assertTrue(translator.completed.isEmpty())
+        assertEquals(listOf("台詞 5。"), translator.active.map { it.sourceText })
+        assertTrue(renderer.updates.none { it is RenderUpdate.Show })
+
+        translator.releaseAll()
+        advanceUntilIdle()
+
+        assertTrue(translator.active.isEmpty())
+        assertEquals(listOf("台詞 5。"), translator.completed.map { it.sourceText })
+        assertEquals(listOf("<台詞 5。>"), renderer.visibleText)
+        assertEquals(
+            listOf("<台詞 5。>"),
+            renderer.updates.filterIsInstance<RenderUpdate.Show>()
+                .flatMap { it.translations }
+                .map { it.text },
+        )
+        coordinator.stop()
+    }
+
+    @Test
     fun `scrolling moves the overlay without re-translating`() = runTest {
         val coordinator = start()
 

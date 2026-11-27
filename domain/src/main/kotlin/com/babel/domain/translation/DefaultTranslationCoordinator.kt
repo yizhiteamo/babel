@@ -140,6 +140,7 @@ class DefaultTranslationCoordinator(
         active.cancel()
         tracked.values.forEach { it.job?.cancel() }
         tracked.clear()
+        synchronized(wordsInFlight) { wordsInFlight.clear() }
         languages = null
         drainMailbox()
 
@@ -669,17 +670,41 @@ class DefaultTranslationCoordinator(
         // One request for one word at a time: a skill label with its 「+」 and
         // the same label without it on the next card asked for 「ノーマルスキル」
         // together, and the two answers disagreed (「普通技能」, 「技能宝珠」).
-        val pending = wordsInFlight.computeIfAbsent(key) {
-            requireNotNull(scope).async { askWord(element, pair, text, key) }
+        // Counted so cancelling the last label waiting on a word cancels the
+        // provider call too, while leaving it alive if another label still waits.
+        val flight = synchronized(wordsInFlight) {
+            val existing = wordsInFlight[key]
+            if (existing != null) {
+                existing.waiters += 1
+                existing
+            } else {
+                InFlightWord(
+                    job = requireNotNull(scope).async { askWord(element, pair, text, key) },
+                    waiters = 1,
+                ).also { wordsInFlight[key] = it }
+            }
         }
+        var completed = false
         return try {
-            pending.await()
+            flight.job.await().also { completed = true }
         } finally {
-            wordsInFlight.remove(key, pending)
+            val orphan = synchronized(wordsInFlight) {
+                flight.waiters -= 1
+                if (completed || flight.waiters == 0) {
+                    wordsInFlight.remove(key, flight)
+                }
+                if (!completed && flight.waiters == 0) flight.job else null
+            }
+            orphan?.cancel()
         }
     }
 
-    private val wordsInFlight = java.util.concurrent.ConcurrentHashMap<TranslationCacheKey, kotlinx.coroutines.Deferred<String?>>()
+    private class InFlightWord(
+        val job: kotlinx.coroutines.Deferred<String?>,
+        var waiters: Int,
+    )
+
+    private val wordsInFlight = HashMap<TranslationCacheKey, InFlightWord>()
 
     private suspend fun askWord(element: TextElement, pair: LanguagePair, text: String, key: TranslationCacheKey): String? {
         // With the labels beside it, as a list of what else is on the row:
