@@ -196,6 +196,18 @@ Found the hard way, each one having cost a wrong diagnosis:
   emulator has no such guard, so a dump that only needs a recogniser is cheaper
   to run there.
 
+## Building instrumentation tests
+
+- **A green `assembleDebugAndroidTest` does not mean the tests can run.** It
+  compiles and packages the test APK, but never checks that the class named in
+  `testInstrumentationRunner` is in it. `:app` had `AndroidJUnitRunner` only
+  through `espresso-core`, and removing that unused library (PR #36) left a
+  test APK with no runner while the local build and CI both passed; the tests
+  would have failed only on a device. Every module that has instrumentation
+  tests declares `androidx.test:runner` itself. After removing a test
+  dependency, check that `./gradlew :<module>:dependencies --configuration
+  debugAndroidTestRuntimeClasspath` still lists it.
+
 ## Testing the pipeline
 
 A collector of `renderUpdates` must run on `UnconfinedTestDispatcher`. A `StandardTestDispatcher` collector in `backgroundScope` is never resumed by `advanceUntilIdle`, and render assertions then pass against an empty renderer instead of failing.
