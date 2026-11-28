@@ -6,10 +6,7 @@ import android.os.SystemClock
 import com.babel.core.common.BabelLogger
 import com.babel.core.common.Redact
 import com.babel.core.model.CoordinateSpace
-import com.babel.core.model.LanguageTag
-import com.babel.core.model.Revision
 import com.babel.core.model.RowGradient
-import com.babel.core.model.SourceIdentity
 import com.babel.core.model.SourceStyle
 import com.babel.core.model.TextBounds
 import com.babel.core.model.TextElement
@@ -20,10 +17,39 @@ import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.game.BackdropEdges
 import com.babel.domain.game.CapturePace
 import com.babel.domain.game.ChangedBand
+import com.babel.domain.game.GameElements
+import com.babel.domain.game.GameFrameLook
+import com.babel.domain.game.GameFrameLook.ACTIVE_CONTRAST
+import com.babel.domain.game.GameFrameLook.GRID_COLUMNS
+import com.babel.domain.game.GameFrameLook.GRID_ROWS
+import com.babel.domain.game.GameFrameLook.INK_CONTRAST
+import com.babel.domain.game.GameFrameLook.SAMPLE_STEP
+import com.babel.domain.game.GameFrameLook.STILL_LOOK_LUMA
+import com.babel.domain.game.GameFrameLook.contrastOf
+import com.babel.domain.game.GameFrameLook.covers
+import com.babel.domain.game.GameFrameLook.dimmed
+import com.babel.domain.game.GameFrameLook.foundAt
+import com.babel.domain.game.GameFrameLook.frontLayer
+import com.babel.domain.game.GameFrameLook.inked
+import com.babel.domain.game.GameFrameLook.largestDifference
+import com.babel.domain.game.GameFrameLook.lookDifference
+import com.babel.domain.game.GameFrameLook.lumaGridOf
+import com.babel.domain.game.GameFrameLook.replaced
+import com.babel.domain.game.GameFrameLook.replacedSince
+import com.babel.domain.game.GameFrameLook.sceneChanged
+import com.babel.domain.game.GameFrameLook.sharedShift
+import com.babel.domain.game.GameFrameLook.smallOf
+import com.babel.domain.game.GameFrameLook.stillBetween
+import com.babel.domain.game.GameFrameLook.stillPieceByPiece
 import com.babel.domain.game.GameLayout
 import com.babel.domain.game.GameLine
+import com.babel.domain.game.GamePixels.blend
+import com.babel.domain.game.GamePixels.colourDistance
+import com.babel.domain.game.GamePixels.luma
+import com.babel.domain.game.GamePixels.mean
 import com.babel.domain.game.GameTextFilter
 import com.babel.domain.game.GameTextScanner
+import com.babel.domain.game.SmallFrame
 import com.babel.domain.game.StableLines
 import com.babel.domain.game.ThermalLevel
 import com.babel.domain.vision.JapaneseScript
@@ -162,7 +188,7 @@ class GameTextSource @Inject constructor(
         val latest = java.util.concurrent.atomic.AtomicReference<Shot?>(null)
         val fresh = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
         val taking = launch {
-            var before: Small? = null
+            var before: SmallFrame? = null
             var beforeAt = 0L
             var takenAt = 0L
             activeAt = SystemClock.elapsedRealtime()
@@ -191,7 +217,7 @@ class GameTextSource @Inject constructor(
                 duty.captureMs.addAndGet(watchFrom - takenAt)
                 duty.logIfDue()
                 runCatching { withdrawReplaced(frame) }
-                val small = smallOf(frame)
+                val small = smallOf(BitmapFramePixels(frame))
                 duty.watchMs.addAndGet(SystemClock.elapsedRealtime() - watchFrom)
                 newest = small
                 // A picture to compare with only if taken a moment before: paced
@@ -327,58 +353,10 @@ class GameTextSource @Inject constructor(
 
     /** The small copy of the newest picture taken, read or not. */
     @Volatile
-    private var newest: Small? = null
+    private var newest: SmallFrame? = null
 
     /** A picture, a small copy of its brightness, and the small copy of the picture taken before it. */
-    private class Shot(val frame: Bitmap, val small: Small, val before: Small?)
-
-    private class Small(val width: Int, val height: Int, val luma: IntArray, val scale: Int)
-
-    private fun smallOf(frame: Bitmap): Small {
-        val w = (frame.width / SMALL_SCALE).coerceAtLeast(1)
-        val h = (frame.height / SMALL_SCALE).coerceAtLeast(1)
-        val row = IntArray(frame.width)
-        val out = IntArray(w * h)
-        for (y in 0 until h) {
-            frame.getPixels(row, 0, frame.width, 0, y * SMALL_SCALE, frame.width, 1)
-            for (x in 0 until w) out[y * w + x] = luma(row[x * SMALL_SCALE]).toInt()
-        }
-        return Small(w, h, out, SMALL_SCALE)
-    }
-
-    /** Whether [box] looks the same in two pictures a moment apart. */
-    private fun stillBetween(before: Small?, now: Small, box: TextBounds): Boolean {
-        if (before == null || before.width != now.width || before.height != now.height) return false
-        val l = (box.left / now.scale).coerceIn(0, now.width - 1)
-        val r = (box.right / now.scale).coerceIn(l + 1, now.width)
-        val t = (box.top / now.scale).coerceIn(0, now.height - 1)
-        val b = (box.bottom / now.scale).coerceIn(t + 1, now.height)
-        var sum = 0L
-        var n = 0
-        for (y in t until b) for (x in l until r) {
-            val i = y * now.width + x
-            sum += abs(before.luma[i] - now.luma[i])
-            n++
-        }
-        return n > 0 && sum.toDouble() / n <= STILL_SMALL_LUMA
-    }
-
-    /**
-     * Whether every piece of a box, [piece] px wide, stood still between two
-     * pictures. A few letters typed at the end of a wide box change too little
-     * of it to move the mean over the whole: a dialogue box 2500 px wide read
-     * as still while its line was typing out.
-     */
-    private fun stillPieceByPiece(before: Small, now: Small, box: TextBounds, piece: Int): Boolean {
-        val step = piece.coerceAtLeast(now.scale)
-        var left = box.left
-        while (left < box.right) {
-            val right = minOf(box.right, left + step)
-            if (!stillBetween(before, now, TextBounds(left, box.top, right, box.bottom, box.space))) return false
-            left = right
-        }
-        return true
-    }
+    private class Shot(val frame: Bitmap, val small: SmallFrame, val before: SmallFrame?)
 
     private suspend fun readOne(
         frame: Bitmap,
@@ -389,6 +367,7 @@ class GameTextSource @Inject constructor(
         unchangedSince: (TextBounds) -> Boolean = { true },
     ) {
         val started = System.currentTimeMillis()
+        val pixels = BitmapFramePixels(frame)
         val grid = gridOf(frame)
         // Moving art where nothing was read lately is left alone between
         // whole readings ([artUntil]): the home screen behind a chat animates
@@ -414,9 +393,7 @@ class GameTextSource @Inject constructor(
         // character only moves part of it a little. Most frames of a story
         // scene are read whole for the second reason, so extent alone would
         // call every frame a new scene.
-        val sceneChanged = lastGrid?.let { before ->
-            grid.indices.sumOf { abs(grid[it] - before[it]) }.toDouble() / grid.size > SCENE_CHANGE_LUMA
-        } ?: false
+        val sceneChanged = sceneChanged(lastGrid, grid)
 
 
         val read: List<GameLine>
@@ -451,7 +428,7 @@ class GameTextSource @Inject constructor(
                     merged = ChangedBand.mergeBox(merged, recognise(frame, t, b, l, r), l, t, r, b)
                 }
                 readParts = boxes
-                frontLayer(frame, merged)
+                frontLayer(pixels, merged)
             } else if (bottom - top >= frame.height * WHOLE_FRAME_FRACTION || wholeDue) {
                 how = "whole"
                 // The art mask outlives a whole reading taken because much
@@ -460,10 +437,10 @@ class GameTextSource @Inject constructor(
                     lastWholeAt = nowMs
                     artUntil.fill(0L)
                 }
-                frontLayer(frame, recognise(frame, 0, frame.height))
+                frontLayer(pixels, recognise(frame, 0, frame.height))
             } else {
                 how = "band ${bottom - top}px"
-                frontLayer(frame, ChangedBand.merge(lastLines, recognise(frame, top, bottom), top, bottom))
+                frontLayer(pixels, ChangedBand.merge(lastLines, recognise(frame, top, bottom), top, bottom))
             }
             read = keepUnchanged(frame, fresh)
             lastGrid = grid
@@ -627,7 +604,7 @@ class GameTextSource @Inject constructor(
                                 (lines.knows(line.text) || rowMates(line).count { m -> GameTextFilter.judge(m, minSide) == GameTextFilter.Verdict.TRANSLATE } >= 2)
                             )
                 } &&
-                contrastOf(frame, line.bounds) >= ACTIVE_CONTRAST
+                contrastOf(pixels, line.bounds) >= ACTIVE_CONTRAST
         }.toSet()
         // Nothing behind a dimmer, dialogue or label: a pop-up darkens the
         // screen under it, and the student's name and role there were read
@@ -635,7 +612,7 @@ class GameTextSource @Inject constructor(
         // side, the player not looking at them. Dimmed, nothing in the line
         // is bright: neither its ink nor its panel.
         val shown = (kept.filter { it in dialogue } + labels.filter { l -> kept.none { it.bounds == l.bounds && it in dialogue } })
-            .filter { unchangedSince(it.bounds) && !dimmed(frame, it.bounds) }
+            .filter { unchangedSince(it.bounds) && !dimmed(pixels, it.bounds) }
         // Why each kept line is not offered, as numbers: not said, moved
         // since, or behind a dimmer.
         val withheld = kept.filter { k -> shown.none { it === k } }
@@ -646,7 +623,7 @@ class GameTextSource @Inject constructor(
                     val why = when {
                         k !in dialogue && labels.none { it.bounds == k.bounds } -> "unsaid"
                         !unchangedSince(k.bounds) -> "moving"
-                        dimmed(frame, k.bounds) -> "dimmed"
+                        dimmed(pixels, k.bounds) -> "dimmed"
                         else -> "?"
                     }
                     "$why@${k.bounds.left},${k.bounds.top} len=${k.text.length}"
@@ -714,14 +691,14 @@ class GameTextSource @Inject constructor(
                 // words: a new speaker's name read in the tab before it is
                 // kept left the last speaker's translation over it for four
                 // frames (「雷夫」 over 「Dr.ロマン」).
-                inked(frame, gone.bounds) && read.none { otherWords(it.text, gone.text) && overlaps(it.bounds, gone.bounds) } &&
+                inked(pixels, gone.bounds) && read.none { otherWords(it.text, gone.text) && overlaps(it.bounds, gone.bounds) } &&
                     // Nor where its pixels are no longer what they were when
                     // it was published: a chat scrolled, other bubbles moved
                     // into its place, nothing read there matched it, and its
                     // translation stood over them for four frames — 3 s.
-                    !replacedSince(frame, gone.bounds)
+                    !replacedSince(pixels, publishedLooks, gone.bounds)
             }, heldStill = { key ->
-                publishedLooks[key]?.let { (box, then) -> lookOf(frame, box)?.let { now -> lookDifference(then, now) <= STILL_LOOK_LUMA } } == true
+                publishedLooks[key]?.let { (box, then) -> GameFrameLook.lookOf(pixels, box)?.let { now -> lookDifference(then, now) <= STILL_LOOK_LUMA } } == true
             })
             if (update.keptOver.isNotEmpty()) {
                 logger.debug(TAG, "kept " + update.keptOver.entries.joinToString { (k, how) -> "${k.substringAfterLast('@')} $how" })
@@ -791,9 +768,9 @@ class GameTextSource @Inject constructor(
                 val siblings = if (conversational || speaker) emptyList() else shown.filter { o ->
                     o !== read0 && o !in dialogue && GameLayout.isLabel(o.text) && sameRow(o.bounds, read0.bounds)
                 }.sortedBy { it.bounds.left }.map { it.text }
-                val element = toElement(key, inked, look, conversational, windowBounds, packageName, speaker = speaker, row = siblings)
+                val element = GameElements.toElement(key, inked, look, conversational, windowBounds, packageName, session, kanaVotes, speaker = speaker, row = siblings)
                 roles[element.id] = speaker
-                lookOf(frame, line.bounds)?.let { publishedLooks[key] = line.bounds to it }
+                GameFrameLook.lookOf(pixels, line.bounds)?.let { publishedLooks[key] = line.bounds to it }
                 if (element.style.backdrop != null) {
                     erased[key] = Erased(line, conversational, speaker, panelAround(frame, line.bounds))
                 } else {
@@ -878,12 +855,6 @@ class GameTextSource @Inject constructor(
     }
 
     /**
-     * Whether [box] still holds ink on this frame: samples far from their
-     * row's middle value. A blank panel, plain or graded, has none.
-     */
-    private fun inked(frame: Bitmap, box: TextBounds): Boolean = inkPerMille(frame, box) >= MIN_INK_PER_MILLE
-
-    /**
      * A line whose pixels have not changed keeps its last reading. Over
      * moving art the recogniser reads the same still line differently from
      * frame to frame, and behind a translucent history screen it took in the
@@ -893,10 +864,11 @@ class GameTextSource @Inject constructor(
      * replaced — is read again.
      */
     private fun keepUnchanged(frame: Bitmap, fresh: List<GameLine>): List<GameLine> {
+        val pixels = BitmapFramePixels(frame)
         val looks = HashMap<GameLine, IntArray>()
         val still = lastLines.filter { old ->
             val before = lastLooks[old] ?: return@filter false
-            val now = lookOf(frame, old.bounds) ?: return@filter false
+            val now = GameFrameLook.lookOf(pixels, old.bounds) ?: return@filter false
             looks[old] = now
             largestDifference(before, now) <= STILL_LOOK_LUMA
         }
@@ -915,64 +887,9 @@ class GameTextSource @Inject constructor(
         val split = still.filter { old -> fresh.count { within(it.bounds, old.bounds) && it.text != old.text } >= 2 }.toSet()
         val stillKept = still - grown - split
         val kept = fresh.filter { line -> stillKept.none { covers(it.bounds, line.bounds) } } + stillKept
-        for (line in kept) if (line !in looks) lookOf(frame, line.bounds)?.let { looks[line] = it }
+        for (line in kept) if (line !in looks) GameFrameLook.lookOf(pixels, line.bounds)?.let { looks[line] = it }
         lastLooks = looks
         return kept
-    }
-
-    /** The line's box as a small grid of mean brightness. */
-    private fun lookOf(frame: Bitmap, box: TextBounds): IntArray? {
-        val left = box.left.coerceIn(0, frame.width - 1)
-        val right = box.right.coerceIn(left + 1, frame.width)
-        val top = box.top.coerceIn(0, frame.height - 1)
-        val bottom = box.bottom.coerceIn(top + 1, frame.height)
-        val w = right - left
-        val h = bottom - top
-        if (w < LOOK_COLUMNS || h < LOOK_ROWS) return null
-        val row = IntArray(w)
-        val sums = IntArray(LOOK_COLUMNS * LOOK_ROWS)
-        val counts = IntArray(LOOK_COLUMNS * LOOK_ROWS)
-        var y = top
-        while (y < bottom) {
-            frame.getPixels(row, 0, w, left, y, w, 1)
-            val r = (y - top) * LOOK_ROWS / h
-            var x = 0
-            while (x < w) {
-                val c = x * LOOK_COLUMNS / w
-                sums[r * LOOK_COLUMNS + c] += luma(row[x]).toInt()
-                counts[r * LOOK_COLUMNS + c]++
-                x += SAMPLE_STEP
-            }
-            y += SAMPLE_STEP
-        }
-        return IntArray(sums.size) { if (counts[it] == 0) 0 else sums[it] / counts[it] }
-    }
-
-    /** The largest change of any cell: one new glyph in a long line moves the mean by little. */
-    /**
-     * Whether the place a published line stood in now shows something else:
-     * on average far from what it showed then. A recogniser's miss on a still
-     * line leaves its pixels alone; moving art behind a translucent box moves
-     * a few cells, not the mean of all of them.
-     */
-    private fun replacedSince(frame: Bitmap, box: TextBounds): Boolean {
-        val then = publishedLooks.values.firstOrNull { it.first == box }?.second ?: return false
-        val now = lookOf(frame, box) ?: return false
-        return replaced(then, now)
-    }
-
-    /**
-     * Mean difference of the two looks with each one's own mean taken out:
-     * what moved, not what was shaded. A chat list's selected row darkens
-     * evenly under its words, which stay; a scrolled bubble's words go.
-     */
-    private fun replaced(then: IntArray, now: IntArray): Boolean = lookDifference(then, now) > REPLACED_LOOK_LUMA
-
-    private fun lookDifference(then: IntArray, now: IntArray): Double {
-        if (then.size != now.size) return Double.MAX_VALUE
-        val a = then.average()
-        val b = now.average()
-        return then.indices.sumOf { abs((then[it] - a) - (now[it] - b)) } / then.size
     }
 
     /**
@@ -982,6 +899,7 @@ class GameTextSource @Inject constructor(
      * took — half a second to a second and a half a frame.
      */
     private suspend fun withdrawReplaced(frame: Bitmap) {
+        val pixels = BitmapFramePixels(frame)
         val keys = lock.withLock {
             // Only lines painted out on a plain panel: over moving art a still
             // line's place changes under it, and would be withdrawn and drawn
@@ -989,7 +907,7 @@ class GameTextSource @Inject constructor(
             val changed = publishedLooks.filter { (key, look) ->
                 val painted = erased[key] ?: return@filter false
                 if (painted.line.backdropError > GameTextFilter.MAX_BACKDROP_ERROR) return@filter false
-                val now = lookOf(frame, look.first)
+                val now = GameFrameLook.lookOf(pixels, look.first)
                 now != null && replaced(look.second, now)
             }.keys.toList()
             if (changed.isEmpty()) return
@@ -1000,14 +918,14 @@ class GameTextSource @Inject constructor(
             // finds every changed line's look again, they are moved there.
             // The shift found on the topmost line, checked line by line: one
             // replaced or gone off the edge does not stop the rest moving.
-            val dy = sharedShift(frame, changed)
-            val follows = if (dy == null) emptyList() else changed.filter { foundAt(frame, it, dy) }
+            val dy = sharedShift(pixels, publishedLooks, changed)
+            val follows = if (dy == null) emptyList() else changed.filter { foundAt(pixels, publishedLooks, it, dy) }
             if (dy != null && follows.isNotEmpty()) {
                 val moved = follows.mapNotNull { key ->
                     val (box, _) = publishedLooks[key] ?: return@mapNotNull null
                     val shifted = TextBounds(box.left, box.top + dy, box.right, box.bottom + dy, box.space)
                     val element = shownElements[key] ?: return@mapNotNull null
-                    val look = lookOf(frame, shifted) ?: return@mapNotNull null
+                    val look = GameFrameLook.lookOf(pixels, shifted) ?: return@mapNotNull null
                     publishedLooks[key] = shifted to look
                     erased[key]?.let { e -> erased[key] = Erased(e.line.copy(bounds = shifted), e.conversational, e.speaker, panelAround(frame, shifted)) }
                     lines.move(key, shifted)
@@ -1039,100 +957,10 @@ class GameTextSource @Inject constructor(
 
     private var movedOut: List<TextElement> = emptyList()
 
-    /**
-     * One vertical shift that finds every one of [keys]'s looks again, or
-     * null. Scrolled, a chat's lines move together; a line replaced by other
-     * words matches at no shift.
-     */
-    private fun sharedShift(frame: Bitmap, keys: List<String>): Int? {
-        // The first of a few lines, top down, that is found again: one
-        // replaced by other words, or gone past the edge, is found nowhere.
-        for (look in keys.mapNotNull { publishedLooks[it] }.sortedBy { it.first.top }.take(SHIFT_TRIES)) {
-            shiftOf(frame, look.first, look.second)?.let { return it }
-        }
-        return null
-    }
-
-    private fun shiftOf(frame: Bitmap, b: TextBounds, then: IntArray): Int? {
-        fun score(d: Int): Double? {
-            val now = lookOf(frame, TextBounds(b.left, b.top + d, b.right, b.bottom + d, b.space)) ?: return null
-            return now.indices.sumOf { abs(now[it] - then[it]) }.toDouble() / now.size
-        }
-        val reach = b.height * MAX_TRACK_LINES
-        var best: Int? = null
-        var bestScore = Double.MAX_VALUE
-        var dy = -reach
-        while (dy <= reach) {
-            if (dy != 0) score(dy)?.let { if (it < bestScore) { bestScore = it; best = dy } }
-            dy += TRACK_STEP_PX
-        }
-        val coarse = best ?: return null
-        var fine = coarse
-        var fineScore = bestScore
-        for (d in coarse - TRACK_STEP_PX + 1 until coarse + TRACK_STEP_PX) {
-            if (d == 0) continue
-            score(d)?.let { if (it < fineScore) { fineScore = it; fine = d } }
-        }
-        return if (fineScore <= STILL_LOOK_LUMA) fine else null
-    }
-
-    /** Whether the line at [key] is found again shifted by [dy]. */
-    private fun foundAt(frame: Bitmap, key: String, dy: Int): Boolean {
-        val (b, then) = publishedLooks[key] ?: return false
-        val now = lookOf(frame, TextBounds(b.left, b.top + dy, b.right, b.bottom + dy, b.space)) ?: return false
-        return now.indices.sumOf { abs(now[it] - then[it]) }.toDouble() / now.size <= STILL_LOOK_LUMA
-    }
-
-    private fun largestDifference(a: IntArray, b: IntArray): Double =
-        if (a.size != b.size) Double.MAX_VALUE else a.indices.maxOf { abs(a[it] - b[it]) }.toDouble()
-
-    /**
-     * Of lines read over each other, the one in front: a history screen is
-     * drawn translucent over the game's dialogue box, the recogniser read
-     * now the history and now the dimmed dialogue behind it, and each
-     * withdrew the other twice a second. The one behind has a fraction of the
-     * other's ink (measured 37–57 per thousand against 264).
-     */
-    private fun frontLayer(frame: Bitmap, lines: List<GameLine>): List<GameLine> {
-        if (lines.size < 2) return lines
-        val ink = lines.associateWith { inkPerMille(frame, it.bounds) }
-        return lines.filter { line ->
-            lines.none { other ->
-                other !== line && covers(other.bounds, line.bounds) && ink.getValue(line) * BEHIND_RATIO < ink.getValue(other)
-            }
-        }
-    }
-
-    private fun inkPerMille(frame: Bitmap, box: TextBounds): Int {
-        val left = box.left.coerceIn(0, frame.width - 1)
-        val right = box.right.coerceIn(left + 1, frame.width)
-        val w = right - left
-        val row = IntArray(w)
-        var ink = 0
-        var samples = 0
-        var y = box.top.coerceAtLeast(0)
-        while (y < box.bottom.coerceAtMost(frame.height)) {
-            frame.getPixels(row, 0, w, left, y, w, 1)
-            val lumas = DoubleArray((w + SAMPLE_STEP - 1) / SAMPLE_STEP) { luma(row[it * SAMPLE_STEP]) }
-            val middle = lumas.sortedArray()[lumas.size / 2]
-            for (l in lumas) if (abs(l - middle) >= INK_CONTRAST) ink++
-            samples += lumas.size
-            y += SAMPLE_STEP
-        }
-        return if (samples == 0) 0 else ink * 1000 / samples
-    }
-
     /** Mostly different characters: another line, not the same one read a little differently. */
     private fun otherWords(a: String, b: String): Boolean {
         val shared = a.toSet().intersect(b.toSet()).size
         return shared * 2 < minOf(a.toSet().size, b.toSet().size)
-    }
-
-    /** A third of the smaller box under the other: layers are offset by half a line. */
-    private fun covers(a: TextBounds, b: TextBounds): Boolean {
-        val w = minOf(a.right, b.right) - maxOf(a.left, b.left)
-        val h = minOf(a.bottom, b.bottom) - maxOf(a.top, b.top)
-        return w > 0 && h > 0 && w.toLong() * h * 3 >= minOf(a.width.toLong() * a.height, b.width.toLong() * b.height)
     }
 
     private fun overlaps(a: TextBounds, b: TextBounds): Boolean {
@@ -1147,7 +975,7 @@ class GameTextSource @Inject constructor(
         val pixels = IntArray(GRID_COLUMNS * GRID_ROWS)
         small.getPixels(pixels, 0, GRID_COLUMNS, 0, 0, GRID_COLUMNS, GRID_ROWS)
         if (small !== frame) small.recycle()
-        return IntArray(pixels.size) { luma(pixels[it]).toInt() }
+        return lumaGridOf(pixels)
     }
 
     override suspend fun clear() {
@@ -2419,9 +2247,6 @@ class GameTextSource @Inject constructor(
         return runs
     }
 
-    private fun luma(pixel: Int): Double =
-        (Color.red(pixel) * 299 + Color.green(pixel) * 587 + Color.blue(pixel) * 114) / 1000.0
-
     /**
      * How the line looks, for drawing its translation in its place, and the
      * line with its bounds grown out to all of its ink: the ink's
@@ -3053,40 +2878,6 @@ class GameTextSource @Inject constructor(
         return edges <= PAGE_EDGES && abs(before - page) <= SIDE_PANEL_LUMA && abs(after - page) <= SIDE_PANEL_LUMA
     }
 
-    /** Whether nothing in [box] is bright: a dimmer over it. */
-    private fun dimmed(frame: Bitmap, box: TextBounds): Boolean = brightestOf(frame, box) < DIMMED_BRIGHTEST
-
-    private fun brightestOf(frame: Bitmap, box: TextBounds): Double {
-        val l = box.left.coerceIn(0, frame.width - 1)
-        val r = box.right.coerceIn(l + 1, frame.width)
-        val t = box.top.coerceIn(0, frame.height - 1)
-        val b = box.bottom.coerceIn(t + 1, frame.height)
-        val row = IntArray(r - l)
-        val lumas = ArrayList<Double>()
-        for (y in t until b step 2) {
-            frame.getPixels(row, 0, row.size, l, y, row.size, 1)
-            for (x in row.indices step 2) lumas += luma(row[x])
-        }
-        lumas.sort()
-        return lumas[(lumas.size * 95) / 100]
-    }
-
-    /** The spread of brightness in [box], ink to panel: low where a dimmer lies over the line. */
-    private fun contrastOf(frame: Bitmap, box: TextBounds): Double {
-        val l = box.left.coerceIn(0, frame.width - 1)
-        val r = box.right.coerceIn(l + 1, frame.width)
-        val t = box.top.coerceIn(0, frame.height - 1)
-        val b = box.bottom.coerceIn(t + 1, frame.height)
-        val row = IntArray(r - l)
-        val lumas = ArrayList<Double>()
-        for (y in t until b step 2) {
-            frame.getPixels(row, 0, row.size, l, y, row.size, 1)
-            for (x in row.indices step 2) lumas += luma(row[x])
-        }
-        lumas.sort()
-        return lumas[(lumas.size * 95) / 100] - lumas[lumas.size / 20]
-    }
-
     /** Whether the space between two lines on one row is the panel either stands on. */
     private fun sidePanel(frame: Bitmap, a: GameLine, b: GameLine): Boolean {
         val (l, r) = if (a.bounds.left <= b.bounds.left) a to b else b to a
@@ -3166,12 +2957,6 @@ class GameTextSource @Inject constructor(
         }
         return if (nearA >= nearB) a else b
     }
-
-    private fun blend(a: Int, b: Int, t: Float): Int = Color.rgb(
-        (Color.red(a) + (Color.red(b) - Color.red(a)) * t).toInt(),
-        (Color.green(a) + (Color.green(b) - Color.green(a)) * t).toInt(),
-        (Color.blue(a) + (Color.blue(b) - Color.blue(a)) * t).toInt(),
-    )
 
     /**
      * Each row's own panel colour, from inside the line: the middle colour of
@@ -3305,76 +3090,8 @@ class GameTextSource @Inject constructor(
         return core(words) to core(figures)
     }
 
-    private fun mean(pixels: List<Int>): Int =
-        Color.rgb(pixels.sumOf { Color.red(it) } / pixels.size, pixels.sumOf { Color.green(it) } / pixels.size, pixels.sumOf { Color.blue(it) } / pixels.size)
-
-    private fun colourDistance(a: Int, b: Int): Double {
-        val dr = (Color.red(a) - Color.red(b)).toDouble()
-        val dg = (Color.green(a) - Color.green(b)).toDouble()
-        val db = (Color.blue(a) - Color.blue(b)).toDouble()
-        return kotlin.math.sqrt(dr * dr + dg * dg + db * db)
-    }
-
-    private fun toElement(
-        key: String,
-        line: GameLine,
-        style: SourceStyle,
-        conversational: Boolean,
-        window: TextBounds,
-        packageName: String,
-        speaker: Boolean = false,
-        row: List<String> = emptyList(),
-    ): TextElement {
-        val b = line.bounds
-        val grow = style.backdrop?.marginPx ?: 0
-        val growRows = style.backdrop?.rowMarginPx ?: 0
-        return TextElement(
-            id = TextElementId("game:${key.hashCode().toUInt().toString(16)}"),
-            text = line.text,
-            // Grown by the erase margin when there is one, so the cleared
-            // patch takes in the glyphs' outline.
-            bounds = TextBounds(
-                b.left - grow + window.left,
-                b.top - growRows + window.top,
-                b.right + grow + window.left,
-                b.bottom + growRows + window.top,
-                CoordinateSpace.SCREEN,
-            ),
-            sourceType = TextSourceType.GAME,
-            // Dialogue carries the lines before it as context; a label does
-            // not. A menu's 「エピソードリスト」, given the story's lines as
-            // context, came back as the chapter's title.
-            conversational = conversational,
-            recognised = true,
-            carriesContext = true,
-            // A game's name or interface word, worth remembering across restarts:
-            // a label by its words — no sentence punctuation, a label's length —
-            // so a line of dialogue is never written to disk.
-            durableLabel = GameLayout.isLabel(line.text),
-            keepsLatinWords = true,
-            source = SourceIdentity(packageName = packageName),
-            revision = Revision(session),
-            sourceLanguage = JAPANESE.takeIf {
-                JapaneseScript.isJapanese(line.text) ||
-                    (kanaVotes >= JAPANESE_GAME_KANA && JapaneseScript.couldBeJapanese(line.text))
-            },
-            style = style,
-            // A name over dialogue is sent as a name: alone, 「ヒナ」 came back
-            // as 「雏」 ("chick") where beside its affiliation it was 「日奈」.
-            // And the game it is from, so names and terms come back as that
-            // game's players know them: 「チナツ」, alone, was 「千夏」 one day
-            // and 「奇娜」 the next.
-            metadata = buildMap {
-                put(com.babel.core.model.TranslationRequest.Hints.GAME, packageName)
-                if (speaker) put(com.babel.core.model.TranslationRequest.Hints.SPEAKER, "true")
-                if (row.isNotEmpty()) put(com.babel.core.model.TranslationRequest.Hints.ROW, row.joinToString("\n"))
-            },
-        )
-    }
-
     private companion object {
         const val TAG = "GameText"
-        const val SAMPLE_STEP = 4
 
         /** Only a line several times wider than tall can hold two pieces. */
         const val MIN_SPLIT_ASPECT = 4
@@ -3481,21 +3198,6 @@ class GameTextSource @Inject constructor(
         /** The share of ink pixels, strongest first, that give the ink its colour. */
         const val INK_CORE_PERCENT = 30
 
-        /** A line's look: this grid, and how far (0..255) any cell may change and be the same. */
-        const val LOOK_COLUMNS = 24
-        const val LOOK_ROWS = 4
-        const val REPLACED_LOOK_LUMA = 16.0
-        const val MAX_TRACK_LINES = 4
-        const val SHIFT_TRIES = 3
-        const val TRACK_STEP_PX = 4
-        const val STILL_LOOK_LUMA = 12.0
-
-        /** A line with this many times less ink than one over it is behind it. */
-        const val BEHIND_RATIO = 3
-
-        /** Ink, per thousand samples, that means a line is still there; a line of type has 50-200. */
-        const val MIN_INK_PER_MILLE = 8
-
         /** A line whose middle is this close (of the width) to the screen's is centred, if not too wide. */
         const val CENTRED_TOLERANCE = 0.02
         const val MAX_CENTRED_WIDTH = 0.6
@@ -3526,9 +3228,6 @@ class GameTextSource @Inject constructor(
         /** The least of its one-line box a line's type fills. */
         const val MIN_TYPE_OF_BOX = 0.67
 
-        /** Kana, decayed over recent frames, that make a game a Japanese one. */
-        const val JAPANESE_GAME_KANA = 20.0
-
         /** Middle of 0..255 brightness: a panel below it carries light ink. */
         const val MID_LUMA = 128.0
 
@@ -3551,12 +3250,6 @@ class GameTextSource @Inject constructor(
 
         /** The most backdrop error a label translated before may have and still be translated; see [readOne]. */
         const val KNOWN_LABEL_MAX_BACKDROP = 28.0
-
-        /** Ink against its panel at least this far apart (0..255) is in full view; dimmed, it measured 22–55, bright 150 and more. */
-        const val ACTIVE_CONTRAST = 100.0
-
-        /** A line whose brightest is under this is behind a dimmer: dimmed white measured 44–83. */
-        const val DIMMED_BRIGHTEST = 120.0
         const val PAGE_EDGES = 2
 
         /** What is kept of an empty end a box is cut back from. */
@@ -3601,13 +3294,6 @@ class GameTextSource @Inject constructor(
         /** Empty rows allowed inside one line of type; ruby sits further off. */
         const val TYPE_ROW_GAP = 2
 
-        /** Brightness apart from the column's middle value that counts as ink. */
-        const val INK_CONTRAST = 70.0
-
-        /** About 50 px a cell on a 3200x1440 window: a dialogue line is a row or two. */
-        const val GRID_COLUMNS = 64
-        const val GRID_ROWS = 29
-
         /** A cell of slack above and below, so a line's edge is not cut off. */
         const val BAND_MARGIN_CELLS = 1
 
@@ -3622,14 +3308,8 @@ class GameTextSource @Inject constructor(
         /** How much of the script vote each frame keeps from the last: about the last 50 frames count. */
         const val SCRIPT_VOTE_DECAY = 0.98
 
-        /** Mean brightness change per grid cell, 0..255, that is a new scene. */
-        const val SCENE_CHANGE_LUMA = 30.0
-
 
         const val MAX_SENDERS = 32
-
-        /** The small copy of each picture, at this fraction, and how far its line may move and be still. */
-        const val SMALL_SCALE = 4
 
         /** How often a picture is taken to watch for translations to withdraw, at most. */
         const val WATCH_INTERVAL_MS = 1000L
@@ -3667,7 +3347,6 @@ class GameTextSource @Inject constructor(
         const val BLANK_STRAY = 1
         const val BLANK_MIN_RUN = 4
         const val BLANK_MAX_CHANGES = 24
-        const val STILL_SMALL_LUMA = 2.0
 
         /** How wide each piece of a dialogue line's room is compared for typing, in its type's heights. */
         const val TYPING_PIECE_OF_HEIGHT = 2
@@ -3681,6 +3360,5 @@ class GameTextSource @Inject constructor(
 
         /** A band this tall is a new screen, not a new line: read it whole. */
         const val WHOLE_FRAME_FRACTION = 0.5f
-        val JAPANESE = LanguageTag("ja")
     }
 }
