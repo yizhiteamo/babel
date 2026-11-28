@@ -39,8 +39,6 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
 
-    debugImplementation(libs.okhttp.logging)
-
     // OCR feasibility probe only — V2 has not started, so this stays a test
     // dependency until the acquisition layer actually needs it.
     androidTestImplementation(libs.mlkit.text.recognition.japanese)
