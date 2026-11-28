@@ -21,6 +21,12 @@ data class TranslationRequest(
      */
     val recognised: Boolean = false,
     /**
+     * Whether Latin-alphabet words inside non-Latin text should be masked
+     * before reaching the provider and put back afterwards
+     * ([TextElement.keepsLatinWords]).
+     */
+    val keepsLatinWords: Boolean = false,
+    /**
      * Where the text was shown, so a provider can be told what it is
      * translating: a game's 「AUTO」, sent as a comic's speech balloon, came
      * back as the word for a car.

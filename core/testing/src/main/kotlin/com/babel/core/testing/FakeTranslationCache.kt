@@ -15,6 +15,7 @@ class FakeTranslationCache : TranslationCache {
 
     val lookups: MutableList<TranslationCacheKey> = CopyOnWriteArrayList()
     val writes: MutableList<TranslationCacheKey> = CopyOnWriteArrayList()
+    val durableWrites: MutableList<TranslationCacheKey> = CopyOnWriteArrayList()
 
     var hits: Int = 0
         private set
@@ -36,6 +37,11 @@ class FakeTranslationCache : TranslationCache {
         entries[key] = translatedText
     }
 
+    override suspend fun putDurable(key: TranslationCacheKey, translatedText: String) {
+        durableWrites += key
+        put(key, translatedText)
+    }
+
     override suspend fun clear() {
         entries.clear()
     }
@@ -49,6 +55,7 @@ class FakeTranslationCache : TranslationCache {
         entries.clear()
         lookups.clear()
         writes.clear()
+        durableWrites.clear()
         hits = 0
         misses = 0
     }

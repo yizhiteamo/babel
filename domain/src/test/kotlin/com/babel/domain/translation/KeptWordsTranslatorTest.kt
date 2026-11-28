@@ -31,9 +31,15 @@ class KeptWordsTranslatorTest {
         }
     }
 
-    private fun request(text: String, type: TextSourceType = TextSourceType.GAME) = TranslationRequest(
+    private fun request(
+        text: String,
+        keepsLatinWords: Boolean = true,
+        type: TextSourceType = TextSourceType.GAME,
+    ) = TranslationRequest(
         RequestId("r"), TextElementId("e"), Revision(1), text,
-        LanguagePair(LanguageTag("ja"), LanguageTag("zh")), sourceType = type,
+        LanguagePair(LanguageTag("ja"), LanguageTag("zh")),
+        keepsLatinWords = keepsLatinWords,
+        sourceType = type,
     )
 
     @Test
@@ -53,9 +59,21 @@ class KeptWordsTranslatorTest {
 
     @Test
     fun `text from another app is sent as it is`() = runBlocking {
-        KeptWordsTranslator(inner).translate(request("yizhiteamoちゃん。", TextSourceType.ACCESSIBILITY))
+        KeptWordsTranslator(inner).translate(
+            request("yizhiteamoちゃん。", keepsLatinWords = false, type = TextSourceType.GAME),
+        )
 
         assertEquals(listOf("yizhiteamoちゃん。"), seen)
+    }
+
+    @Test
+    fun `any source opting in to keepsLatinWords masks Latin handles`() = runBlocking {
+        val result = KeptWordsTranslator(inner).translate(
+            request("yizhiteamoちゃん。", keepsLatinWords = true, type = TextSourceType.ACCESSIBILITY),
+        )
+
+        assertEquals(listOf("{1}ちゃん。"), seen)
+        assertEquals("yizhiteamo酱。", result.translatedText)
     }
 
     @Test

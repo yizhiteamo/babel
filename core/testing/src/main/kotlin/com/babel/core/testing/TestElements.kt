@@ -11,6 +11,7 @@ import com.babel.core.model.TextElement
 import com.babel.core.model.TextElementId
 import com.babel.core.model.TextSourceType
 import com.babel.core.model.TranslationRequest
+import com.babel.domain.game.GameLayout
 
 /** Fixtures that keep tests focused on the field under test. */
 object TestElements {
@@ -35,6 +36,11 @@ object TestElements {
         windowId: Int? = 1,
         metadata: Map<String, String> = emptyMap(),
         sourceType: TextSourceType = TextSourceType.ACCESSIBILITY,
+        recognised: Boolean = sourceType != TextSourceType.ACCESSIBILITY,
+        carriesContext: Boolean = sourceType == TextSourceType.OCR || sourceType == TextSourceType.GAME,
+        durableLabel: Boolean = sourceType == TextSourceType.GAME && GameLayout.isLabel(text),
+        keepsLatinWords: Boolean = sourceType == TextSourceType.GAME,
+        pausable: Boolean = sourceType == TextSourceType.ACCESSIBILITY,
     ): TextElement = TextElement(
         id = TextElementId(id),
         text = text,
@@ -43,6 +49,11 @@ object TestElements {
         source = SourceIdentity(packageName = packageName, windowId = windowId),
         revision = Revision(revision),
         isProtected = isProtected,
+        recognised = recognised,
+        carriesContext = carriesContext,
+        durableLabel = durableLabel,
+        keepsLatinWords = keepsLatinWords,
+        pausable = pausable,
         metadata = metadata,
     )
 
@@ -53,6 +64,8 @@ object TestElements {
         source: String? = null,
         target: String = "zh-Hans",
         requestId: String = "r1",
+        recognised: Boolean = false,
+        keepsLatinWords: Boolean = false,
     ): TranslationRequest = TranslationRequest(
         requestId = RequestId(requestId),
         elementId = TextElementId(elementId),
@@ -62,5 +75,7 @@ object TestElements {
             source = source?.let(::LanguageTag),
             target = LanguageTag(target),
         ),
+        recognised = recognised,
+        keepsLatinWords = keepsLatinWords,
     )
 }
