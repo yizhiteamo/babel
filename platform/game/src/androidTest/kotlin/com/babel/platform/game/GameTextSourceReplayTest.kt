@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
+import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -36,7 +37,7 @@ class GameTextSourceReplayTest {
         val shots = File(context.getExternalFilesDir(null), "game-sample").listFiles()?.sortedBy { it.name }.orEmpty()
         for (file in shots) {
             val still = BitmapFactory.decodeFile(file.absolutePath) ?: continue
-            var served = 0
+            val served = AtomicInteger()
             val reads = AtomicInteger()
             val done = CompletableDeferred<Unit>()
             val frames = object : ScreenFrameSource {
@@ -48,9 +49,9 @@ class GameTextSourceReplayTest {
                     // Keep supplying frames at [FRAME_INTERVAL_MS] until
                     // [FRAMES] readings have completed, regardless of how long
                     // each reading takes on the device.
-                    if (served > 0) withTimeoutOrNull(FRAME_INTERVAL_MS) { done.await() }
-                    if (reads.get() >= FRAMES) return null
-                    served++
+                    if (served.get() > 0) withTimeoutOrNull(FRAME_INTERVAL_MS) { done.await() }
+                    if (reads.get() >= FRAMES || served.get() >= MAX_SERVED_FRAMES) return null
+                    served.incrementAndGet()
                     return still.copy(Bitmap.Config.ARGB_8888, false)
                 }
             }
@@ -61,9 +62,10 @@ class GameTextSourceReplayTest {
             val events = mutableListOf<TextSourceEvent>()
             val collector = launch(start = CoroutineStart.UNDISPATCHED) { source.events().collect { events += it } }
             val window = TextBounds(0, 0, still.width, still.height, CoordinateSpace.SCREEN)
-            source.read(1, window, "replay") { reads.get() < FRAMES }
+            source.read(1, window, "replay") { reads.get() < FRAMES && served.get() < MAX_SERVED_FRAMES }
             yield()
             collector.cancel()
+            assertEquals("${file.name}: completed readings", FRAMES, reads.get())
             println("GAMEREPLAY === ${file.name}")
             events.filterIsInstance<TextSourceEvent.Upserted>().flatMap { it.elements }.forEach {
                 val b = it.bounds
@@ -81,6 +83,7 @@ class GameTextSourceReplayTest {
 
     private companion object {
         const val FRAMES = 4
+        const val MAX_SERVED_FRAMES = FRAMES * 4
         const val FRAME_INTERVAL_MS = 2_000L
     }
 }

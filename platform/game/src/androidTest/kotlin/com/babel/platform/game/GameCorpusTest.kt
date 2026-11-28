@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,7 +68,7 @@ class GameCorpusTest {
 
     /** What [still], shown as a game window for [FRAMES] completed readings, comes to publish. */
     private suspend fun publishedText(still: Bitmap): List<String> = kotlinx.coroutines.coroutineScope {
-        var served = 0
+        val served = AtomicInteger()
         val reads = AtomicInteger()
         val done = CompletableDeferred<Unit>()
         val frames = object : ScreenFrameSource {
@@ -76,9 +77,9 @@ class GameCorpusTest {
             override suspend fun latestFrame(): Bitmap? = null
             override val supportsWindowFrames = true
             override suspend fun windowFrame(windowId: Int): Bitmap? {
-                if (served > 0) withTimeoutOrNull(FRAME_INTERVAL_MS) { done.await() }
-                if (reads.get() >= FRAMES) return null
-                served++
+                if (served.get() > 0) withTimeoutOrNull(FRAME_INTERVAL_MS) { done.await() }
+                if (reads.get() >= FRAMES || served.get() >= MAX_SERVED_FRAMES) return null
+                served.incrementAndGet()
                 return still.copy(Bitmap.Config.ARGB_8888, false)
             }
         }
@@ -100,10 +101,11 @@ class GameCorpusTest {
         val events = mutableListOf<TextSourceEvent>()
         val collector = launch(start = CoroutineStart.UNDISPATCHED) { source.events().collect { events += it } }
         val window = TextBounds(0, 0, still.width, still.height, CoordinateSpace.SCREEN)
-        source.read(1, window, "corpus") { reads.get() < FRAMES }
+        source.read(1, window, "corpus") { reads.get() < FRAMES && served.get() < MAX_SERVED_FRAMES }
         yield()
         collector.cancel()
         source.release()
+        assertEquals("completed readings", FRAMES, reads.get())
         val shown = LinkedHashMap<String, String>()
         for (event in events) when (event) {
             is TextSourceEvent.Upserted -> event.elements.forEach { shown[it.id.value] = it.text }
@@ -120,6 +122,7 @@ class GameCorpusTest {
 
     private companion object {
         const val FRAMES = 4
+        const val MAX_SERVED_FRAMES = FRAMES * 4
         const val NL = "\n"
         const val FRAME_INTERVAL_MS = 1_500L
     }
