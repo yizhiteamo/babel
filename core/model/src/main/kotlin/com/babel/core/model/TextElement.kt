@@ -130,9 +130,18 @@ data class TextElement(
     val keepsLatinWords: Boolean = false,
     /**
      * Whether `TranslationCoordinator.pause` holds back new elements from this
-     * source. Accessibility text is governed by that pause switch; modes with
-     * their own switches (manga OCR, game mode) set this to false so a paused
-     * text path does not swallow them.
+     * source.
+     *
+     * Pause is the text path's switch — that is what the control offering it
+     * says, and what a user pressing it means. Modes with their own switches
+     * (manga OCR, game mode) are an explicit request to translate images and
+     * set this to false so a paused text path does not silently swallow them:
+     * reported from a device, pausing text translation left manga mode
+     * recognising 18 lines and rendering none of them.
+     *
+     * Decided per element rather than per batch. A batch mixing sources does
+     * not arise today, but dropping half of one silently is the kind of bug
+     * that takes a day to find.
      */
     val pausable: Boolean = false,
     val metadata: Map<String, String> = emptyMap(),
