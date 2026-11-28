@@ -663,7 +663,7 @@ class CaptureTextSource @Inject internal constructor(
         bottom = maxOf(bottom, inner.bottom),
     )
 
-    private data class Placement(val bounds: TextBounds, val style: SourceStyle)
+    internal data class Placement(val bounds: TextBounds, val style: SourceStyle)
 
     /**
      * One region, numbered against the page it belongs to.
@@ -678,7 +678,7 @@ class CaptureTextSource @Inject internal constructor(
      *   for a shared one — which is what makes every balloon in a group agree
      *   on a cache key, so the group costs one call rather than several.
      */
-    private fun toElement(
+    internal fun toElement(
         region: TextRegion,
         text: String,
         sourceLanguage: LanguageTag?,

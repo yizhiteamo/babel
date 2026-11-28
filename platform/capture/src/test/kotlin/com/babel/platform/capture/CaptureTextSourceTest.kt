@@ -1,13 +1,17 @@
 package com.babel.platform.capture
 
 import android.graphics.Bitmap
+import com.babel.core.model.CoordinateSpace
 import com.babel.core.model.LanguageTag
+import com.babel.core.model.SourceStyle
 import com.babel.core.model.TextBounds
+import com.babel.core.model.TextOrientation
 import com.babel.core.testing.RecordingLogger
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.domain.vision.RecognizedLine
 import com.babel.domain.vision.TextRegion
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -80,5 +84,31 @@ class CaptureTextSourceTest {
         assertTrue(!pages.called, "the page must not be read without a frame")
         assertTrue(!recognizer.called, "recognition should not run without a frame")
         assertTrue(frames.calls == 1)
+    }
+
+    @Test
+    fun `captured elements carry manga traits without pause or game traits`() {
+        val source = CaptureTextSource(NoFrames(), UnusedPageReader(), UnusedRecognizer(), RecordingLogger())
+        val bounds = TextBounds(10, 20, 110, 180, CoordinateSpace.SCREEN)
+        val region = TextRegion(
+            lines = emptyList(),
+            bounds = bounds,
+            orientation = TextOrientation.VERTICAL,
+            enclosure = bounds,
+        )
+
+        val element = source.toElement(
+            region = region,
+            text = "台詞",
+            sourceLanguage = LanguageTag("ja"),
+            packageName = "com.example.reader",
+            occurrences = mutableMapOf(),
+        ) { placedBounds, _, _, _ -> CaptureTextSource.Placement(placedBounds, SourceStyle.UNKNOWN) }
+
+        assertTrue(element.recognised)
+        assertTrue(element.carriesContext)
+        assertFalse(element.pausable)
+        assertFalse(element.durableLabel)
+        assertFalse(element.keepsLatinWords)
     }
 }
