@@ -10,10 +10,13 @@ import com.babel.core.model.TextBounds
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.platform.screen.ScreenFrameSource
 import java.io.File
-import kotlinx.coroutines.flow.toList
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -34,25 +37,32 @@ class GameTextSourceReplayTest {
         for (file in shots) {
             val still = BitmapFactory.decodeFile(file.absolutePath) ?: continue
             var served = 0
+            val reads = AtomicInteger()
+            val done = CompletableDeferred<Unit>()
             val frames = object : ScreenFrameSource {
                 override val isSupported = true
                 override val isAvailable = true
                 override suspend fun latestFrame(): Bitmap? = null
                 override val supportsWindowFrames = true
                 override suspend fun windowFrame(windowId: Int): Bitmap? {
-                    // Pictures are taken while the last is read; paced slower
-                    // than a reading takes, so every one of them is read, as
-                    // the measurement assumes.
-                    if (served > 0) kotlinx.coroutines.delay(FRAME_INTERVAL_MS)
+                    // Keep supplying frames at [FRAME_INTERVAL_MS] until
+                    // [FRAMES] readings have completed, regardless of how long
+                    // each reading takes on the device.
+                    if (served > 0) withTimeoutOrNull(FRAME_INTERVAL_MS) { done.await() }
+                    if (reads.get() >= FRAMES) return null
                     served++
                     return still.copy(Bitmap.Config.ARGB_8888, false)
                 }
             }
             val source = GameTextSource(frames, BabelLogger.NoOp)
+            source.inspect = { _, _, _, _, _ ->
+                if (reads.incrementAndGet() >= FRAMES) done.complete(Unit)
+            }
             val events = mutableListOf<TextSourceEvent>()
-            val collector = launch { source.events().collect { events += it } }
+            val collector = launch(start = CoroutineStart.UNDISPATCHED) { source.events().collect { events += it } }
             val window = TextBounds(0, 0, still.width, still.height, CoordinateSpace.SCREEN)
-            source.read(1, window, "replay") { served < FRAMES }
+            source.read(1, window, "replay") { reads.get() < FRAMES }
+            yield()
             collector.cancel()
             println("GAMEREPLAY === ${file.name}")
             events.filterIsInstance<TextSourceEvent.Upserted>().flatMap { it.elements }.forEach {
