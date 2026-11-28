@@ -10,9 +10,13 @@ import com.babel.core.model.TextBounds
 import com.babel.domain.acquisition.TextSourceEvent
 import com.babel.platform.screen.ScreenFrameSource
 import java.io.File
-import kotlinx.coroutines.delay
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,7 +56,7 @@ class GameCorpusTest {
                 val ok = if (rule[0] == '+') found else !found
                 if (!ok) failures += "${file.nameWithoutExtension}: ${if (rule[0] == '+') "missing" else "translated"} 「$words」"
             }
-            println("GAMECORPUS ${file.nameWithoutExtension}: ${published.size} published")
+            println("GAMECORPUS ${file.nameWithoutExtension}: ${published.size} published ($lastReads reads)")
             published.forEach { println("GAMECORPUS   $it") }
             lastReading.lines().forEach { println("GAMECORPUS read $it") }
         }
@@ -61,16 +65,19 @@ class GameCorpusTest {
         assertTrue("${failures.size} of $checks expectations failed", failures.isEmpty())
     }
 
-    /** What [still], shown as a game window for a few frames, comes to publish. */
+    /** What [still], shown as a game window for [FRAMES] completed readings, comes to publish. */
     private suspend fun publishedText(still: Bitmap): List<String> = kotlinx.coroutines.coroutineScope {
         var served = 0
+        val reads = AtomicInteger()
+        val done = CompletableDeferred<Unit>()
         val frames = object : ScreenFrameSource {
             override val isSupported = true
             override val isAvailable = true
             override suspend fun latestFrame(): Bitmap? = null
             override val supportsWindowFrames = true
             override suspend fun windowFrame(windowId: Int): Bitmap? {
-                if (served > 0) delay(FRAME_INTERVAL_MS)
+                if (served > 0) withTimeoutOrNull(FRAME_INTERVAL_MS) { done.await() }
+                if (reads.get() >= FRAMES) return null
                 served++
                 return still.copy(Bitmap.Config.ARGB_8888, false)
             }
@@ -88,11 +95,13 @@ class GameCorpusTest {
                 }
                 "$mark${k?.let { why[it] } ?: ""} ${l.text}@${l.bounds.left},${l.bounds.top},${l.bounds.width}x${l.bounds.height} t=${l.typeHeight} e=${"%.0f".format(l.backdropError)}"
             }
+            if (reads.incrementAndGet() >= FRAMES) done.complete(Unit)
         }
         val events = mutableListOf<TextSourceEvent>()
-        val collector = launch { source.events().collect { events += it } }
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) { source.events().collect { events += it } }
         val window = TextBounds(0, 0, still.width, still.height, CoordinateSpace.SCREEN)
-        source.read(1, window, "corpus") { served < FRAMES }
+        source.read(1, window, "corpus") { reads.get() < FRAMES }
+        yield()
         collector.cancel()
         source.release()
         val shown = LinkedHashMap<String, String>()
@@ -102,10 +111,12 @@ class GameCorpusTest {
             else -> Unit
         }
         lastReading = last
+        lastReads = reads.get()
         shown.values.toList()
     }
 
     private var lastReading = ""
+    private var lastReads = 0
 
     private companion object {
         const val FRAMES = 4
