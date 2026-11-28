@@ -278,7 +278,7 @@ class GameLineStyleTest {
         }
         assertNull(GameLineStyle.bar(tallTwoToneBar, barBox))
 
-        // bar safely returns null when an inked run reaches the right edge of the frame.
+        // Since #43 dropped the unused read: an ink run reaching the frame's right edge returns null instead of throwing.
         val edgeRunFrame = frameOf(140, 80) { x, y ->
             if (x in 135 until 140 && y in 25..50) grey(240) else grey(30)
         }
