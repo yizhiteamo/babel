@@ -69,11 +69,15 @@ one).
 - games that block screenshots (`FLAG_SECURE`): the screenshot is black, so there is nothing to read; Babel says so instead of failing silently
 - voice and audio
 - a game-specific translation engine — V3 reuses the common one
+- games written in scripts other than Japanese. They are wanted, and "general,
+  not per game" still applies to them, but they come after V3 (issue #30;
+  decided 2026-11-27). The recogniser is ML Kit's Japanese model, which reads
+  Japanese and Latin script only.
 
 ## Acceptance Criteria
 
 Measured on a real phone against `material-sample/game/` and a live session of
-at least one game:
+at least one game, **in Japanese**: V3 is accepted on Japanese games alone.
 
 1. **Dialogue, choices and pop-ups** are translated; numbers, logos and title art are left alone.
 2. **Latency:** from a line finishing on screen to its translation appearing, median within *2s with the remote chat provider* and *1s for interface text already cached* (*estimates to be confirmed by the spikes*).
